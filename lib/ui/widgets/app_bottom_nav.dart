@@ -36,10 +36,7 @@ class AppBottomNav extends StatelessWidget {
   }
 
   bool _isMaintenanceRoute(AppRoute route) {
-    return route == AppRoute.maintenance ||
-        route == AppRoute.inventory ||
-        route == AppRoute.logs ||
-        route == AppRoute.faultCodes;
+    return route == AppRoute.maintenance;
   }
 
   bool _isSelected(AppRoute tab) {
