@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/enums/app_route.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
+import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/company_model.dart';
 
 import 'package:rapide_nforce/models/nav_menu_item.dart';
@@ -65,6 +66,24 @@ class _AppShellState extends State<AppShell> {
   bool _bootstrapping = false;
 
   bool get _isLoggedIn => AuthService.instance.isLoggedIn;
+
+  List<AppRoute> get _bottomNavRoutes {
+    final role = AuthService.instance.currentUser?.role;
+    if (isAdminRole(role)) {
+      return const [
+        AppRoute.dashboard,
+        AppRoute.maintenance,
+        AppRoute.approvals,
+        AppRoute.profile,
+      ];
+    }
+    return const [
+      AppRoute.dashboard,
+      AppRoute.maintenance,
+      AppRoute.requests,
+      AppRoute.profile,
+    ];
+  }
 
   @override
   void initState() {
@@ -217,14 +236,10 @@ class _AppShellState extends State<AppShell> {
         );
 
       case AppRoute.inventory:
-        return const MaintenanceScreen(
-          initialIndex: 1,
-        );
+        return const MaintenanceScreen(initialIndex: 1);
 
       case AppRoute.logs:
-        return const MaintenanceScreen(
-          initialIndex: 2,
-        );
+        return const MaintenanceScreen(initialIndex: 2);
 
       case AppRoute.faultCodes:
         return const FaultCodesScreen();
@@ -326,26 +341,26 @@ class _AppShellState extends State<AppShell> {
               child: const Icon(Icons.add, size: 28),
             )
           : _currentRoute == AppRoute.maintenance
-              ? FloatingActionButton(
-                  onPressed: () async {
-                    final changed = await Navigator.of(context).push<bool>(
-                      MaterialPageRoute(
-                        builder: (_) => const WorkOrderFormScreen(),
-                      ),
-                    );
-                    if (changed == true) {
-                      setState(() => _workOrderRefreshKey++);
-                    }
-                  },
-                  backgroundColor: const Color(0xFF990000),
-                  foregroundColor: Colors.white,
-                  elevation: 4,
-                  child: const Icon(Icons.add, size: 28),
-                )
-              : null,
+          ? FloatingActionButton(
+              onPressed: () async {
+                final changed = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => const WorkOrderFormScreen(),
+                  ),
+                );
+                if (changed == true) {
+                  setState(() => _workOrderRefreshKey++);
+                }
+              },
+              backgroundColor: const Color(0xFF990000),
+              foregroundColor: Colors.white,
+              elevation: 4,
+              child: const Icon(Icons.add, size: 28),
+            )
+          : null,
       bottomNavigationBar: AppBottomNav(
         currentRoute: _currentRoute,
-
+        routes: _bottomNavRoutes,
         onRouteSelected: _onRouteSelected,
       ),
     );

@@ -9,10 +9,12 @@ class AppBottomNav extends StatelessWidget {
     super.key,
     required this.currentRoute,
     required this.onRouteSelected,
+    this.routes = kBottomNavRoutes,
   });
 
   final AppRoute currentRoute;
   final ValueChanged<AppRoute> onRouteSelected;
+  final List<AppRoute> routes;
 
   IconData _icon(AppRoute route) {
     switch (route) {
@@ -24,6 +26,8 @@ class AppBottomNav extends StatelessWidget {
         return Icons.build_rounded;
       case AppRoute.approvals:
         return Icons.fact_check_outlined;
+      case AppRoute.requests:
+        return Icons.handyman_rounded;
       case AppRoute.profile:
         return Icons.person_rounded;
       default:
@@ -66,13 +70,13 @@ class AppBottomNav extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
               child: Row(
                 children: [
-                  for (var i = 0; i < kBottomNavRoutes.length; i++)
+                  for (var i = 0; i < routes.length; i++)
                     Expanded(
                       child: _NavItem(
-                        label: kBottomNavRoutes[i].bottomNavLabel,
-                        icon: _icon(kBottomNavRoutes[i]),
-                        selected: _isSelected(kBottomNavRoutes[i]),
-                        onTap: () => onRouteSelected(kBottomNavRoutes[i]),
+                        label: routes[i].bottomNavLabel,
+                        icon: _icon(routes[i]),
+                        selected: _isSelected(routes[i]),
+                        onTap: () => onRouteSelected(routes[i]),
                       ),
                     ),
                 ],
