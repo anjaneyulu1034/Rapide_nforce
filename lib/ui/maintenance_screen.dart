@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/ui/inventory_screen.dart';
 import 'package:rapide_nforce/ui/logs_screen.dart';
-import 'package:rapide_nforce/ui/work_orders/work_orders_screen.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
-/// Maintenance hub — matches web `/maintenance` with Work Orders | Inventory | Logs tabs.
+/// Maintenance sub-hub for Inventory | Logs.
 class MaintenanceScreen extends StatefulWidget {
   const MaintenanceScreen({super.key, this.initialIndex = 0});
 
@@ -30,23 +29,16 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
                 children: [
                   Expanded(
                     child: _HubTab(
-                      label: 'Work Orders',
+                      label: 'Inventory',
                       selected: _index == 0,
                       onTap: () => setState(() => _index = 0),
                     ),
                   ),
                   Expanded(
                     child: _HubTab(
-                      label: 'Inventory',
+                      label: 'Logs',
                       selected: _index == 1,
                       onTap: () => setState(() => _index = 1),
-                    ),
-                  ),
-                  Expanded(
-                    child: _HubTab(
-                      label: 'Logs',
-                      selected: _index == 2,
-                      onTap: () => setState(() => _index = 2),
                     ),
                   ),
                 ],
@@ -57,7 +49,6 @@ class _MaintenanceScreenState extends State<MaintenanceScreen> {
             child: IndexedStack(
               index: _index,
               children: const [
-                WorkOrdersScreen(),
                 InventoryScreen(),
                 LogsScreen(),
               ],
@@ -85,3 +76,4 @@ class _HubTab extends StatelessWidget {
     return WebTabPill(label: label, selected: selected, onTap: onTap);
   }
 }
+
