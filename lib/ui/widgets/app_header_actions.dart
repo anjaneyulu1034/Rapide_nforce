@@ -6,7 +6,7 @@ import 'package:rapide_nforce/core/enums/app_route.dart';
 import 'package:rapide_nforce/models/company_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/ui/widgets/notification_bell.dart';
-import 'package:rapide_nforce/ui/widgets/theme_toggle_button.dart';
+// import 'package:rapide_nforce/ui/widgets/theme_toggle_button.dart';
 
 class AppHeaderActions extends StatelessWidget {
   const AppHeaderActions({
@@ -36,7 +36,7 @@ class AppHeaderActions extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const ThemeToggleButton(),
+        // const ThemeToggleButton(),
         if (loadingCompanies)
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 8),
