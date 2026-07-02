@@ -302,16 +302,14 @@ class _AppShellState extends State<AppShell> {
       backgroundColor: AppColors.surface,
       extendBody: true,
       appBar: AppBar(
-        centerTitle: _currentRoute == AppRoute.profile,
-        title: (_currentRoute == AppRoute.dashboard ||
-                _currentRoute == AppRoute.maintenance ||
-                _currentRoute == AppRoute.inventory ||
-                _currentRoute == AppRoute.logs)
-            ? null
-            : Text(
-                _currentRoute.title,
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
+        centerTitle: false,
+        title: const Text(
+          'RAPIDÉnforce',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 20,
+          ),
+        ),
 
         actions: [
           AppHeaderActions(
