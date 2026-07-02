@@ -224,6 +224,11 @@ class MenuService {
             path: '/maintenance',
           ),
           NavMenuItem(
+            id: 'dvir',
+            label: 'DVIR',
+            path: '/dvir-reports',
+          ),
+          NavMenuItem(
             id: 'fault-codes',
             label: 'Fault Codes',
             path: '/fault-codes',

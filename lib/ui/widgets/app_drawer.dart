@@ -215,6 +215,11 @@ class _AppDrawerState extends State<AppDrawer> {
             path: '/maintenance',
           ),
           NavMenuItem(
+            id: 'dvir',
+            label: 'DVIR',
+            path: '/dvir-reports',
+          ),
+          NavMenuItem(
             id: 'fault-codes',
             label: 'Fault Codes',
             path: '/fault-codes',
@@ -364,11 +369,13 @@ class _DrawerTile extends StatelessWidget {
       case AppRoute.myTrailers:
         return Icons.inventory_2_outlined;
       case AppRoute.maintenance:
-      case AppRoute.inventory:
-      case AppRoute.logs:
         return Icons.build_outlined;
+      case AppRoute.inventory:
+        return Icons.inventory_2_outlined;
+      case AppRoute.logs:
+        return Icons.receipt_long_outlined;
       case AppRoute.faultCodes:
-        return Icons.warning_amber_outlined;
+        return Icons.info_outline;
       case AppRoute.documents:
         return Icons.description_outlined;
       case AppRoute.reports:
@@ -401,14 +408,15 @@ class _DrawerTile extends StatelessWidget {
             ),
             child: Row(
               children: [
-                if (!dense)
-                  AppMenuIcon(
-                    fallback: _fallbackIcon,
-                    menuIcon: menuIcon,
-                    label: label,
-                    color: tint,
-                  ),
-                if (!dense) const SizedBox(width: 12),
+                if (dense) const SizedBox(width: 16),
+                AppMenuIcon(
+                  fallback: _fallbackIcon,
+                  menuIcon: menuIcon,
+                  label: label,
+                  size: dense ? 16 : 20,
+                  color: tint,
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     label,

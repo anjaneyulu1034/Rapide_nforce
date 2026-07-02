@@ -37,6 +37,8 @@ class MenuRouteMapper {
       case '/maintenance/logs':
         return AppRoute.logs;
       case '/documents':
+      case '/dvir-reports':
+      case '/dvir':
         return AppRoute.documents;
       case '/reports':
       case '/reports/ocr-audit-logs':
