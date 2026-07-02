@@ -75,16 +75,16 @@ class AppHeaderActions extends StatelessWidget {
           ),
         const SizedBox(width: 4),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          constraints: const BoxConstraints(maxWidth: 96),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          constraints: const BoxConstraints(maxWidth: 84),
           decoration: BoxDecoration(
             gradient: AppGradients.goldAccent,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
             displayRole,
             style: const TextStyle(
-              fontSize: 10,
+              fontSize: 9,
               fontWeight: FontWeight.w700,
               color: AppColors.black,
             ),

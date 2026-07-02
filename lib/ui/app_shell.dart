@@ -303,11 +303,12 @@ class _AppShellState extends State<AppShell> {
       extendBody: true,
       appBar: AppBar(
         centerTitle: false,
+        titleSpacing: 0,
         title: const Text(
           'RAPIDÉnforce',
           style: TextStyle(
-            fontWeight: FontWeight.w700,
-            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
           ),
         ),
 
