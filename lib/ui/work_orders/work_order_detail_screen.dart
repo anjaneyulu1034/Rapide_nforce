@@ -30,6 +30,7 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
   String? _error;
   WorkOrderModel? _order;
   bool _deleting = false;
+  bool _wasModified = false;
 
   List<TechnicianSummary> _technicians = [];
   List<MaintenanceIssueSummary> _events = [];
@@ -139,8 +140,8 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
       MaterialPageRoute(builder: (_) => WorkOrderFormScreen(existing: order)),
     );
     if (changed == true) {
+      _wasModified = true;
       await _load();
-      if (mounted) Navigator.of(context).pop(true);
     }
   }
 
@@ -211,15 +212,25 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
   Widget build(BuildContext context) {
     final order = _order;
 
-    return GradientPageBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: Text(
-            order?.workOrderNumber.isNotEmpty == true
-                ? order!.workOrderNumber
-                : 'View Work Order',
-          ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        Navigator.of(context).pop(_wasModified);
+      },
+      child: GradientPageBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.of(context).pop(_wasModified),
+            ),
+            title: Text(
+              order?.workOrderNumber.isNotEmpty == true
+                  ? order!.workOrderNumber
+                  : 'View Work Order',
+            ),
           actions: [
             if (order != null && order.status == WorkOrderStatus.completed)
               IconButton(
@@ -258,7 +269,7 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                           ),
-                          onPressed: () => Navigator.pop(context),
+                          onPressed: () => Navigator.pop(context, _wasModified),
                           child: const Text('Cancel'),
                         ),
                       ),
@@ -283,6 +294,7 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
                   ),
                 ),
               ),
+        ),
       ),
     );
   }
