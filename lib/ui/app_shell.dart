@@ -302,7 +302,7 @@ class _AppShellState extends State<AppShell> {
       backgroundColor: AppColors.surface,
       extendBody: true,
       appBar: AppBar(
-        centerTitle: _currentRoute == AppRoute.profile,
+        centerTitle: true,
         title: (_currentRoute == AppRoute.dashboard ||
                 _currentRoute == AppRoute.maintenance ||
                 _currentRoute == AppRoute.inventory ||
