@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/enums/app_route.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
+import 'package:rapide_nforce/core/utils/menu_route_mapper.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/company_model.dart';
 
@@ -68,21 +69,34 @@ class _AppShellState extends State<AppShell> {
   bool get _isLoggedIn => AuthService.instance.isLoggedIn;
 
   List<AppRoute> get _bottomNavRoutes {
-    final role = AuthService.instance.currentUser?.role;
-    if (isAdminRole(role)) {
-      return const [
-        AppRoute.dashboard,
-        AppRoute.maintenance,
-        AppRoute.approvals,
-        AppRoute.profile,
-      ];
-    }
-    return const [
+    final routes = <AppRoute>[
       AppRoute.dashboard,
       AppRoute.maintenance,
-      AppRoute.requests,
-      AppRoute.profile,
     ];
+
+    final hasApprovals = _menuItems.any((item) =>
+        MenuRouteMapper.routeFromPath(item.path) == AppRoute.approvals ||
+        item.children.any((c) => MenuRouteMapper.routeFromPath(c.path) == AppRoute.approvals));
+
+    final hasRequests = _menuItems.any((item) =>
+        MenuRouteMapper.routeFromPath(item.path) == AppRoute.requests ||
+        item.children.any((c) => MenuRouteMapper.routeFromPath(c.path) == AppRoute.requests));
+
+    if (hasApprovals) {
+      routes.add(AppRoute.approvals);
+    } else if (hasRequests) {
+      routes.add(AppRoute.requests);
+    } else {
+      final role = AuthService.instance.currentUser?.role;
+      if (isAdminRole(role) || (role != null && role.toUpperCase().contains('LEAD'))) {
+        routes.add(AppRoute.approvals);
+      } else {
+        routes.add(AppRoute.requests);
+      }
+    }
+
+    routes.add(AppRoute.profile);
+    return routes;
   }
 
   @override

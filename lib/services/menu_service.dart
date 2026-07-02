@@ -1,5 +1,4 @@
 import 'package:rapide_nforce/core/constants/api_constants.dart';
-import 'package:rapide_nforce/core/enums/app_route.dart';
 import 'package:rapide_nforce/core/models/api_result.dart';
 import 'package:rapide_nforce/core/utils/api_parse.dart';
 import 'package:rapide_nforce/core/utils/menu_route_mapper.dart';
@@ -30,15 +29,62 @@ class MenuService {
           .where((m) => m['isActive'] != false)
           .map(_mapMenu)
           .where((m) => m.path.isNotEmpty)
-          .toList()
-        ..sort(
-          (a, b) => _orderFor(a).compareTo(_orderFor(b)),
-        );
+          .toList();
 
-      if (navItems.isEmpty) {
-        return ApiResult.ok(_fallbackMenus());
+      final cleanItems = <NavMenuItem>[];
+      for (final item in navItems) {
+        final label = item.label.toLowerCase();
+        final isMaintenance = label.contains('maintenance') ||
+            label == 'work orders' ||
+            label == 'work-orders' ||
+            label == 'inventory' ||
+            label == 'fault codes' ||
+            label == 'fault-codes' ||
+            label == 'dvir';
+
+        if (!isMaintenance) {
+          cleanItems.add(item);
+        }
       }
-      return ApiResult.ok(navItems);
+
+      const serviceMaintenanceGroup = NavMenuItem(
+        id: 'maintenance',
+        label: 'Service Maintenance',
+        path: '/maintenance',
+        children: [
+          NavMenuItem(
+            id: 'inventory',
+            label: 'Inventory',
+            path: '/inventory',
+          ),
+          NavMenuItem(
+            id: 'maintenance-hub',
+            label: 'Work Orders',
+            path: '/maintenance',
+          ),
+          NavMenuItem(
+            id: 'dvir',
+            label: 'DVIR',
+            path: '/dvir-reports',
+          ),
+          NavMenuItem(
+            id: 'fault-codes',
+            label: 'Fault Codes',
+            path: '/fault-codes',
+          ),
+        ],
+      );
+
+      final insertIndex = cleanItems.indexWhere(
+        (item) => item.path.toLowerCase().contains('trailer'),
+      );
+      if (insertIndex != -1) {
+        cleanItems.insert(insertIndex + 1, serviceMaintenanceGroup);
+      } else {
+        cleanItems.add(serviceMaintenanceGroup);
+      }
+
+      return ApiResult.ok(cleanItems);
     } catch (_) {
       return ApiResult.ok(_fallbackMenus());
     }
@@ -180,26 +226,6 @@ class MenuService {
   String _normalizePath(String raw) {
     if (raw.isEmpty || raw == '#') return '';
     return raw.startsWith('/') ? raw : '/$raw';
-  }
-
-  int _orderFor(NavMenuItem item) {
-    final route = MenuRouteMapper.routeFromPath(item.path);
-    final order = <AppRoute, int>{
-      AppRoute.dashboard: 0,
-      AppRoute.carriers: 5,
-      AppRoute.powerUnit: 10,
-      AppRoute.myTrailers: 20,
-      AppRoute.maintenance: 30,
-      AppRoute.faultCodes: 35,
-      AppRoute.inventory: 40,
-      AppRoute.logs: 50,
-      AppRoute.documents: 60,
-      AppRoute.reports: 70,
-      AppRoute.requests: 80,
-      AppRoute.approvals: 90,
-      AppRoute.profile: 100,
-    };
-    return order[route] ?? 500;
   }
 
   List<NavMenuItem> _fallbackMenus() {
