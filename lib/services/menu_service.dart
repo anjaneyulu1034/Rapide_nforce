@@ -210,12 +210,17 @@ class MenuService {
       NavMenuItem(id: 'trailers', label: 'My Trailers', path: '/trailers'),
       NavMenuItem(
         id: 'maintenance',
-        label: 'Maintenance',
+        label: 'Service Maintenance',
         path: '/maintenance',
         children: [
           NavMenuItem(
+            id: 'inventory',
+            label: 'Inventory',
+            path: '/inventory',
+          ),
+          NavMenuItem(
             id: 'maintenance-hub',
-            label: 'Maintenance',
+            label: 'Work Orders',
             path: '/maintenance',
           ),
           NavMenuItem(

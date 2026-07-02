@@ -25,12 +25,16 @@ class MenuRouteMapper {
       case '/maintenance':
       case '/work-orders':
       case '/work-orders-review':
+      case '/maintenance/work-orders':
         return AppRoute.maintenance;
       case '/fault-codes':
+      case '/maintenance/fault-codes':
         return AppRoute.faultCodes;
       case '/inventory':
+      case '/maintenance/inventory':
         return AppRoute.inventory;
       case '/logs':
+      case '/maintenance/logs':
         return AppRoute.logs;
       case '/documents':
         return AppRoute.documents;
@@ -60,7 +64,7 @@ class MenuRouteMapper {
 
   static bool isMaintenanceLabel(String label) {
     final name = label.trim().toLowerCase();
-    return name == 'maintenance';
+    return name.contains('maintenance');
   }
 
   static bool isStandaloneMaintenanceChild(String label) {
