@@ -31,6 +31,8 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
   int _totalItems = 0;
   int? _statusFilter;
   String _searchTerm = '';
+  String? _sortKey;
+  String? _sortOrder;
 
   static const int _pageSize = 15;
 
@@ -71,8 +73,8 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
       search: _searchTerm.isEmpty ? null : _searchTerm,
       status: _statusFilter,
       companyId: AuthService.instance.selectedCompanyIdInt,
-      sortKey: 'createdOn',
-      sortOrder: 'desc',
+      sortKey: _sortKey ?? 'createdOn',
+      sortOrder: _sortOrder ?? 'desc',
     );
 
     if (!mounted) return;
@@ -177,6 +179,154 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
     _load(page: 1);
   }
 
+  void _showFiltersBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filters & Sorting',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setSheetState(() {
+                            _sortKey = null;
+                            _sortOrder = null;
+                          });
+                          setState(() {});
+                          Navigator.pop(context);
+                          _load(page: 1);
+                        },
+                        child: const Text('Reset'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Sort By',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Created Date'),
+                        selected: _sortKey == 'createdOn',
+                        onSelected: (val) {
+                          setSheetState(() {
+                            _sortKey = val ? 'createdOn' : null;
+                          });
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Work Order #'),
+                        selected: _sortKey == 'workOrderNumber',
+                        onSelected: (val) {
+                          setSheetState(() {
+                            _sortKey = val ? 'workOrderNumber' : null;
+                          });
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Status'),
+                        selected: _sortKey == 'status',
+                        onSelected: (val) {
+                          setSheetState(() {
+                            _sortKey = val ? 'status' : null;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Order',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Newest First'),
+                        selected: _sortOrder == 'desc',
+                        onSelected: (val) {
+                          setSheetState(() {
+                            _sortOrder = val ? 'desc' : null;
+                          });
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Oldest First'),
+                        selected: _sortOrder == 'asc',
+                        onSelected: (val) {
+                          setSheetState(() {
+                            _sortOrder = val ? 'asc' : null;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() {});
+                        Navigator.pop(context);
+                        _load(page: 1);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF990000),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Apply Filters',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final start = _items.isEmpty ? 0 : (_page - 1) * _pageSize + 1;
@@ -253,32 +403,38 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                     child: TextField(
                       controller: _searchController,
                       decoration: InputDecoration(
-                        hintText: 'Search WO #, unit, company',
-                        hintStyle: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 13,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.search,
-                          size: 18,
-                          color: AppColors.textSecondary,
-                        ),
+                        hintText: 'Search work orders...',
+                        prefixIcon: const Icon(Icons.search, size: 20),
                         suffixIcon: _searchTerm.isNotEmpty
                             ? IconButton(
-                                icon: Icon(
-                                  Icons.close,
-                                  size: 18,
-                                  color: AppColors.textSecondary,
-                                ),
+                                icon: const Icon(Icons.clear, size: 20),
                                 onPressed: _clearSearch,
                               )
                             : null,
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
                           vertical: 12,
                         ),
                       ),
+                      onSubmitted: (val) {
+                        _searchTerm = val.trim();
+                        _load(page: 1);
+                      },
                     ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  onPressed: _showFiltersBottomSheet,
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.card,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: BorderSide(color: AppColors.border),
+                    ),
+                    padding: const EdgeInsets.all(12),
                   ),
                 ),
               ],
