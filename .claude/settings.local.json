@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"c:\\\\Users\\\\anjik\\\\Desktop\\\\rapidenforce_ui web updated\\\\rapidenforce-ui\" remote -v)",
+      "Bash(git -C \"c:\\\\Users\\\\anjik\\\\Desktop\\\\Rapide_nforce_bakend\\\\rapidenforce-backend\" remote -v)",
+      "Bash(git -C \"c:\\\\Users\\\\anjik\\\\Desktop\\\\rapidenforce_ui web updated\\\\rapidenforce-ui\" pull)",
+      "Bash(git -C \"c:\\\\Users\\\\anjik\\\\Desktop\\\\Rapide_nforce_bakend\\\\rapidenforce-backend\" pull)",
+      "Bash(git -C \"c:\\\\Users\\\\anjik\\\\Desktop\\\\rapidenforce_ui web updated\\\\rapidenforce-ui\" branch --show-current)",
+      "Bash(git -C \"c:\\\\Users\\\\anjik\\\\Desktop\\\\Rapide_nforce_bakend\\\\rapidenforce-backend\" branch --show-current)",
+      "Bash(git -C \"c:\\\\Users\\\\anjik\\\\Desktop\\\\rapidenforce_ui web updated\\\\rapidenforce-ui\" checkout demo)",
+      "Bash(git -C \"c:\\\\Users\\\\anjik\\\\Desktop\\\\rapidenforce_ui web updated\\\\rapidenforce-ui\" pull origin demo)",
+      "Bash(git -C \"c:\\\\Users\\\\anjik\\\\Desktop\\\\Rapide_nforce_bakend\\\\rapidenforce-backend\" checkout demo)",
+      "Bash(git -C \"c:\\\\Users\\\\anjik\\\\Desktop\\\\Rapide_nforce_bakend\\\\rapidenforce-backend\" pull origin demo)",
+      "Bash(grep -E \"\\\\.dart$\")",
+      "Bash(flutter analyze *)",
+      "Bash(flutter pub *)"
+    ]
+  }
+}

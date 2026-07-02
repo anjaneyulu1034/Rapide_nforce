@@ -1,0 +1,53 @@
+name: rapide_nforce
+description: "A new Flutter project."
+
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+ 
+  cupertino_icons: ^1.0.8
+  http: ^1.2.2
+  intl: ^0.20.2
+  file_picker: ^10.1.9
+  shared_preferences: ^2.5.3
+  url_launcher: ^6.3.1
+  flutter_svg: ^2.3.0
+  dio: ^5.8.0
+  path_provider: ^2.1.4
+  open_filex: ^4.7.0
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  signature: ^5.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: assets/images/logo/rapide-nforce-full.png
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: assets/images/logo/rapide-nforce-full.png
+
+flutter:
+
+ 
+  uses-material-design: true
+
+  assets:
+    - assets/images/logo/
+    - assets/icons/
+
+ 

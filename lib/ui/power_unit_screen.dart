@@ -1,0 +1,745 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:rapide_nforce/core/constants/app_colors.dart';
+import 'package:rapide_nforce/core/utils/api_feedback.dart';
+import 'package:rapide_nforce/core/utils/app_toast.dart';
+import 'package:rapide_nforce/core/utils/role_utils.dart';
+import 'package:rapide_nforce/models/power_unit_model.dart';
+import 'package:rapide_nforce/services/auth_service.dart';
+import 'package:rapide_nforce/services/power_unit_service.dart';
+import 'package:rapide_nforce/ui/power_unit_detail_screen.dart';
+import 'package:rapide_nforce/ui/power_unit_form_screen.dart';
+import 'package:rapide_nforce/ui/widgets/api_error_banner.dart';
+import 'package:rapide_nforce/ui/widgets/list_empty_state.dart';
+import 'package:rapide_nforce/ui/widgets/status_chip.dart';
+import 'package:rapide_nforce/ui/widgets/web_ui.dart';
+
+class PowerUnitScreen extends StatefulWidget {
+  const PowerUnitScreen({super.key});
+
+  @override
+  State<PowerUnitScreen> createState() => _PowerUnitScreenState();
+}
+
+class _PowerUnitScreenState extends State<PowerUnitScreen> {
+  final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
+  Timer? _debounce;
+
+  bool _loading = true;
+  bool _loadingMore = false;
+  String? _error;
+  List<PowerUnitModel> _items = [];
+  int? _selectedId;
+  int _page = 1;
+  final int _limit = 10;
+  int _total = 0;
+  int _totalPages = 1;
+  String _search = '';
+
+  bool get _isSuperAdmin =>
+      isSuperAdminRole(AuthService.instance.currentUser?.role);
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+    _scrollController.addListener(_onScroll);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (maxScroll - currentScroll <= 200) {
+      _loadMore();
+    }
+  }
+
+  void _onSearchChanged() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      final next = _searchController.text.trim();
+      if (next == _search) return;
+      setState(() {
+        _search = next;
+        _page = 1;
+      });
+      _load();
+    });
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _page = 1;
+      _items = [];
+    });
+
+    final result = await PowerUnitService.instance.fetchPowerUnits(
+      page: 1,
+      limit: _limit,
+      search: _search.isEmpty ? null : _search,
+      sortBy: 'id',
+      sortOrder: 'desc',
+    );
+
+    if (!mounted) return;
+
+    if (!result.isSuccess) {
+      setState(() {
+        _loading = false;
+        _error = ApiFeedback.errorMessage(
+          result,
+          fallback: 'Failed to load power units',
+        );
+      });
+      return;
+    }
+
+    final data = result.data!;
+    setState(() {
+      _loading = false;
+      _items = data.items;
+      _total = data.total;
+      _totalPages = data.totalPages;
+      _page = data.page;
+    });
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || _loadingMore || _page >= _totalPages) return;
+
+    setState(() {
+      _loadingMore = true;
+    });
+
+    final nextPage = _page + 1;
+    final result = await PowerUnitService.instance.fetchPowerUnits(
+      page: nextPage,
+      limit: _limit,
+      search: _search.isEmpty ? null : _search,
+      sortBy: 'id',
+      sortOrder: 'desc',
+    );
+
+    if (!mounted) return;
+
+    if (!result.isSuccess) {
+      setState(() {
+        _loadingMore = false;
+      });
+      return;
+    }
+
+    final data = result.data!;
+    setState(() {
+      _loadingMore = false;
+      _items.addAll(data.items);
+      _total = data.total;
+      _totalPages = data.totalPages;
+      _page = data.page;
+    });
+  }
+
+  Future<void> _openAdd() async {
+    if (_isSuperAdmin && AuthService.instance.selectedCompanyIdInt == null) {
+      AppToast.showError('Select a company from the header first');
+      return;
+    }
+
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const PowerUnitFormScreen()),
+    );
+    if (changed == true) _load();
+  }
+
+  Future<void> _openDetail(PowerUnitModel unit) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PowerUnitDetailScreen(powerUnitId: unit.id),
+      ),
+    );
+    if (changed == true) _load();
+  }
+
+  Future<void> _openEdit(PowerUnitModel unit) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PowerUnitFormScreen(powerUnitId: unit.id),
+      ),
+    );
+    if (changed == true) _load();
+  }
+
+  Future<void> _confirmDelete(PowerUnitModel unit) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 40,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Danger icon
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.10),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppColors.danger,
+                  size: 34,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Delete Power Unit',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Are you sure you want to delete\n"${unit.unitNumber}"?\nThis action cannot be undone.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  height: 1.55,
+                ),
+              ),
+              const SizedBox(height: 28),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.textPrimary,
+                        side: BorderSide(color: AppColors.border, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.danger,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Delete',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+
+    final result = await PowerUnitService.instance.deletePowerUnit(unit.id);
+    if (!mounted) return;
+    if (result.isSuccess) {
+      AppToast.showSuccess('Power unit deleted');
+      _load();
+    } else {
+      ApiFeedback.showError(result, fallback: 'Failed to delete power unit');
+    }
+  }
+
+  Color? _expiryColor(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return null;
+    DateTime? expiry;
+    try {
+      expiry = DateTime.parse(dateStr);
+    } catch (_) {
+      try {
+        final p = dateStr.split('-');
+        if (p.length == 3) {
+          expiry = DateTime(int.parse(p[2]), int.parse(p[0]), int.parse(p[1]));
+        }
+      } catch (_) {}
+    }
+    if (expiry == null) return null;
+    final today = DateTime.now();
+    final days = DateTime(
+      expiry.year,
+      expiry.month,
+      expiry.day,
+    ).difference(DateTime(today.year, today.month, today.day)).inDays;
+    if (days < 0) return const Color(0xFFBA1A1A);
+    if (days <= 30) return const Color(0xFFEA580C);
+    return null;
+  }
+
+  int? _daysUntilExpiry(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return null;
+    DateTime? expiry;
+    try {
+      expiry = DateTime.parse(dateStr);
+    } catch (_) {
+      try {
+        final p = dateStr.split('-');
+        if (p.length == 3) {
+          expiry = DateTime(int.parse(p[2]), int.parse(p[0]), int.parse(p[1]));
+        }
+      } catch (_) {}
+    }
+    if (expiry == null) return null;
+    final today = DateTime.now();
+    return DateTime(
+      expiry.year,
+      expiry.month,
+      expiry.day,
+    ).difference(DateTime(today.year, today.month, today.day)).inDays;
+  }
+
+  Widget _buildCard(PowerUnitModel u) {
+    final bool isMaintenance = u.isMaintenance;
+    final bool isSelected = _selectedId == u.id;
+
+    final parts = <String>[];
+    if (u.make != null && u.make!.isNotEmpty) parts.add(u.make!.toUpperCase());
+    if (u.model != null && u.model!.isNotEmpty)
+      parts.add(u.model!.toUpperCase());
+    final makeModel = parts.isEmpty ? null : parts.join(' ');
+    final yearStr = u.year?.toString();
+    final makeModelYear = [?makeModel, ?yearStr].join(' · ');
+    final subtitleStr = u.vinNumber ?? '';
+
+    String? contextText;
+    if (isMaintenance && u.registrationExpiry != null) {
+      contextText = 'Exp: ${u.registrationExpiry}';
+    }
+
+    final expiryDays = _daysUntilExpiry(u.registrationExpiry);
+    String? badgeLabel;
+    Color? badgeBg;
+    Color? badgeText;
+    if (expiryDays != null && expiryDays <= 30) {
+      if (expiryDays < 0) {
+        badgeLabel = 'OVERDUE';
+        badgeBg = const Color(0xFFBA1A1A).withValues(alpha: 0.14);
+        badgeText = const Color(0xFFBA1A1A);
+      } else if (expiryDays == 0) {
+        badgeLabel = 'DUE TODAY';
+        badgeBg = const Color(0xFFBA1A1A).withValues(alpha: 0.14);
+        badgeText = const Color(0xFFBA1A1A);
+      } else {
+        badgeLabel = '$expiryDays DAYS';
+        badgeBg = const Color(0xFFEA580C).withValues(alpha: 0.14);
+        badgeText = const Color(0xFFC2410C);
+      }
+    }
+
+    Widget dataRow(String label, String? value, {Color? valueColor}) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            Expanded(
+              child: Text(
+                value ?? '—',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: valueColor ?? AppColors.textPrimary,
+                ),
+                textAlign: TextAlign.end,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        splashColor: AppColors.danger.withValues(alpha: 0.06),
+        highlightColor: AppColors.danger.withValues(alpha: 0.03),
+        onTap: () => setState(() {
+          _selectedId = isSelected ? null : u.id;
+        }),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.cardShadow.withValues(alpha: 0.35),
+                blurRadius: 16,
+                spreadRadius: 1,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ── Header ──
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            u.unitNumber,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (subtitleStr.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              subtitleStr,
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: AppColors.textSecondary,
+                                letterSpacing: 0.5,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (u.isOos)
+                          const StatusChip(
+                            label: 'OOS',
+                            tone: StatusChipTone.danger,
+                          )
+                        else if (isMaintenance)
+                          const StatusChip(
+                            label: 'MAINTENANCE',
+                            tone: StatusChipTone.warning,
+                          )
+                        else if (u.isActive)
+                          Text(
+                            'ACTIVE',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.statusCompleted,
+                            ),
+                          )
+                        else
+                          StatusChip.inactive('INACTIVE'),
+                        if (contextText != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            contextText,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFEA580C),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                        if (badgeLabel != null) ...[
+                          const SizedBox(height: 5),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: badgeBg,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              badgeLabel,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: badgeText,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: AppColors.textSecondary.withValues(alpha: 0.12),
+                ),
+                const SizedBox(height: 10),
+                // ── Data rows ──
+                dataRow(
+                  _isSuperAdmin ? 'Company' : 'License Plate',
+                  _isSuperAdmin ? u.companyName : u.licensePlate,
+                ),
+                dataRow('Model', makeModelYear.isEmpty ? null : makeModelYear),
+                dataRow(
+                  'Expiry',
+                  u.registrationExpiry,
+                  valueColor: _expiryColor(u.registrationExpiry),
+                ),
+                const SizedBox(height: 6),
+                // ── Action row: View | Edit | Delete ──
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _openDetail(u),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: BorderSide(
+                            color: AppColors.textSecondary.withValues(
+                              alpha: 0.3,
+                            ),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          minimumSize: const Size(0, 36),
+                          padding: EdgeInsets.zero,
+                        ),
+                        child: const Text(
+                          'View',
+                          style: TextStyle(
+                            letterSpacing: 0.8,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _openEdit(u),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: BorderSide(
+                            color: AppColors.textSecondary.withValues(
+                              alpha: 0.3,
+                            ),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          minimumSize: const Size(0, 36),
+                          padding: EdgeInsets.zero,
+                        ),
+                        child: const Text(
+                          'Edit',
+                          style: TextStyle(
+                            letterSpacing: 0.8,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _confirmDelete(u),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.danger,
+                          backgroundColor: Colors.transparent,
+                          overlayColor: Colors.transparent,
+                          side: BorderSide(
+                            color: AppColors.danger.withValues(alpha: 0.4),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          minimumSize: const Size(0, 36),
+                          padding: EdgeInsets.zero,
+                        ),
+                        child: const Text(
+                          'Delete',
+                          style: TextStyle(
+                            letterSpacing: 0.8,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: WebPageBody(
+        onRefresh: _load,
+        child: ListView(
+          controller: _scrollController,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            WebSearchField(
+              controller: _searchController,
+              hintText: 'Search by Unit',
+              showClear: _search.isNotEmpty,
+              onClear: () {
+                _searchController.clear();
+                setState(() {
+                  _search = '';
+                  _page = 1;
+                });
+                _load();
+              },
+            ),
+            const SizedBox(height: 16),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(48),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_error != null)
+              ApiErrorBanner(message: _error!, onRetry: _load)
+            else if (_items.isEmpty)
+              ListEmptyState(
+                message: _search.isNotEmpty
+                    ? 'No power units match your search'
+                    : 'No power units yet',
+                icon: Icons.local_shipping_outlined,
+                actionLabel: 'Add Power Unit',
+                onAction: _openAdd,
+              )
+            else ...[
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  if (constraints.maxWidth < 600) {
+                    return Column(
+                      children: _items.map((u) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: _buildCard(u),
+                        );
+                      }).toList(),
+                    );
+                  } else {
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _items.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 500,
+                            mainAxisExtent: 310,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                          ),
+                      itemBuilder: (context, i) {
+                        return _buildCard(_items[i]);
+                      },
+                    );
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
+              if (_loadingMore)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_page >= _totalPages && _items.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text(
+                      'All $_total power units loaded',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
