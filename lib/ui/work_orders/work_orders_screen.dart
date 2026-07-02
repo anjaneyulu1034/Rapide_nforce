@@ -192,20 +192,20 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
             Row(
               children: [
                 Text(
-                  'Work Orders',
+                  'Total Orders',
                   style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 20,
-                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 16,
+                    color: AppColors.textSecondary,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   '$_totalItems',
                   style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 20,
-                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    color: AppColors.textPrimary,
                   ),
                 ),
               ],

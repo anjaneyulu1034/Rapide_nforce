@@ -303,10 +303,7 @@ class _AppShellState extends State<AppShell> {
       extendBody: true,
       appBar: AppBar(
         centerTitle: true,
-        title: (_currentRoute == AppRoute.dashboard ||
-                _currentRoute == AppRoute.maintenance ||
-                _currentRoute == AppRoute.inventory ||
-                _currentRoute == AppRoute.logs)
+        title: _currentRoute == AppRoute.dashboard
             ? null
             : Text(
                 _currentRoute.title,
