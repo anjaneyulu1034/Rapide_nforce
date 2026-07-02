@@ -35,6 +35,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
   final _scrollController = ScrollController();
   Timer? _debounce;
   String _search = '';
+  String? _sortKey;
+  String? _sortOrder;
 
   @override
   void initState() {
@@ -70,6 +72,178 @@ class _InventoryScreenState extends State<InventoryScreen> {
     if (changed == true && mounted) setState(() {});
   }
 
+  void _showFiltersBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final isOverview = _tab == InventoryTab.partsOverview;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filters & Sorting',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setSheetState(() {
+                            _sortKey = null;
+                            _sortOrder = null;
+                          });
+                          setState(() {});
+                          Navigator.pop(context);
+                        },
+                        child: const Text('Reset'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Sort By',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (isOverview)
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Name'),
+                          selected: _sortKey == 'name',
+                          onSelected: (val) {
+                            setSheetState(() {
+                              _sortKey = val ? 'name' : null;
+                            });
+                          },
+                        ),
+                        ChoiceChip(
+                          label: const Text('Parts Count'),
+                          selected: _sortKey == 'count',
+                          onSelected: (val) {
+                            setSheetState(() {
+                              _sortKey = val ? 'count' : null;
+                            });
+                          },
+                        ),
+                      ],
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Part Code'),
+                          selected: _sortKey == 'code',
+                          onSelected: (val) {
+                            setSheetState(() {
+                              _sortKey = val ? 'code' : null;
+                            });
+                          },
+                        ),
+                        ChoiceChip(
+                          label: const Text('Quantity'),
+                          selected: _sortKey == 'quantity',
+                          onSelected: (val) {
+                            setSheetState(() {
+                              _sortKey = val ? 'quantity' : null;
+                            });
+                          },
+                        ),
+                        ChoiceChip(
+                          label: const Text('Cost'),
+                          selected: _sortKey == 'cost',
+                          onSelected: (val) {
+                            setSheetState(() {
+                              _sortKey = val ? 'cost' : null;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Order',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Ascending'),
+                        selected: _sortOrder == 'ASC',
+                        onSelected: (val) {
+                          setSheetState(() {
+                            _sortOrder = val ? 'ASC' : null;
+                          });
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Descending'),
+                        selected: _sortOrder == 'DESC',
+                        onSelected: (val) {
+                          setSheetState(() {
+                            _sortOrder = val ? 'DESC' : null;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() {});
+                        Navigator.pop(context);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF990000),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Apply Filters',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -103,7 +277,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   const SizedBox(height: 16),
                   _InventoryTabBar(
                     tab: _tab,
-                    onChanged: (t) => setState(() => _tab = t),
+                    onChanged: (t) => setState(() {
+                      _tab = t;
+                      _sortKey = null;
+                      _sortOrder = null;
+                    }),
                   ),
                   const SizedBox(height: 16),
                   LayoutBuilder(
@@ -144,6 +322,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               },
                             ),
                           ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.filter_list),
+                            onPressed: _showFiltersBottomSheet,
+                            style: IconButton.styleFrom(
+                              backgroundColor: AppColors.card,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                                side: BorderSide(color: AppColors.border),
+                              ),
+                              padding: const EdgeInsets.all(12),
+                            ),
+                          ),
                           if (showAdd) ...[
                             const SizedBox(width: 12),
                             _AddButton(tab: _tab, onPressed: _openAdd),
@@ -155,15 +346,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   const SizedBox(height: 8),
                   if (_tab == InventoryTab.partsOverview)
                     _PartTypesTable(
-                      key: ValueKey('pt-$_search'),
+                      key: ValueKey('pt-$_search-$_sortKey-$_sortOrder'),
                       search: _search,
                       scrollController: _scrollController,
+                      sortKey: _sortKey,
+                      sortOrder: _sortOrder,
                     )
                   else
                     _PartsTable(
-                      key: ValueKey('p-$_search'),
+                      key: ValueKey('p-$_search-$_sortKey-$_sortOrder'),
                       search: _search,
                       scrollController: _scrollController,
+                      sortKey: _sortKey,
+                      sortOrder: _sortOrder,
                     ),
                 ],
               ),
@@ -299,10 +494,14 @@ class _PartTypesTable extends StatefulWidget {
     super.key,
     required this.search,
     required this.scrollController,
+    this.sortKey,
+    this.sortOrder,
   });
 
   final String search;
   final ScrollController scrollController;
+  final String? sortKey;
+  final String? sortOrder;
 
   @override
   State<_PartTypesTable> createState() => _PartTypesTableState();
@@ -348,7 +547,9 @@ class _PartTypesTableState extends State<_PartTypesTable> {
   @override
   void didUpdateWidget(covariant _PartTypesTable oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.search != widget.search) {
+    if (oldWidget.search != widget.search ||
+        oldWidget.sortKey != widget.sortKey ||
+        oldWidget.sortOrder != widget.sortOrder) {
       _page = 1;
       _load();
     }
@@ -365,6 +566,8 @@ class _PartTypesTableState extends State<_PartTypesTable> {
       page: 1,
       limit: _limit,
       search: widget.search.isEmpty ? null : widget.search,
+      sortKey: widget.sortKey,
+      sortOrder: widget.sortOrder,
     );
     if (!mounted) return;
     setState(() {
@@ -391,6 +594,8 @@ class _PartTypesTableState extends State<_PartTypesTable> {
       page: nextPage,
       limit: _limit,
       search: widget.search.isEmpty ? null : widget.search,
+      sortKey: widget.sortKey,
+      sortOrder: widget.sortOrder,
     );
     if (!mounted) return;
     setState(() {
@@ -838,10 +1043,14 @@ class _PartsTable extends StatefulWidget {
     super.key,
     required this.search,
     required this.scrollController,
+    this.sortKey,
+    this.sortOrder,
   });
 
   final String search;
   final ScrollController scrollController;
+  final String? sortKey;
+  final String? sortOrder;
 
   @override
   State<_PartsTable> createState() => _PartsTableState();
@@ -882,7 +1091,9 @@ class _PartsTableState extends State<_PartsTable> {
   @override
   void didUpdateWidget(covariant _PartsTable oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.search != widget.search) {
+    if (oldWidget.search != widget.search ||
+        oldWidget.sortKey != widget.sortKey ||
+        oldWidget.sortOrder != widget.sortOrder) {
       _page = 1;
       _load();
     }
@@ -899,6 +1110,8 @@ class _PartsTableState extends State<_PartsTable> {
       page: 1,
       limit: _limit,
       search: widget.search.isEmpty ? null : widget.search,
+      sortKey: widget.sortKey,
+      sortOrder: widget.sortOrder,
     );
     if (!mounted) return;
     setState(() {
@@ -925,6 +1138,8 @@ class _PartsTableState extends State<_PartsTable> {
       page: nextPage,
       limit: _limit,
       search: widget.search.isEmpty ? null : widget.search,
+      sortKey: widget.sortKey,
+      sortOrder: widget.sortOrder,
     );
     if (!mounted) return;
     setState(() {
