@@ -190,22 +190,23 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Total Orders',
+                  'Work Orders',
                   style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 20,
+                    color: AppColors.textPrimary,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Text(
                   '$_totalItems',
                   style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 20,
+                    color: AppColors.textSecondary,
                   ),
                 ),
               ],

@@ -90,6 +90,17 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
 
+                  Center(
+                    child: Text(
+                      'Inventory',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   _InventoryTabBar(
                     tab: _tab,
                     onChanged: (t) => setState(() => _tab = t),
