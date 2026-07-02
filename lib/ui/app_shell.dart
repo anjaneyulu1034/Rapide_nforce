@@ -25,7 +25,8 @@ import 'package:rapide_nforce/ui/fault_codes_screen.dart';
 
 import 'package:rapide_nforce/ui/login_screen.dart';
 
-import 'package:rapide_nforce/ui/maintenance_screen.dart';
+import 'package:rapide_nforce/ui/inventory_screen.dart';
+import 'package:rapide_nforce/ui/logs_screen.dart';
 import 'package:rapide_nforce/ui/work_orders/work_orders_screen.dart';
 
 import 'package:rapide_nforce/ui/power_unit_form_screen.dart';
@@ -250,14 +251,10 @@ class _AppShellState extends State<AppShell> {
         );
 
       case AppRoute.inventory:
-        return const MaintenanceScreen(
-          initialIndex: 0,
-        );
+        return const InventoryScreen();
 
       case AppRoute.logs:
-        return const MaintenanceScreen(
-          initialIndex: 1,
-        );
+        return const LogsScreen();
 
       case AppRoute.faultCodes:
         return const FaultCodesScreen();
