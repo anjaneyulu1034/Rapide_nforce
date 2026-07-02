@@ -26,6 +26,7 @@ dependencies:
   pdf: ^3.11.1
   printing: ^5.13.4
   signature: ^5.5.0
+  image_picker: ^1.2.3
 
 dev_dependencies:
   flutter_test:

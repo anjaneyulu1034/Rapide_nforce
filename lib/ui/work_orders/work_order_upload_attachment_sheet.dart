@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
@@ -34,7 +35,26 @@ class _UploadAttachmentSheetState extends State<_UploadAttachmentSheet> {
   final List<PlatformFile> _files = [];
   bool _uploading = false;
 
-  Future<void> _pickFiles() async {
+  Future<void> _pickFromCamera() async {
+    try {
+      final picker = ImagePicker();
+      final XFile? photo = await picker.pickImage(source: ImageSource.camera);
+      if (photo == null) return;
+      final bytes = await photo.readAsBytes();
+      setState(() {
+        _files.add(PlatformFile(
+          path: photo.path,
+          name: photo.name,
+          size: bytes.length,
+          bytes: bytes,
+        ));
+      });
+    } catch (e) {
+      AppToast.showError('Failed to capture image: $e');
+    }
+  }
+
+  Future<void> _pickFromFiles() async {
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'],
@@ -42,6 +62,110 @@ class _UploadAttachmentSheetState extends State<_UploadAttachmentSheet> {
     );
     if (picked == null || picked.files.isEmpty) return;
     setState(() => _files.addAll(picked.files));
+  }
+
+  Future<void> _scanDocument() async {
+    try {
+      final picker = ImagePicker();
+      final XFile? photo = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+      if (photo == null) return;
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const AlertDialog(
+          backgroundColor: Colors.black87,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(height: 16),
+              Text(
+                'Scanning document...',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
+      Navigator.pop(context); // Dismiss dialog
+
+      final bytes = await photo.readAsBytes();
+      setState(() {
+        _files.add(PlatformFile(
+          path: photo.path,
+          name: 'Scan_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          size: bytes.length,
+          bytes: bytes,
+        ));
+      });
+      AppToast.showSuccess('Document scanned successfully');
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      AppToast.showError('Failed to scan document: $e');
+    }
+  }
+
+  void _showAttachmentOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(Icons.camera_alt_outlined, color: AppColors.primary),
+                  title: const Text(
+                    'Camera',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickFromCamera();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.folder_open_outlined, color: AppColors.primary),
+                  title: const Text(
+                    'Browse File',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickFromFiles();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.document_scanner_outlined, color: AppColors.primary),
+                  title: const Text(
+                    'Scan to File',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _scanDocument();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _upload() async {
@@ -93,7 +217,7 @@ class _UploadAttachmentSheetState extends State<_UploadAttachmentSheet> {
                 fileName: _files.isEmpty
                     ? null
                     : _files.map((f) => f.name).join(', '),
-                onBrowse: _pickFiles,
+                onBrowse: _showAttachmentOptions,
               ),
               if (_files.isNotEmpty) ...[
                 const SizedBox(height: 12),

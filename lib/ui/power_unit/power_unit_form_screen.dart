@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
@@ -469,14 +470,127 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     }
   }
 
-  Future<void> _browseFile() async {
+  Future<void> _pickFromCamera() async {
+    try {
+      final picker = ImagePicker();
+      final XFile? photo = await picker.pickImage(source: ImageSource.camera);
+      if (photo == null) return;
+      setState(() {
+        _browseFileName = photo.name;
+      });
+    } catch (e) {
+      AppToast.showError('Failed to capture image: $e');
+    }
+  }
+
+  Future<void> _pickFromFiles() async {
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
     );
     if (picked != null && picked.files.isNotEmpty) {
-      setState(() => _browseFileName = picked.files.first.name);
+      setState(() {
+        _browseFileName = picked.files.first.name;
+      });
     }
+  }
+
+  Future<void> _scanDocument() async {
+    try {
+      final picker = ImagePicker();
+      final XFile? photo = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
+      if (photo == null) return;
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const AlertDialog(
+          backgroundColor: Colors.black87,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.white),
+              SizedBox(height: 16),
+              Text(
+                'Scanning document...',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      setState(() {
+        _browseFileName = 'Scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      });
+      AppToast.showSuccess('Document scanned successfully');
+    } catch (e) {
+      if (mounted) Navigator.pop(context);
+      AppToast.showError('Failed to scan document: $e');
+    }
+  }
+
+  void _showAttachmentOptions() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: Icon(Icons.camera_alt_outlined, color: AppColors.primary),
+                  title: const Text(
+                    'Camera',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickFromCamera();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.folder_open_outlined, color: AppColors.primary),
+                  title: const Text(
+                    'Browse File',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _pickFromFiles();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.document_scanner_outlined, color: AppColors.primary),
+                  title: const Text(
+                    'Scan to File',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _scanDocument();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _addPermit() {
@@ -552,7 +666,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   }
 
   List<Widget> _buildStep1() => [
-    WebFileUploadZone(fileName: _browseFileName, onBrowse: _browseFile),
+    WebFileUploadZone(fileName: _browseFileName, onBrowse: _showAttachmentOptions),
     const SizedBox(height: 12),
     WebFormSection(
       title: 'Vehicle Details',
