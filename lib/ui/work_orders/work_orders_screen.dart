@@ -21,9 +21,11 @@ class WorkOrdersScreen extends StatefulWidget {
 
 class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
   Timer? _debounce;
 
   bool _loading = true;
+  bool _loadingMore = false;
   String? _error;
   List<WorkOrderModel> _items = [];
   int _page = 1;
@@ -40,6 +42,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
+    _scrollController.addListener(_onScroll);
     _load();
   }
 
@@ -47,7 +50,49 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_loading || _loadingMore) return;
+    if (_page >= _totalPages) return;
+    if (_scrollController.position.pixels <
+        _scrollController.position.maxScrollExtent - 300) {
+      return;
+    }
+    _loadMore();
+  }
+
+  Future<void> _loadMore() async {
+    setState(() => _loadingMore = true);
+
+    final result = await MaintenanceService.instance.getWorkOrders(
+      page: _page + 1,
+      limit: _pageSize,
+      search: _searchTerm.isEmpty ? null : _searchTerm,
+      status: _statusFilter,
+      companyId: AuthService.instance.selectedCompanyIdInt,
+      sortKey: _sortKey ?? 'createdOn',
+      sortOrder: _sortOrder ?? 'desc',
+    );
+
+    if (!mounted) return;
+
+    if (!result.isSuccess) {
+      setState(() => _loadingMore = false);
+      return;
+    }
+
+    final data = result.data!;
+    setState(() {
+      _loadingMore = false;
+      _page = data.page;
+      _totalPages = data.totalPages;
+      _totalItems = data.total;
+      _items = [..._items, ...data.items];
+    });
   }
 
   void _onSearchChanged() {
@@ -108,7 +153,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
         builder: (_) => WorkOrderDetailScreen(workOrderId: order.id),
       ),
     );
-    if (changed == true) _load();
+    if (changed == true) _load(page: 1);
   }
 
   Future<void> _openEdit(WorkOrderModel order) async {
@@ -116,7 +161,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => WorkOrderFormScreen(existing: order)),
     );
-    if (changed == true) _load();
+    if (changed == true) _load(page: 1);
   }
 
   Future<void> _confirmDelete(WorkOrderModel order) async {
@@ -155,7 +200,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
       return;
     }
     AppToast.showSuccess('Work order deleted');
-    _load();
+    _load(page: 1);
   }
 
   Future<void> _exportOrder(WorkOrderModel order) async {
@@ -222,6 +267,39 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
+                    'Order',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Newest First'),
+                        selected: _sortOrder == 'desc',
+                        onSelected: (val) {
+                          setSheetState(() {
+                            _sortOrder = val ? 'desc' : null;
+                          });
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Oldest First'),
+                        selected: _sortOrder == 'asc',
+                        onSelected: (val) {
+                          setSheetState(() {
+                            _sortOrder = val ? 'asc' : null;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
                     'Sort By',
                     style: TextStyle(
                       fontSize: 14,
@@ -262,39 +340,6 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Order',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: const Text('Newest First'),
-                        selected: _sortOrder == 'desc',
-                        onSelected: (val) {
-                          setSheetState(() {
-                            _sortOrder = val ? 'desc' : null;
-                          });
-                        },
-                      ),
-                      ChoiceChip(
-                        label: const Text('Oldest First'),
-                        selected: _sortOrder == 'asc',
-                        onSelected: (val) {
-                          setSheetState(() {
-                            _sortOrder = val ? 'asc' : null;
-                          });
-                        },
-                      ),
-                    ],
-                  ),
                   const SizedBox(height: 24),
                   SizedBox(
                     width: double.infinity,
@@ -329,14 +374,12 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final start = _items.isEmpty ? 0 : (_page - 1) * _pageSize + 1;
-    final end = (_page - 1) * _pageSize + _items.length;
-
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: RefreshIndicator(
-        onRefresh: () => _load(),
+        onRefresh: () => _load(page: 1),
         child: ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
             Row(
@@ -503,37 +546,29 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                   onExport: () => _exportOrder(order),
                 ),
               )),
-            if (!_loading && _error == null && _items.isNotEmpty)
+            if (!_loading && _error == null && _items.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '$start–$end of $_totalItems',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        _PagBtn(
-                          icon: Icons.chevron_left,
-                          enabled: _page > 1,
-                          onTap: () => _load(page: _page - 1),
-                        ),
-                        const SizedBox(width: 8),
-                        _PagBtn(
-                          icon: Icons.chevron_right,
-                          enabled: _page < _totalPages,
-                          onTap: () => _load(page: _page + 1),
-                        ),
-                      ],
-                    ),
-                  ],
+                child: Text(
+                  '${_items.length} of $_totalItems',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
+              if (_loadingMore)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                  ),
+                ),
+            ],
           ],
         ),
       ),
@@ -960,45 +995,6 @@ class _InfoCell extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _PagBtn extends StatelessWidget {
-  const _PagBtn({
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.card,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: enabled
-                ? AppColors.textPrimary
-                : AppColors.textSecondary.withValues(alpha: 0.4),
-          ),
-        ),
-      ),
     );
   }
 }

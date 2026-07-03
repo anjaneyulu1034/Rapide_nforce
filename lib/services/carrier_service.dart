@@ -196,6 +196,23 @@ class CarrierService {
     }
   }
 
+  /// Fetches the carrier's uploaded logo URL (presigned S3 link), if any.
+  /// Mirrors the web app's `carriersService.getLogo`.
+  Future<ApiResult<String?>> getLogo(int companyId) async {
+    try {
+      final body = await _api.parseJson(
+        () => _api.get('${ApiConstants.carriers}/$companyId/logo'),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.asMap(ApiParse.unwrapData(body));
+      return ApiResult.ok(data?['logoUrl'] as String?);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to load carrier logo.');
+    }
+  }
+
   Future<ApiResult<List<BillingCycleOption>>> fetchBillingCycles() async {
     try {
       final body = await _api.parseJson(

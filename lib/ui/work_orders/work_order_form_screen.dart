@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
+import 'package:rapide_nforce/core/utils/odometer_unit.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/work_order_section_header.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/pm_inspection_widgets.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_upload_attachment_sheet.dart';
@@ -27,6 +28,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   bool _loadingMeta = true;
   bool _submitting = false;
   bool _fetchingOdometer = false;
+  bool _fetchingEndOdometer = false;
+  OdometerDisplayUnit _odometerUnit = OdometerDisplayUnit.km;
+  int _statusFieldGen = 0;
 
   List<EntityTypeModel> _entityTypes = [];
   List<EntityModel> _entities = [];
@@ -97,6 +101,10 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         order.workOrderDetails?.startOdometer ??
         order.workOrderDetails?.odometer ??
         '';
+    _endOdometerController.text = order.workOrderDetails?.endOdometer ?? '';
+    _odometerUnit = OdometerDisplayUnit.fromApiValue(
+      order.workOrderDetails?.odometerDisplayUnit,
+    );
     _costController.text =
         order.workOrderDetails?.estimatedCost?.toString() ?? '';
     _hoursController.text = order.workOrderDetails?.hours ?? '';
@@ -322,9 +330,82 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     setState(() => _fetchingOdometer = false);
 
     if (result.isSuccess && result.data != null) {
-      _odometerController.text = result.data!;
+      setState(() => _odometerController.text = result.data!);
     } else if (mounted) {
       ApiFeedback.showError(result, fallback: 'Failed to load odometer');
+    }
+  }
+
+  Future<void> _fetchEndOdometer() async {
+    final unit = _selectedEntity;
+    if (unit == null) return;
+
+    setState(() => _fetchingEndOdometer = true);
+    final result = await MaintenanceService.instance.fetchSamsaraOdometer(
+      unitNumber: unit.name,
+      entityTypeId: _entityTypeId,
+      vin: unit.vinNumber,
+    );
+    if (!mounted) return;
+
+    setState(() => _fetchingEndOdometer = false);
+
+    if (result.isSuccess && result.data != null) {
+      setState(() => _endOdometerController.text = result.data!);
+    } else if (mounted) {
+      ApiFeedback.showError(result, fallback: 'Failed to load odometer');
+    }
+  }
+
+  /// Non-null when both odometer readings are present and End < Start.
+  String? get _odometerRangeError {
+    final start = double.tryParse(_odometerController.text.trim());
+    final end = double.tryParse(_endOdometerController.text.trim());
+    if (start == null || end == null) return null;
+    if (end < start) return 'End Odometer cannot be less than Start Odometer';
+    return null;
+  }
+
+  bool _allRepairsNotStarted() =>
+      _partLines.isEmpty ||
+      _partLines.every((l) => l.repairStatus == RepairStatus.notStarted);
+
+  bool _allRepairsCompleted() =>
+      _partLines.isNotEmpty &&
+      _partLines.every((l) => l.repairStatus == RepairStatus.completed);
+
+  bool get _isCompletedRestrictedEdit =>
+      widget.isEdit && _status == WorkOrderStatus.completed;
+
+  void _onStatusChanged(WorkOrderStatus? next) {
+    if (next == null) return;
+
+    if (next == WorkOrderStatus.inProgress && _allRepairsNotStarted()) {
+      AppToast.showError(
+        'Work order cannot be set to In Progress while all repairs are Not Started',
+      );
+      // The dropdown updates its own display on selection regardless of
+      // this callback's outcome, so bump the key to force it back to
+      // reflect the still-unchanged _status.
+      setState(() => _statusFieldGen++);
+      return;
+    }
+    if (next == WorkOrderStatus.completed && !_allRepairsCompleted()) {
+      AppToast.showError(
+        'All repairs must be completed before closing the work order',
+      );
+      setState(() => _statusFieldGen++);
+      return;
+    }
+
+    setState(() {
+      _status = next;
+      _statusFieldGen++;
+    });
+
+    if (next == WorkOrderStatus.completed &&
+        _endOdometerController.text.trim().isEmpty) {
+      _fetchEndOdometer();
     }
   }
 
@@ -360,6 +441,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       endOdometer: _endOdometerController.text.trim().isEmpty
           ? null
           : _endOdometerController.text.trim(),
+      odometerDisplayUnit: _odometerUnit.apiValue,
       hours: _hoursController.text.trim(),
       notes: _notesController.text.trim(),
       resolutionNotes: _resolutionController.text.trim().isEmpty
@@ -398,6 +480,22 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         _selectedEntity == null ||
         _assigneeId == null) {
       AppToast.showError('Complete all required fields');
+      return;
+    }
+
+    final rangeError = _odometerRangeError;
+    if (rangeError != null) {
+      AppToast.showError(rangeError);
+      return;
+    }
+
+    final deferredLineMissingNotes = _partLines.any(
+      (l) =>
+          l.repairStatus == RepairStatus.deferred &&
+          l.repairNotesController.text.trim().isEmpty,
+    );
+    if (deferredLineMissingNotes) {
+      AppToast.showError('Note is required when repair status is Deferred');
       return;
     }
 
@@ -504,6 +602,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                       title: 'Work Order Details',
                       children: [
                         _DropdownField<WorkOrderStatus>(
+                          key: ValueKey('status_${_status.code}_$_statusFieldGen'),
                           label: 'Status *',
                           value: _status,
                           items:
@@ -520,11 +619,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                                     ),
                                   )
                                   .toList(),
-                          onChanged: widget.isEdit
-                              ? (v) => setState(() => _status = v!)
-                              : (v) {
-                                  if (v != null) setState(() => _status = v);
-                                },
+                          onChanged: _onStatusChanged,
                         ),
                         _DropdownField<WorkOrderPriority>(
                           label: 'Priority *',
@@ -572,43 +667,29 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                             onPicked: (d) => setState(() => _dueDate = d),
                           ),
                         ),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: _odometerController,
-                                decoration: const InputDecoration(
-                                  labelText: 'Start Odometer',
-                                  suffixText: 'km',
-                                ),
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton.filledTonal(
-                              onPressed:
-                                  _fetchingOdometer ? null : _fetchOdometer,
-                              icon: _fetchingOdometer
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.gps_fixed_rounded),
-                            ),
-                          ],
+                        _OdometerField(
+                          label: 'Start Odometer',
+                          kmController: _odometerController,
+                          unit: _odometerUnit,
+                          onUnitChanged: (u) =>
+                              setState(() => _odometerUnit = u),
+                          onKmChanged: () => setState(() {}),
+                          loading: _fetchingOdometer,
+                          onFetch: _fetchOdometer,
                         ),
                         const SizedBox(height: 8),
-                        TextFormField(
-                          controller: _endOdometerController,
-                          decoration: const InputDecoration(
-                            labelText: 'End Odometer',
-                            suffixText: 'km',
-                          ),
-                          keyboardType: TextInputType.number,
+                        _OdometerField(
+                          label: 'End Odometer',
+                          kmController: _endOdometerController,
+                          unit: _odometerUnit,
+                          onUnitChanged: (u) =>
+                              setState(() => _odometerUnit = u),
+                          onKmChanged: () => setState(() {}),
+                          enabled: _status == WorkOrderStatus.completed,
+                          disabledHint: 'Available when status is Completed',
+                          loading: _fetchingEndOdometer,
+                          onFetch: _fetchEndOdometer,
+                          errorText: _odometerRangeError,
                         ),
                         const SizedBox(height: 8),
                         TextFormField(
@@ -659,10 +740,30 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                           backgroundColor: const Color(0xFF1A1A1A),
                           foregroundColor: Colors.white,
                         ),
-                        onPressed: _addPartLine,
+                        onPressed:
+                            _isCompletedRestrictedEdit ? null : _addPartLine,
                         icon: const Icon(Icons.add),
                       ),
                       children: [
+                        if (_isCompletedRestrictedEdit)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppColors.warning.withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Text(
+                              'This work order is completed — only hours and repair notes can be edited.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
                         _DropdownField<int>(
                           label: 'Assign To *',
                           value: _assigneeId,
@@ -887,6 +988,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     final filteredParts = _parts
         .where((p) => line.partTypeId == null || p.typeId == line.partTypeId)
         .toList();
+    final restricted = _isCompletedRestrictedEdit;
+    final deferredMissingNotes = line.repairStatus == RepairStatus.deferred &&
+        line.repairNotesController.text.trim().isEmpty;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -913,18 +1017,22 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                           ),
                         )
                         .toList(),
-                    onChanged: (v) => setState(() {
-                      line.partTypeId = v;
-                      line.partId = null;
-                    }),
+                    onChanged: restricted
+                        ? null
+                        : (v) => setState(() {
+                              line.partTypeId = v;
+                              line.partId = null;
+                            }),
                   ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.close_rounded),
-                  onPressed: () => setState(() {
-                    line.dispose();
-                    _partLines.remove(line);
-                  }),
+                  onPressed: restricted
+                      ? null
+                      : () => setState(() {
+                            line.dispose();
+                            _partLines.remove(line);
+                          }),
                 ),
               ],
             ),
@@ -939,7 +1047,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                     ),
                   )
                   .toList(),
-              onChanged: (v) => setState(() => line.partId = v),
+              onChanged:
+                  restricted ? null : (v) => setState(() => line.partId = v),
             ),
             TextFormField(
               controller: line.hoursController,
@@ -948,11 +1057,13 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
             ),
             TextFormField(
               controller: line.quantityController,
+              enabled: !restricted,
               decoration: const InputDecoration(labelText: 'Quantity *'),
               keyboardType: TextInputType.number,
             ),
             TextFormField(
               controller: line.descriptionController,
+              enabled: !restricted,
               decoration: const InputDecoration(
                 labelText: 'Repair description',
               ),
@@ -963,8 +1074,15 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
               items: RepairStatus.values
                   .map((s) => DropdownMenuItem(value: s, child: Text(s.label)))
                   .toList(),
-              onChanged: (v) =>
-                  setState(() => line.repairStatus = v ?? line.repairStatus),
+              onChanged: restricted
+                  ? null
+                  : (v) => setState(() {
+                        line.repairStatus = v ?? line.repairStatus;
+                        if (line.repairStatus != RepairStatus.notStarted &&
+                            _status == WorkOrderStatus.notStarted) {
+                          _status = WorkOrderStatus.inProgress;
+                        }
+                      }),
             ),
             DropdownButtonFormField<int>(
               decoration:
@@ -984,8 +1102,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                     ),
                   )
                   .toList(),
-              onChanged: (v) =>
-                  setState(() => line.assignedTechnicianId = v),
+              onChanged: restricted
+                  ? null
+                  : (v) => setState(() => line.assignedTechnicianId = v),
             ),
             DropdownButtonFormField<RepairPerformedBy>(
               decoration: const InputDecoration(labelText: 'Performed by'),
@@ -993,18 +1112,30 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
               items: RepairPerformedBy.values
                   .map((p) => DropdownMenuItem(value: p, child: Text(p.label)))
                   .toList(),
-              onChanged: (v) => setState(
-                  () => line.repairPerformedBy = v ?? line.repairPerformedBy),
+              onChanged: restricted
+                  ? null
+                  : (v) => setState(() =>
+                      line.repairPerformedBy = v ?? line.repairPerformedBy),
             ),
             if (line.repairPerformedBy == RepairPerformedBy.external)
               TextFormField(
                 controller: line.vendorNameController,
+                enabled: !restricted,
                 decoration: const InputDecoration(labelText: 'Vendor name'),
               ),
             TextFormField(
               controller: line.repairNotesController,
-              decoration: const InputDecoration(labelText: 'Repair notes'),
+              decoration: InputDecoration(
+                labelText: deferredMissingNotes
+                    ? 'Repair notes *'
+                    : 'Repair notes',
+                helperText: deferredMissingNotes
+                    ? 'Required when repair status is Deferred'
+                    : null,
+                helperStyle: TextStyle(color: AppColors.danger),
+              ),
               maxLines: 2,
+              onChanged: (_) => setState(() {}),
             ),
           ],
         ),
@@ -1143,6 +1274,7 @@ class _SectionCard extends StatelessWidget {
 
 class _DropdownField<T> extends StatelessWidget {
   const _DropdownField({
+    super.key,
     required this.label,
     required this.value,
     required this.items,
@@ -1166,6 +1298,7 @@ class _DropdownField<T> extends StatelessWidget {
         items: items,
         onChanged: onChanged,
         validator: validator,
+        menuMaxHeight: 300,
       ),
     );
   }
@@ -1201,6 +1334,163 @@ class _DateField extends StatelessWidget {
           child: Text(text),
         ),
       ),
+    );
+  }
+}
+
+/// Odometer text field with an inline km/Miles unit selector. Storage stays
+/// in km (matching the backend contract); only the displayed digits and
+/// user input are converted to/from the selected [unit].
+class _OdometerField extends StatefulWidget {
+  const _OdometerField({
+    required this.label,
+    required this.kmController,
+    required this.unit,
+    required this.onUnitChanged,
+    this.onKmChanged,
+    this.enabled = true,
+    this.loading = false,
+    this.onFetch,
+    this.errorText,
+    this.disabledHint,
+  });
+
+  final String label;
+  final TextEditingController kmController;
+  final OdometerDisplayUnit unit;
+  final ValueChanged<OdometerDisplayUnit> onUnitChanged;
+  final VoidCallback? onKmChanged;
+  final bool enabled;
+  final bool loading;
+  final VoidCallback? onFetch;
+  final String? errorText;
+  final String? disabledHint;
+
+  @override
+  State<_OdometerField> createState() => _OdometerFieldState();
+}
+
+class _OdometerFieldState extends State<_OdometerField> {
+  late final TextEditingController _displayController;
+  bool _syncingFromKm = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _displayController = TextEditingController(
+      text: kmStringToDisplayValue(widget.kmController.text, widget.unit),
+    );
+    widget.kmController.addListener(_syncFromKmController);
+  }
+
+  void _syncFromKmController() {
+    if (_syncingFromKm) return;
+    final display =
+        kmStringToDisplayValue(widget.kmController.text, widget.unit);
+    if (display != _displayController.text) {
+      _displayController.text = display;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _OdometerField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.kmController != widget.kmController) {
+      oldWidget.kmController.removeListener(_syncFromKmController);
+      widget.kmController.addListener(_syncFromKmController);
+    }
+    if (oldWidget.unit != widget.unit) {
+      _displayController.text =
+          kmStringToDisplayValue(widget.kmController.text, widget.unit);
+    }
+  }
+
+  void _handleDisplayChanged(String value) {
+    _syncingFromKm = true;
+    widget.kmController.text = displayValueToKmString(value, widget.unit);
+    _syncingFromKm = false;
+    widget.onKmChanged?.call();
+  }
+
+  @override
+  void dispose() {
+    widget.kmController.removeListener(_syncFromKmController);
+    _displayController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _displayController,
+                enabled: widget.enabled,
+                onChanged: _handleDisplayChanged,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  labelText: widget.label,
+                  errorText: widget.errorText,
+                  suffixIcon: SizedBox(
+                    width: 90,
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<OdometerDisplayUnit>(
+                        value: widget.unit,
+                        isDense: true,
+                        items: OdometerDisplayUnit.values
+                            .map(
+                              (u) => DropdownMenuItem(
+                                value: u,
+                                child: Text(
+                                  u.label,
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: widget.enabled
+                            ? (u) {
+                                if (u != null) widget.onUnitChanged(u);
+                              }
+                            : null,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (widget.onFetch != null) ...[
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                onPressed: widget.enabled && !widget.loading
+                    ? widget.onFetch
+                    : null,
+                icon: widget.loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.gps_fixed_rounded),
+              ),
+            ],
+          ],
+        ),
+        if (!widget.enabled && widget.disabledHint != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4, left: 4),
+            child: Text(
+              widget.disabledHint!,
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+          ),
+      ],
     );
   }
 }

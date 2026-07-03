@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/enums/app_route.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
-import 'package:rapide_nforce/core/utils/menu_route_mapper.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/company_model.dart';
 
@@ -76,26 +75,11 @@ class _AppShellState extends State<AppShell> {
       AppRoute.maintenance,
     ];
 
-    final hasApprovals = _menuItems.any((item) =>
-        MenuRouteMapper.routeFromPath(item.path) == AppRoute.approvals ||
-        item.children.any((c) => MenuRouteMapper.routeFromPath(c.path) == AppRoute.approvals));
+    final role = AuthService.instance.currentUser?.role;
+    final canApprove =
+        isAdminRole(role) || (role != null && role.toUpperCase().contains('LEAD'));
 
-    final hasRequests = _menuItems.any((item) =>
-        MenuRouteMapper.routeFromPath(item.path) == AppRoute.requests ||
-        item.children.any((c) => MenuRouteMapper.routeFromPath(c.path) == AppRoute.requests));
-
-    if (hasApprovals) {
-      routes.add(AppRoute.approvals);
-    } else if (hasRequests) {
-      routes.add(AppRoute.requests);
-    } else {
-      final role = AuthService.instance.currentUser?.role;
-      if (isAdminRole(role) || (role != null && role.toUpperCase().contains('LEAD'))) {
-        routes.add(AppRoute.approvals);
-      } else {
-        routes.add(AppRoute.requests);
-      }
-    }
+    routes.add(canApprove ? AppRoute.approvals : AppRoute.requests);
 
     routes.add(AppRoute.profile);
     return routes;

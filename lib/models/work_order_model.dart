@@ -63,7 +63,7 @@ enum WorkOrderStatus {
   Color get backgroundColor {
     switch (this) {
       case WorkOrderStatus.notStarted:
-        return const Color(0xFFF3F4F6);
+        return const Color(0xFFEDE9FE);
       case WorkOrderStatus.inProgress:
         return const Color(0xFFDBEAFE);
       case WorkOrderStatus.onHold:
@@ -76,7 +76,7 @@ enum WorkOrderStatus {
   Color get textColor {
     switch (this) {
       case WorkOrderStatus.notStarted:
-        return const Color(0xFF374151);
+        return const Color(0xFF6D28D9);
       case WorkOrderStatus.inProgress:
         return const Color(0xFF1447E6);
       case WorkOrderStatus.onHold:
@@ -133,6 +133,7 @@ class WorkOrderDetails {
     this.odometer,
     this.startOdometer,
     this.endOdometer,
+    this.odometerDisplayUnit,
     this.estimatedCost,
     this.assignee,
     this.hours,
@@ -147,6 +148,7 @@ class WorkOrderDetails {
   final String? odometer;
   final String? startOdometer;
   final String? endOdometer;
+  final String? odometerDisplayUnit;
   final double? estimatedCost;
   final int? assignee;
   final String? hours;
@@ -169,6 +171,8 @@ class WorkOrderDetails {
           json['start_odometer']?.toString(),
       endOdometer:
           json['endOdometer']?.toString() ?? json['end_odometer']?.toString(),
+      odometerDisplayUnit: json['odometerDisplayUnit']?.toString() ??
+          json['odometer_display_unit']?.toString(),
       estimatedCost: _toDouble(json['estimatedCost'] ?? json['estimated_cost']),
       assignee: _asInt(json['assignee']),
       hours: json['hours']?.toString(),
@@ -209,6 +213,7 @@ class WorkOrderPartLine {
     this.repairCompletedAt,
     this.repairNotes,
     this.defectHours,
+    this.partTypeName,
   });
 
   final int? id;
@@ -229,6 +234,7 @@ class WorkOrderPartLine {
   final String? repairCompletedAt;
   final String? repairNotes;
   final num? defectHours;
+  final String? partTypeName;
 
   factory WorkOrderPartLine.fromJson(Map<String, dynamic> json) {
     final part = json['part'];
@@ -242,6 +248,11 @@ class WorkOrderPartLine {
       partCode: part is Map ? part['code']?.toString() : null,
       partName: part is Map ? part['name']?.toString() : null,
       cost: part is Map ? _toNum(part['cost']) : null,
+      partTypeName: json['partTypeName']?.toString() ??
+          json['part_type_name']?.toString() ??
+          (part is Map && part['partType'] is Map
+              ? (part['partType'] as Map)['name']?.toString()
+              : null),
       repairPerformedBy: RepairPerformedBy.fromCode(
           json['repairPerformedBy']?.toString()),
       repairStatus:
@@ -297,6 +308,11 @@ class WorkOrderModel {
     this.pmTireMeasurements = const [],
     this.pmDefects = const [],
     this.attachments = const [],
+    this.plateNumber,
+    this.vin,
+    this.make,
+    this.year,
+    this.createdByName,
   });
 
   final int id;
@@ -313,6 +329,11 @@ class WorkOrderModel {
   final int? entityTypeId;
   final String? entityTypeName;
   final WorkOrderDetails? workOrderDetails;
+  final String? plateNumber;
+  final String? vin;
+  final String? make;
+  final String? year;
+  final String? createdByName;
   final List<WorkOrderPartLine> workOrderParts;
   final List<WorkOrderNote> notes;
   final DateTime? updatedAt;
@@ -387,6 +408,7 @@ class WorkOrderModel {
         json['pmTireMeasurements'] ?? workOrder['pmTireMeasurements'];
     final pmDefectsRaw = json['pmDefects'] ?? workOrder['pmDefects'];
     final attachmentsRaw = details is Map ? details['attachments'] : null;
+    final vehicleInfo = workOrder['vehicleInfo'] ?? json['vehicleInfo'];
 
     return WorkOrderModel(
       id: _asInt(workOrder['id']) ?? _asInt(json['id']) ?? 0,
@@ -426,6 +448,12 @@ class WorkOrderModel {
       ),
       pmDefects: _tryParseList(pmDefectsRaw, (e) => PmDefectModel.fromJson(e)),
       attachments: WorkOrderAttachment.listFromDynamic(attachmentsRaw),
+      plateNumber: vehicleInfo is Map ? vehicleInfo['plate']?.toString() : null,
+      vin: vehicleInfo is Map ? vehicleInfo['vin']?.toString() : null,
+      make: vehicleInfo is Map ? vehicleInfo['make']?.toString() : null,
+      year: vehicleInfo is Map ? vehicleInfo['year']?.toString() : null,
+      createdByName: workOrder['createdByName']?.toString() ??
+          workOrder['createdByUsername']?.toString(),
     );
   }
 
@@ -595,6 +623,7 @@ class WorkOrderFormPayload {
     this.location,
     this.startOdometer,
     this.endOdometer,
+    this.odometerDisplayUnit = 'km',
     this.endDate,
     this.hours,
     this.notes,
@@ -623,6 +652,7 @@ class WorkOrderFormPayload {
   final String? location;
   final String? startOdometer;
   final String? endOdometer;
+  final String? odometerDisplayUnit;
   final DateTime? endDate;
   final String? hours;
   final String? notes;
@@ -637,7 +667,6 @@ class WorkOrderFormPayload {
   final List<PmDefectModel> pmDefects;
 
   Map<String, dynamic> toJson() => {
-        'workOrderNumber': '',
         'unitNumber': unitNumber,
         'issueDescription': issueDescription,
         'status': status,
@@ -655,6 +684,7 @@ class WorkOrderFormPayload {
           'odometer': startOdometer ?? '',
           if (startOdometer != null) 'startOdometer': startOdometer,
           if (endOdometer != null) 'endOdometer': endOdometer,
+          'odometerDisplayUnit': odometerDisplayUnit ?? 'km',
           'location': location ?? '',
           'assignee': assignee,
           'estimatedCost': estimatedCost,

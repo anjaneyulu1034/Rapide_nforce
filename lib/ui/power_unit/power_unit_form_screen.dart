@@ -180,7 +180,11 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _registrationNumber.text = u.registrationNumber ?? '';
     _registrationExpiry.text = u.registrationExpiry ?? '';
     _imsNumber.text = u.imsNumber ?? '';
-    _ownershipType = u.ownershipType ?? '';
+    final ownershipType = (u.ownershipType ?? '').toLowerCase().trim();
+    _ownershipType =
+        ['owned', 'owner-operator'].contains(ownershipType)
+            ? ownershipType
+            : '';
     _ownerName.text = u.ownerName ?? '';
     _ownerEmail.text = u.ownerEmail ?? '';
     _ownerPhone.text = u.ownerPhone ?? '';
@@ -517,7 +521,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
               SizedBox(height: 16),
               Text(
                 'Scanning document...',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -553,7 +560,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 ListTile(
-                  leading: Icon(Icons.camera_alt_outlined, color: AppColors.primary),
+                  leading: Icon(
+                    Icons.camera_alt_outlined,
+                    color: AppColors.primary,
+                  ),
                   title: const Text(
                     'Camera',
                     style: TextStyle(fontWeight: FontWeight.w600),
@@ -564,7 +574,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.folder_open_outlined, color: AppColors.primary),
+                  leading: Icon(
+                    Icons.folder_open_outlined,
+                    color: AppColors.primary,
+                  ),
                   title: const Text(
                     'Browse File',
                     style: TextStyle(fontWeight: FontWeight.w600),
@@ -575,7 +588,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.document_scanner_outlined, color: AppColors.primary),
+                  leading: Icon(
+                    Icons.document_scanner_outlined,
+                    color: AppColors.primary,
+                  ),
                   title: const Text(
                     'Scan to File',
                     style: TextStyle(fontWeight: FontWeight.w600),
@@ -654,7 +670,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                   _BottomBar(
                     step: _step,
                     saving: _saving,
-                    onPrevious: _step > 1 ? () => setState(() => _step--) : null,
+                    onPrevious: _step > 1
+                        ? () => setState(() => _step--)
+                        : null,
                     onCancel: () => Navigator.pop(context),
                     onContinue: _step < 3 ? _next : null,
                     onSave: _step == 3 ? _save : null,
@@ -666,7 +684,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   }
 
   List<Widget> _buildStep1() => [
-    WebFileUploadZone(fileName: _browseFileName, onBrowse: _showAttachmentOptions),
+    WebFileUploadZone(
+      fileName: _browseFileName,
+      onBrowse: _showAttachmentOptions,
+    ),
     const SizedBox(height: 12),
     WebFormSection(
       title: 'Vehicle Details',
