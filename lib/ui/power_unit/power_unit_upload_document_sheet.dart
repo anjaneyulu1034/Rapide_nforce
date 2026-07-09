@@ -45,6 +45,29 @@ Future<bool?> showPowerUnitEditDocumentSheet({
   );
 }
 
+/// The "Docs" tab's upload/edit sheet — mirrors the web's
+/// `UploadDocumentModal` component (components/vehicles/UploadDocumentModal.tsx),
+/// which is a simpler flow than the Binder tab's category-first upload:
+/// just Document Type (with an "Other" + custom-type option), Document
+/// Number, Issue/Expiry Date, File, and Notes — no Document Category and no
+/// separate Document Name field. Pass [doc] to edit/replace an existing
+/// document, matching the web component's `editData` prop.
+Future<bool?> showPowerUnitDocsTabUploadSheet({
+  required BuildContext context,
+  required int truckId,
+  required PowerUnitModel unit,
+  TruckDocumentModel? doc,
+}) {
+  return Navigator.push<bool>(
+    context,
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) =>
+          _SimpleUploadDocumentSheet(truckId: truckId, unit: unit, doc: doc),
+    ),
+  );
+}
+
 class _UploadDocumentSheet extends StatefulWidget {
   const _UploadDocumentSheet({required this.truckId, required this.unit});
 
@@ -394,6 +417,7 @@ class _UploadDocumentSheetState extends State<_UploadDocumentSheet> {
                 children: [
                   WebFileUploadZone(
                     fileName: _fileName,
+                    filePath: _filePath,
                     onBrowse: _pickFile,
                     onCamera: _pickFromCamera,
                     onScan: _scanToFile,
@@ -756,6 +780,7 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
                 children: [
                   WebFileUploadZone(
                     fileName: currentFileName,
+                    filePath: _newFilePath,
                     onBrowse: _pickFile,
                     onCamera: _pickFromCamera,
                     onScan: _scanToFile,
@@ -836,6 +861,374 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
                       label: const Text(
                         'Update Document',
                         style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SimpleUploadDocumentSheet extends StatefulWidget {
+  const _SimpleUploadDocumentSheet({
+    required this.truckId,
+    required this.unit,
+    this.doc,
+  });
+
+  final int truckId;
+  final PowerUnitModel unit;
+  final TruckDocumentModel? doc;
+
+  @override
+  State<_SimpleUploadDocumentSheet> createState() =>
+      _SimpleUploadDocumentSheetState();
+}
+
+class _SimpleUploadDocumentSheetState
+    extends State<_SimpleUploadDocumentSheet> {
+  final _customTypeCtrl = TextEditingController();
+  late final _number = TextEditingController(text: widget.doc?.documentNumber);
+  late final _issueDate =
+      TextEditingController(text: widget.doc?.issueDateIso);
+  late final _expiryDate =
+      TextEditingController(text: widget.doc?.expiryDateIso);
+  late final _notes = TextEditingController(text: widget.doc?.notes);
+
+  bool get _isEditing => widget.doc != null;
+
+  List<String> _docTypes = [];
+  String? _docType;
+  bool _loadingTypes = true;
+
+  String? _newFilePath;
+  String? _newFileName;
+  bool _fileRemoved = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDocTypes();
+  }
+
+  @override
+  void dispose() {
+    _customTypeCtrl.dispose();
+    _number.dispose();
+    _issueDate.dispose();
+    _expiryDate.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  /// Mirrors the web's `getComplianceDocumentTypes(true, entityTypeId)` call
+  /// — every active truck document type, with no category filter.
+  Future<void> _loadDocTypes() async {
+    setState(() => _loadingTypes = true);
+    final result = await FleetLookupService.instance.fetchComplianceDocumentTypes(
+      entityTypeId: 1,
+    );
+    if (!mounted) return;
+    final types = List<String>.from(result.data ?? const ['Other']);
+    final existingType = widget.doc?.documentType;
+    setState(() {
+      _loadingTypes = false;
+      _docTypes = types;
+      if (existingType != null && existingType.isNotEmpty) {
+        if (types.contains(existingType)) {
+          _docType = existingType;
+        } else {
+          // Not in the official list — show as "Other" with the original
+          // value prefilled, matching the web behavior.
+          _docType = 'Other';
+          _customTypeCtrl.text = existingType;
+        }
+      }
+    });
+  }
+
+  Future<void> _pickFile() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.first;
+    setState(() {
+      _newFilePath = file.path;
+      _newFileName = file.name;
+      _fileRemoved = false;
+    });
+  }
+
+  Future<void> _pickFromCamera() async {
+    try {
+      final photo = await ImagePicker().pickImage(source: ImageSource.camera);
+      if (photo == null) return;
+      setState(() {
+        _newFilePath = photo.path;
+        _newFileName = photo.name;
+        _fileRemoved = false;
+      });
+    } catch (e) {
+      AppToast.showError('Failed to capture image: $e');
+    }
+  }
+
+  Future<void> _scanToFile() async {
+    try {
+      final pages = await CunningDocumentScanner.getPictures(
+        noOfPages: 1,
+        scannerSource: ScannerSource.camera,
+      );
+      if (pages == null || pages.isEmpty) return;
+      final path = pages.first;
+      setState(() {
+        _newFilePath = path;
+        _newFileName = path.split('/').last;
+        _fileRemoved = false;
+      });
+    } catch (e) {
+      AppToast.showError('Failed to scan document: $e');
+    }
+  }
+
+  Future<void> _submit() async {
+    final effectiveType = _docType == 'Other'
+        ? _customTypeCtrl.text.trim().toUpperCase()
+        : _docType ?? '';
+    if (effectiveType.isEmpty) {
+      AppToast.showError('Select document type');
+      return;
+    }
+    if (_issueDate.text.trim().isEmpty) {
+      AppToast.showError('Select issue date');
+      return;
+    }
+    if (!_isEditing && _newFilePath == null) {
+      AppToast.showError('Select a file to upload');
+      return;
+    }
+    if ((widget.unit.vinNumber ?? '').isEmpty) {
+      AppToast.showError('VIN is required');
+      return;
+    }
+
+    setState(() => _saving = true);
+    // Location isn't user-editable here — it mirrors the web modal, which
+    // fixes it from the vehicle type (Carrier Binder for trucks).
+    final result = _isEditing
+        ? await PowerUnitService.instance.updateDocument(
+            truckId: widget.truckId,
+            documentId: widget.doc!.id,
+            vinNumber: widget.unit.vinNumber!,
+            documentType: effectiveType,
+            location: 'Carrier Binder',
+            issueDate: _issueDate.text.trim(),
+            expiryDate: _expiryDate.text.trim().isEmpty
+                ? null
+                : _expiryDate.text.trim(),
+            documentNumber: _number.text.trim(),
+            notes: _notes.text.trim(),
+            filePath: _newFilePath,
+            fileName: _newFileName,
+            companyId: AuthService.instance.selectedCompanyId,
+          )
+        : await PowerUnitService.instance.uploadDocumentFull(
+            truckId: widget.truckId,
+            filePath: _newFilePath!,
+            fileName: _newFileName ?? 'document',
+            vinNumber: widget.unit.vinNumber!,
+            documentType: effectiveType,
+            location: 'Carrier Binder',
+            issueDate: _issueDate.text.trim(),
+            expiryDate: _expiryDate.text.trim().isEmpty
+                ? null
+                : _expiryDate.text.trim(),
+            documentNumber:
+                _number.text.trim().isEmpty ? null : _number.text.trim(),
+            notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+            companyId: AuthService.instance.selectedCompanyId,
+          );
+
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (result.isSuccess) {
+      AppToast.showSuccess(_isEditing ? 'Document updated' : 'Document uploaded');
+      Navigator.pop(context, true);
+    } else {
+      ApiFeedback.showError(
+        result,
+        fallback: _isEditing ? 'Update failed' : 'Upload failed',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    final currentFileName =
+        _fileRemoved ? null : (_newFileName ?? widget.doc?.fileName);
+
+    return GradientPageBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(
+            _isEditing
+                ? 'Edit document for ${widget.unit.unitNumber}'
+                : 'Upload a new document for ${widget.unit.unitNumber}',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+        ),
+        body: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SectionCard(
+                title: 'Document Type',
+                children: [
+                  if (_loadingTypes)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  else
+                    WebSearchableDropdownField<String>(
+                      label: 'Document Type *',
+                      searchHint: 'Search document types...',
+                      value: _docType,
+                      items: _docTypes,
+                      itemLabel: (v) => v,
+                      onChanged: (v) => setState(() {
+                        _docType = v;
+                        if (v != 'Other') _customTypeCtrl.clear();
+                      }),
+                    ),
+                  if (_docType == 'Other')
+                    WebTextFormField(
+                      controller: _customTypeCtrl,
+                      label: 'Custom Document Type *',
+                      hint: 'Enter custom document type',
+                    ),
+                ],
+              ),
+              _SectionCard(
+                title: 'Document Details',
+                children: [
+                  WebTextFormField(
+                    controller: _number,
+                    label: 'Document Number',
+                  ),
+                  WebDateField(
+                    controller: _issueDate,
+                    label: 'Issue Date',
+                    required: true,
+                  ),
+                  WebDateField(controller: _expiryDate, label: 'Expiry Date'),
+                ],
+              ),
+              _SectionCard(
+                title: 'File & Notes',
+                children: [
+                  WebFileUploadZone(
+                    fileName: currentFileName,
+                    filePath: _newFilePath,
+                    onBrowse: _pickFile,
+                    onCamera: _pickFromCamera,
+                    onScan: _scanToFile,
+                  ),
+                  if (_isEditing && currentFileName != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              currentFileName,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => setState(() {
+                              _newFilePath = null;
+                              _newFileName = null;
+                              _fileRemoved = true;
+                            }),
+                            child: const Text('Remove'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  WebTextFormField(
+                    controller: _notes,
+                    label: 'Notes',
+                    maxLines: 3,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.textSecondary,
+                        side: BorderSide(color: AppColors.border),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed:
+                          _saving ? null : () => Navigator.pop(context),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _saving ? null : _submit,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF374151),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.upload_rounded, size: 18),
+                      label: Text(
+                        _isEditing ? 'Update Document' : 'Upload Document',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
                   ),

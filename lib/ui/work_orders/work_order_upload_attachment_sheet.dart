@@ -113,61 +113,6 @@ class _UploadAttachmentSheetState extends State<_UploadAttachmentSheet> {
     }
   }
 
-  void _showAttachmentOptions() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(Icons.camera_alt_outlined, color: AppColors.primary),
-                  title: const Text(
-                    'Camera',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickFromCamera();
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.folder_open_outlined, color: AppColors.primary),
-                  title: const Text(
-                    'Browse File',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickFromFiles();
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.document_scanner_outlined, color: AppColors.primary),
-                  title: const Text(
-                    'Scan to File',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _scanDocument();
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _upload() async {
     if (_files.isEmpty) {
       AppToast.showError('Select at least one file to upload');
@@ -217,7 +162,9 @@ class _UploadAttachmentSheetState extends State<_UploadAttachmentSheet> {
                 fileName: _files.isEmpty
                     ? null
                     : _files.map((f) => f.name).join(', '),
-                onBrowse: _showAttachmentOptions,
+                onBrowse: _pickFromFiles,
+                onCamera: _pickFromCamera,
+                onScan: _scanDocument,
               ),
               if (_files.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -233,14 +180,36 @@ class _UploadAttachmentSheetState extends State<_UploadAttachmentSheet> {
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.insert_drive_file_outlined,
-                            size: 18, color: AppColors.textSecondary),
+                        Icon(
+                          isPreviewableImagePath(_files[i].path)
+                              ? Icons.image_outlined
+                              : Icons.insert_drive_file_outlined,
+                          size: 18,
+                          color: isPreviewableImagePath(_files[i].path)
+                              ? AppColors.primary
+                              : AppColors.textSecondary,
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Text(
-                            _files[i].name,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13),
+                          child: InkWell(
+                            onTap: isPreviewableImagePath(_files[i].path)
+                                ? () => showLocalImagePreview(
+                                    context, _files[i].path!)
+                                : null,
+                            child: Text(
+                              _files[i].name,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: isPreviewableImagePath(_files[i].path)
+                                    ? AppColors.primary
+                                    : null,
+                                decoration:
+                                    isPreviewableImagePath(_files[i].path)
+                                        ? TextDecoration.underline
+                                        : null,
+                              ),
+                            ),
                           ),
                         ),
                         IconButton(

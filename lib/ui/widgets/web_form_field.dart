@@ -1,8 +1,53 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/utils/responsive.dart';
 import 'package:intl/intl.dart';
+
+bool isPreviewableImagePath(String? path) {
+  if (path == null || path.isEmpty) return false;
+  final lower = path.toLowerCase();
+  return lower.endsWith('.jpg') ||
+      lower.endsWith('.jpeg') ||
+      lower.endsWith('.png');
+}
+
+/// Full-screen preview for a locally selected image, opened by tapping the
+/// file name under a [WebFileUploadZone] (or an attachment row) once a
+/// picked file looks like an image.
+void showLocalImagePreview(BuildContext context, String path) {
+  showDialog(
+    context: context,
+    builder: (ctx) => Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(20),
+      child: Stack(
+        alignment: Alignment.topRight,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: InteractiveViewer(
+              child: Image.file(File(path), fit: BoxFit.contain),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(6),
+            child: Material(
+              color: Colors.black54,
+              shape: const CircleBorder(),
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
 
 /// Renders a field label, coloring a trailing " *" red so required fields
 /// are visually distinct (plain [Text] can't mix colors within one string).
@@ -566,6 +611,7 @@ class WebFileUploadZone extends StatelessWidget {
     required this.onBrowse,
     this.onCamera,
     this.onScan,
+    this.filePath,
     this.subtitle =
         'Click to browse files. Supported: JPG, PNG, PDF (max 20MB)',
   });
@@ -577,6 +623,9 @@ class WebFileUploadZone extends StatelessWidget {
   /// When set, shows a "Scan to File" action that runs real document
   /// scanning (edge detection + crop) instead of a raw photo.
   final VoidCallback? onScan;
+  /// Local path of the selected file, if any — when it looks like an image,
+  /// tapping the file name previews it full-screen.
+  final String? filePath;
   final String subtitle;
 
   @override
@@ -617,14 +666,49 @@ class WebFileUploadZone extends StatelessWidget {
           ),
           if (fileName != null && fileName!.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(
-              fileName!,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
+            if (isPreviewableImagePath(filePath))
+              InkWell(
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => showLocalImagePreview(context, filePath!),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.image_outlined,
+                        size: 15,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          fileName!,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Text(
+                fileName!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
           ],
           const SizedBox(height: 14),
           if (showPickerActions)

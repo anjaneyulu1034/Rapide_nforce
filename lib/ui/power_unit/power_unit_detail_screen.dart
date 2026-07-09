@@ -48,11 +48,24 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
   List<WorkOrderModel> _workOrders = [];
   bool _docsLoading = false;
   bool _woLoading = false;
+  bool _canUploadDocuments = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadDocumentUploadPermission();
+  }
+
+  Future<void> _loadDocumentUploadPermission() async {
+    final result = await PermissionService.instance.getMenuPermissions(
+      menuUrl: '/documents',
+      menuName: 'Documents',
+    );
+    if (!mounted) return;
+    setState(() => _canUploadDocuments = result.isSuccess
+        ? (result.data?.canCreate ?? false)
+        : false);
   }
 
   Future<void> _load() async {
@@ -120,6 +133,19 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
     final unit = _unit;
     if (unit == null) return;
     final changed = await showPowerUnitUploadDocumentSheet(
+      context: context,
+      truckId: widget.powerUnitId,
+      unit: unit,
+    );
+    if (changed == true) _loadDocuments();
+  }
+
+  /// "Docs" tab upload — mirrors the web's simpler `UploadDocumentModal`
+  /// (no Document Category), unlike the Binder tab's category-first flow.
+  Future<void> _uploadDocumentSimple() async {
+    final unit = _unit;
+    if (unit == null) return;
+    final changed = await showPowerUnitDocsTabUploadSheet(
       context: context,
       truckId: widget.powerUnitId,
       unit: unit,
@@ -254,6 +280,13 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
                   : _tab == PowerUnitDetailTab.maintenance
                   ? FloatingActionButton(
                       onPressed: _onCreateWorkOrder,
+                      backgroundColor: const Color(0xFF990000),
+                      foregroundColor: Colors.white,
+                      child: const Icon(Icons.add),
+                    )
+                  : _tab == PowerUnitDetailTab.documents && _canUploadDocuments
+                  ? FloatingActionButton(
+                      onPressed: _uploadDocumentSimple,
                       backgroundColor: const Color(0xFF990000),
                       foregroundColor: Colors.white,
                       child: const Icon(Icons.add),
@@ -451,7 +484,6 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
           unit: unit,
           documents: _documents,
           loading: _docsLoading,
-          onUpload: _uploadDocument,
           onDelete: _deleteDocument,
           onRefresh: _loadDocuments,
         );
@@ -537,7 +569,11 @@ class _OverviewTab extends StatelessWidget {
                   ? '\$${unit.purchasePrice}'
                   : '—',
             ),
-            VehicleInfoRow(label: 'Status', value: unit.status),
+            VehicleInfoRow(
+              label: 'Status',
+              value: unit.status,
+              valueColor: unit.isActive ? AppColors.statusCompleted : null,
+            ),
             VehicleInfoRow(
               label: 'Assigned Driver',
               value: PowerUnitModel.displayOrDash(unit.assignedDriver),
@@ -1594,7 +1630,6 @@ class _DocumentsTab extends StatefulWidget {
     required this.unit,
     required this.documents,
     required this.loading,
-    required this.onUpload,
     required this.onDelete,
     required this.onRefresh,
   });
@@ -1602,7 +1637,6 @@ class _DocumentsTab extends StatefulWidget {
   final PowerUnitModel unit;
   final List<TruckDocumentModel> documents;
   final bool loading;
-  final VoidCallback onUpload;
   final ValueChanged<TruckDocumentModel> onDelete;
   final VoidCallback onRefresh;
 
@@ -1614,7 +1648,6 @@ class _DocumentsTabState extends State<_DocumentsTab> {
   final _searchCtrl = TextEditingController();
   String _search = '';
   String? _filterStatus;
-  bool _canUpload = false;
   bool _canReplace = false;
   bool _canDelete = false;
 
@@ -1632,7 +1665,6 @@ class _DocumentsTabState extends State<_DocumentsTab> {
     if (!mounted) return;
     final perms = result.isSuccess ? result.data : null;
     setState(() {
-      _canUpload = perms?.canCreate ?? false;
       _canReplace = perms?.canUpdate ?? false;
       _canDelete = perms?.canDelete ?? false;
     });
@@ -1690,7 +1722,7 @@ class _DocumentsTabState extends State<_DocumentsTab> {
   }
 
   Future<void> _replaceDocument(TruckDocumentModel doc) async {
-    final changed = await showPowerUnitEditDocumentSheet(
+    final changed = await showPowerUnitDocsTabUploadSheet(
       context: context,
       truckId: doc.truckId,
       unit: widget.unit,
@@ -1745,19 +1777,6 @@ class _DocumentsTabState extends State<_DocumentsTab> {
                 ),
               ],
             ),
-            if (_canUpload) ...[
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  _BlackButton(
-                    label: 'Upload New',
-                    onPressed: widget.onUpload,
-                    icon: Icons.upload_rounded,
-                  ),
-                ],
-              ),
-            ],
           ],
         ),
         const SizedBox(height: 12),
@@ -2135,6 +2154,7 @@ class _SpecificationsTab extends StatelessWidget {
       children: [
         VehicleInfoSection(
           title: 'Vehicle Specifications',
+          collapsible: false,
           rows: [
             VehicleInfoRow(
               label: 'GVWR',
@@ -2153,6 +2173,7 @@ class _SpecificationsTab extends StatelessWidget {
         const SizedBox(height: 12),
         VehicleInfoSection(
           title: 'Engine Specifications',
+          collapsible: false,
           rows: [
             VehicleInfoRow(
               label: 'Engine Make',
@@ -3338,8 +3359,6 @@ class _WoCard extends StatelessWidget {
   static String _fmtCost(double? v) =>
       v == null ? '—' : '\$${v.toStringAsFixed(2)}';
 
-  static String _fmtOdo(String? v) => (v == null || v.isEmpty) ? '—' : '$v km';
-
   @override
   Widget build(BuildContext context) {
     final details = wo.workOrderDetails;
@@ -3432,28 +3451,16 @@ class _WoCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _InfoCell(
-                    label: 'ODOMETER',
-                    value: _fmtOdo(details?.odometer ?? details?.startOdometer),
-                  ),
-                ),
-                Expanded(
-                  child: _InfoCell(
                     label: 'START DATE',
                     value: _fmtDate(details?.startDate),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
                 Expanded(
                   child: _InfoCell(
                     label: 'DUE DATE',
                     value: _fmtDate(details?.dueDate),
                   ),
                 ),
-                const Expanded(child: SizedBox.shrink()),
               ],
             ),
             const SizedBox(height: 10),

@@ -32,6 +32,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   bool _loading = true;
   bool _saving = false;
   String? _browseFileName;
+  String? _browseFilePath;
 
   // Step 1
   final _unitNumber = TextEditingController();
@@ -516,7 +517,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     if (file.path == null) {
       // No filesystem path available (e.g. some web/desktop pickers) — keep
       // the file attached but skip OCR, which needs a real path to upload.
-      setState(() => _browseFileName = file.name);
+      setState(() {
+        _browseFileName = file.name;
+        _browseFilePath = null;
+      });
       return;
     }
     await _runOcrScan(file.path!, file.name);
@@ -540,7 +544,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   /// pipeline (same `/documents` + `/ocr/ocr-results` flow the web app
   /// uses), and auto-fills blank form fields from whatever gets extracted.
   Future<void> _runOcrScan(String filePath, String fileName) async {
-    setState(() => _browseFileName = fileName);
+    setState(() {
+      _browseFileName = fileName;
+      _browseFilePath = filePath;
+    });
 
     showDialog(
       context: context,
@@ -647,70 +654,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     }
   }
 
-  void _showAttachmentOptions() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(
-                    Icons.camera_alt_outlined,
-                    color: AppColors.primary,
-                  ),
-                  title: const Text(
-                    'Camera',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickFromCamera();
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.folder_open_outlined,
-                    color: AppColors.primary,
-                  ),
-                  title: const Text(
-                    'Browse File',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _pickFromFiles();
-                  },
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.document_scanner_outlined,
-                    color: AppColors.primary,
-                  ),
-                  title: const Text(
-                    'Scan to File',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _scanDocument();
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   void _addPermit() {
     if ((_selectedPermitType ?? '').isEmpty ||
         _permitNumber.text.trim().isEmpty ||
@@ -788,7 +731,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   List<Widget> _buildStep1() => [
     WebFileUploadZone(
       fileName: _browseFileName,
-      onBrowse: _showAttachmentOptions,
+      filePath: _browseFilePath,
+      onBrowse: _pickFromFiles,
+      onCamera: _pickFromCamera,
+      onScan: _scanDocument,
     ),
     const SizedBox(height: 12),
     WebFormSection(

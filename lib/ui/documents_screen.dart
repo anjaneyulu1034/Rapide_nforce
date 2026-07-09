@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
@@ -847,6 +849,36 @@ class _RenewDocumentSheetState extends State<_RenewDocumentSheet> {
     });
   }
 
+  Future<void> _pickFromCamera() async {
+    try {
+      final photo = await ImagePicker().pickImage(source: ImageSource.camera);
+      if (photo == null) return;
+      setState(() {
+        _filePath = photo.path;
+        _fileName = photo.name;
+      });
+    } catch (e) {
+      AppToast.showError('Failed to capture image: $e');
+    }
+  }
+
+  Future<void> _scanToFile() async {
+    try {
+      final pages = await CunningDocumentScanner.getPictures(
+        noOfPages: 1,
+        scannerSource: ScannerSource.camera,
+      );
+      if (pages == null || pages.isEmpty) return;
+      final path = pages.first;
+      setState(() {
+        _filePath = path;
+        _fileName = path.split('/').last;
+      });
+    } catch (e) {
+      AppToast.showError('Failed to scan document: $e');
+    }
+  }
+
   Future<void> _save() async {
     if (_issueDate.text.trim().isEmpty) {
       AppToast.showError('Select issue date');
@@ -914,7 +946,13 @@ class _RenewDocumentSheetState extends State<_RenewDocumentSheet> {
             WebTextFormField(controller: _number, label: 'Document Number'),
             WebDateField(controller: _issueDate, label: 'Issue Date', required: true),
             WebDateField(controller: _expiryDate, label: 'Expiry Date'),
-            WebFileUploadZone(fileName: _fileName, onBrowse: _pickFile),
+            WebFileUploadZone(
+              fileName: _fileName,
+              filePath: _filePath,
+              onBrowse: _pickFile,
+              onCamera: _pickFromCamera,
+              onScan: _scanToFile,
+            ),
             const SizedBox(height: 12),
             WebTextFormField(controller: _notes, label: 'Notes', maxLines: 3),
             const SizedBox(height: 16),

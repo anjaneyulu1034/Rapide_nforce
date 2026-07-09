@@ -51,6 +51,7 @@ class PowerUnitSummaryCards extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           IntrinsicHeight(
             child: Row(
@@ -58,7 +59,7 @@ class PowerUnitSummaryCards extends StatelessWidget {
               children: [
                 Expanded(
                   child: _SummaryCard(
-                    label: 'ODOMETER',
+                    label: 'CURRENT ODOMETER',
                     value: odometerStr,
                     icon: Icons.local_shipping_outlined,
                     iconColor: const Color(0xFF374151),

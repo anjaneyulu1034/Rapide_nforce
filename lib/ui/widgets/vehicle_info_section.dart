@@ -11,6 +11,7 @@ class VehicleInfoSection extends StatefulWidget {
     this.accentBorder,
     this.titleIcon,
     this.initiallyExpanded = false,
+    this.collapsible = true,
   });
 
   final String title;
@@ -19,6 +20,9 @@ class VehicleInfoSection extends StatefulWidget {
   final Color? accentBorder;
   final Widget? titleIcon;
   final bool initiallyExpanded;
+  /// When false, the section is a plain always-expanded container with no
+  /// chevron and no tap-to-collapse behavior.
+  final bool collapsible;
 
   @override
   State<VehicleInfoSection> createState() => _VehicleInfoSectionState();
@@ -33,7 +37,7 @@ class _VehicleInfoSectionState extends State<VehicleInfoSection>
   @override
   void initState() {
     super.initState();
-    _expanded = widget.initiallyExpanded;
+    _expanded = !widget.collapsible || widget.initiallyExpanded;
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 250),
@@ -51,6 +55,7 @@ class _VehicleInfoSectionState extends State<VehicleInfoSection>
   }
 
   void _toggle() {
+    if (!widget.collapsible) return;
     setState(() => _expanded = !_expanded);
     if (_expanded) {
       _controller.forward();
@@ -177,7 +182,7 @@ class _VehicleInfoSectionState extends State<VehicleInfoSection>
         Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: _toggle,
+            onTap: widget.collapsible ? _toggle : null,
             child: Padding(
               padding: const EdgeInsets.symmetric(
                 horizontal: 16,
@@ -199,14 +204,15 @@ class _VehicleInfoSectionState extends State<VehicleInfoSection>
                       ),
                     ),
                   ),
-                  RotationTransition(
-                    turns: _rotation,
-                    child: Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      color: AppColors.textSecondary,
-                      size: 22,
+                  if (widget.collapsible)
+                    RotationTransition(
+                      turns: _rotation,
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        color: AppColors.textSecondary,
+                        size: 22,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),

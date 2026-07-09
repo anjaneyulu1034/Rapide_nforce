@@ -1,5 +1,9 @@
+import 'dart:io';
+
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
@@ -349,6 +353,47 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     );
     if (picked == null || picked.files.isEmpty) return;
     setState(() => _pendingAttachments.addAll(picked.files));
+  }
+
+  Future<void> _pickPendingAttachmentFromCamera() async {
+    try {
+      final photo = await ImagePicker().pickImage(source: ImageSource.camera);
+      if (photo == null) return;
+      final bytes = await photo.readAsBytes();
+      setState(() {
+        _pendingAttachments.add(PlatformFile(
+          path: photo.path,
+          name: photo.name,
+          size: bytes.length,
+          bytes: bytes,
+        ));
+      });
+    } catch (e) {
+      AppToast.showError('Failed to capture image: $e');
+    }
+  }
+
+  Future<void> _scanPendingAttachment() async {
+    try {
+      final pages = await CunningDocumentScanner.getPictures(
+        noOfPages: 1,
+        scannerSource: ScannerSource.camera,
+      );
+      if (pages == null || pages.isEmpty) return;
+      final path = pages.first;
+      final file = File(path);
+      final bytes = await file.readAsBytes();
+      setState(() {
+        _pendingAttachments.add(PlatformFile(
+          path: path,
+          name: path.split('/').last,
+          size: bytes.length,
+          bytes: bytes,
+        ));
+      });
+    } catch (e) {
+      AppToast.showError('Failed to scan document: $e');
+    }
   }
 
   Future<void> _fetchOdometer() async {
@@ -999,6 +1044,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                             subtitle:
                                 'Supported formats: Images (JPG, PNG) and PDF',
                             onBrowse: _pickPendingAttachments,
+                            onCamera: _pickPendingAttachmentFromCamera,
+                            onScan: _scanPendingAttachment,
                           ),
                           if (_pendingAttachments.isNotEmpty) ...[
                             const SizedBox(height: 10),
@@ -1007,15 +1054,43 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                                 padding: const EdgeInsets.only(bottom: 6),
                                 child: Row(
                                   children: [
-                                    Icon(Icons.insert_drive_file_outlined,
-                                        size: 18,
-                                        color: AppColors.textSecondary),
+                                    Icon(
+                                      isPreviewableImagePath(
+                                              _pendingAttachments[i].path)
+                                          ? Icons.image_outlined
+                                          : Icons.insert_drive_file_outlined,
+                                      size: 18,
+                                      color: isPreviewableImagePath(
+                                              _pendingAttachments[i].path)
+                                          ? AppColors.primary
+                                          : AppColors.textSecondary,
+                                    ),
                                     const SizedBox(width: 8),
                                     Expanded(
-                                      child: Text(
-                                        _pendingAttachments[i].name,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontSize: 13),
+                                      child: InkWell(
+                                        onTap: isPreviewableImagePath(
+                                                _pendingAttachments[i].path)
+                                            ? () => showLocalImagePreview(
+                                                context,
+                                                _pendingAttachments[i].path!)
+                                            : null,
+                                        child: Text(
+                                          _pendingAttachments[i].name,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: isPreviewableImagePath(
+                                                    _pendingAttachments[i]
+                                                        .path)
+                                                ? AppColors.primary
+                                                : null,
+                                            decoration: isPreviewableImagePath(
+                                                    _pendingAttachments[i]
+                                                        .path)
+                                                ? TextDecoration.underline
+                                                : null,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                     IconButton(

@@ -136,7 +136,7 @@ class AppPalette {
     textMuted: Color(0xFFD1D5DB),
     border: Color(0xFFE5E7EB), // subtle grey border
     borderLight: Color(0xFFF3F4F6),
-    surface: Color(0xFFF8FAFC), // light grey/blue screen background matching image
+    surface: Color(0xFFE8ECF3), // darker grey/blue screen bg — visibly distinct from white cards
     surfaceTertiary: Color(0xFFF1F5F9),
     card: Color(0xFFFFFFFF), // white cards matching image
     cardElevated: Color(0xFFFFFFFF),
@@ -144,9 +144,9 @@ class AppPalette {
     drawerActive: Color(0x15E22D2D),
     cardShadow: Color(0x05000000),
     inputFill: Color(0xFFFFFFFF),
-    gradientTop: Color(0xFFF8FAFC),
-    gradientMid: Color(0xFFF8FAFC),
-    gradientBottom: Color(0xFFF8FAFC),
+    gradientTop: Color(0xFFE8ECF3),
+    gradientMid: Color(0xFFE8ECF3),
+    gradientBottom: Color(0xFFE8ECF3),
     bottomNavBg: Color(0xFFFFFFFF), // white bottom nav
     statBlueBgStart: Color(0xFFEFF6FF),
     statBlueBgEnd: Color(0xFFDBEAFE),
