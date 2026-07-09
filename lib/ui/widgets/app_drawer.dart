@@ -59,7 +59,10 @@ class _AppDrawerState extends State<AppDrawer> {
     // Carrier Compliance hidden for now — not needed yet. Remove this
     // filter to bring it back in the drawer.
     return items
-        .where((item) => MenuRouteMapper.routeFromPath(item.path) != AppRoute.carriers)
+        .where(
+          (item) =>
+              MenuRouteMapper.routeFromPath(item.path) != AppRoute.carriers,
+        )
         .toList();
   }
 
@@ -90,7 +93,8 @@ class _AppDrawerState extends State<AppDrawer> {
 
   @override
   Widget build(BuildContext context) {
-    final user = AuthService.instance.currentUser ??
+    final user =
+        AuthService.instance.currentUser ??
         const UserModel(
           id: 0,
           employeeId: '',
@@ -101,99 +105,111 @@ class _AppDrawerState extends State<AppDrawer> {
 
     return Drawer(
       backgroundColor: AppColors.drawerBg,
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: const BrandLogo(height: 72, maxWidth: 180),
-              ),
-            ),
-            Expanded(
-              child: widget.menusLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : ListView(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      children: [
-                        for (final item in items)
-                          if (item.hasChildren)
-                            _DrawerGroup(
-                              item: item,
-                              expanded: _expandedId == item.id,
-                              currentRoute: widget.currentRoute,
-                              onToggle: () => setState(() {
-                                _expandedId =
-                                    _expandedId == item.id ? null : item.id;
-                              }),
-                              onSelect: (route) => _select(context, route),
-                            )
-                          else if (MenuRouteMapper.routeFromPath(item.path) !=
-                              null)
-                            _DrawerTile(
-                              label: item.label,
-                              menuIcon: item.label,
-                              route: MenuRouteMapper.routeFromPath(item.path)!,
-                              selected: _routeMatches(
-                                item.path,
-                                widget.currentRoute,
-                              ),
-                              onTap: () => _select(
-                                context,
-                                MenuRouteMapper.routeFromPath(item.path)!,
-                              ),
-                            ),
-                      ],
-                    ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  gradient: AppGradients.card,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(
+            left: BorderSide(color: AppColors.gold, width: 3),
+            top: BorderSide(color: AppColors.gold, width: 3),
+            bottom: BorderSide(color: AppColors.gold, width: 3),
+          ),
+        ),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: const BrandLogo(height: 72, maxWidth: 180),
                 ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundColor: AppColors.goldLight,
-                      child: const Icon(
-                        Icons.person_outline,
-                        color: AppColors.gold,
-                        size: 22,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+              Expanded(
+                child: widget.menusLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
                         children: [
-                          Text(
-                            user.name,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
-                          ),
-                          Text(
-                            user.role,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
+                          for (final item in items)
+                            if (item.hasChildren)
+                              _DrawerGroup(
+                                item: item,
+                                expanded: _expandedId == item.id,
+                                currentRoute: widget.currentRoute,
+                                onToggle: () => setState(() {
+                                  _expandedId = _expandedId == item.id
+                                      ? null
+                                      : item.id;
+                                }),
+                                onSelect: (route) => _select(context, route),
+                              )
+                            else if (MenuRouteMapper.routeFromPath(item.path) !=
+                                null)
+                              _DrawerTile(
+                                label: item.label,
+                                menuIcon: item.label,
+                                route: MenuRouteMapper.routeFromPath(
+                                  item.path,
+                                )!,
+                                selected: _routeMatches(
+                                  item.path,
+                                  widget.currentRoute,
+                                ),
+                                onTap: () => _select(
+                                  context,
+                                  MenuRouteMapper.routeFromPath(item.path)!,
+                                ),
+                              ),
                         ],
                       ),
-                    ),
-                  ],
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: AppGradients.card,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 20,
+                        backgroundColor: AppColors.goldLight,
+                        child: const Icon(
+                          Icons.person_outline,
+                          color: AppColors.gold,
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              user.role,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -211,21 +227,13 @@ class _AppDrawerState extends State<AppDrawer> {
         label: 'Service Maintenance',
         path: '/maintenance',
         children: [
-          NavMenuItem(
-            id: 'inventory',
-            label: 'Inventory',
-            path: '/inventory',
-          ),
+          NavMenuItem(id: 'inventory', label: 'Inventory', path: '/inventory'),
           NavMenuItem(
             id: 'maintenance-hub',
             label: 'Work Orders',
             path: '/maintenance',
           ),
-          NavMenuItem(
-            id: 'dvir',
-            label: 'DVIR',
-            path: '/dvir-reports',
-          ),
+          NavMenuItem(id: 'dvir', label: 'DVIR', path: '/dvir-reports'),
           NavMenuItem(
             id: 'fault-codes',
             label: 'Fault Codes',
@@ -288,8 +296,10 @@ class _DrawerGroup extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               onTap: onToggle,
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 child: Row(
                   children: [
                     AppMenuIcon(
@@ -304,9 +314,12 @@ class _DrawerGroup extends StatelessWidget {
                         item.label,
                         style: TextStyle(
                           fontSize: 14,
-                          fontWeight:
-                              _active ? FontWeight.w600 : FontWeight.w500,
-                          color: _active ? AppColors.gold : AppColors.textPrimary,
+                          fontWeight: _active
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: _active
+                              ? AppColors.gold
+                              : AppColors.textPrimary,
                         ),
                       ),
                     ),
@@ -333,11 +346,13 @@ class _DrawerGroup extends StatelessWidget {
                         label: child.label,
                         menuIcon: child.label,
                         route: MenuRouteMapper.routeFromPath(child.path)!,
-                        selected: MenuRouteMapper.routeFromPath(child.path) ==
+                        selected:
+                            MenuRouteMapper.routeFromPath(child.path) ==
                             currentRoute,
                         dense: true,
-                        onTap: () =>
-                            onSelect(MenuRouteMapper.routeFromPath(child.path)!),
+                        onTap: () => onSelect(
+                          MenuRouteMapper.routeFromPath(child.path)!,
+                        ),
                       ),
                 ],
               ),
