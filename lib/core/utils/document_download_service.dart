@@ -116,11 +116,19 @@ class DocumentDownloadService {
   }
 
   /// Downloads the combined PDF packet for a truck (all non-expired documents).
+  ///
+  /// Pass [hasDocuments] = false when the unit has no documents at all, so we
+  /// can show a clear message instead of a misleading 404 "file not found".
   Future<void> downloadPdfPacket({
     required BuildContext context,
     required int truckId,
     String scope = 'compliance',
+    bool hasDocuments = true,
   }) async {
+    if (!hasDocuments) {
+      _showError(context, 'No documents available to download');
+      return;
+    }
     late OverlayEntry overlay;
     overlay = OverlayEntry(
       builder: (_) => const _DownloadingOverlay(),

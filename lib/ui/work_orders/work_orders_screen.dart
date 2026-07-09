@@ -158,8 +158,20 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
 
   Future<void> _openEdit(WorkOrderModel order) async {
     if (!order.status.canEdit) return;
+    // The list row only carries summary data (no repair lines) — fetch the
+    // full detail so the Repairs section isn't blank in the edit form.
+    final result = await MaintenanceService.instance.getWorkOrderById(order.id);
+    if (!mounted) return;
+    final fullOrder = result.isSuccess && result.data != null
+        ? result.data!
+        : order;
+    if (!result.isSuccess) {
+      ApiFeedback.showError(result, fallback: 'Failed to load work order');
+    }
     final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => WorkOrderFormScreen(existing: order)),
+      MaterialPageRoute(
+        builder: (_) => WorkOrderFormScreen(existing: fullOrder),
+      ),
     );
     if (changed == true) _load(page: 1);
   }

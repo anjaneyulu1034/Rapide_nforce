@@ -206,7 +206,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Danger icon
+              // Warning icon
               Container(
                 width: 68,
                 height: 68,
@@ -215,9 +215,9 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  Icons.delete_outline_rounded,
+                  Icons.report_problem_rounded,
                   color: AppColors.danger,
-                  size: 34,
+                  size: 32,
                 ),
               ),
               const SizedBox(height: 20),
@@ -231,14 +231,26 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              Text(
-                'Are you sure you want to delete\n"${unit.unitNumber}"?\nThis action cannot be undone.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textSecondary,
-                  height: 1.55,
+              Text.rich(
+                TextSpan(
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.textSecondary,
+                    height: 1.55,
+                  ),
+                  children: [
+                    const TextSpan(text: 'Are you sure you want to delete '),
+                    TextSpan(
+                      text: '"${unit.unitNumber}"',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const TextSpan(text: '? This action cannot be undone.'),
+                  ],
                 ),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 28),
               Row(
@@ -262,7 +274,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: FilledButton(
+                    child: FilledButton.icon(
                       onPressed: () => Navigator.pop(ctx, true),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.danger,
@@ -272,7 +284,8 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text(
+                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                      label: const Text(
                         'Delete',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
@@ -348,13 +361,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     final bool isMaintenance = u.isMaintenance;
     final bool isSelected = _selectedId == u.id;
 
-    final parts = <String>[];
-    if (u.make != null && u.make!.isNotEmpty) parts.add(u.make!.toUpperCase());
-    if (u.model != null && u.model!.isNotEmpty)
-      parts.add(u.model!.toUpperCase());
-    final makeModel = parts.isEmpty ? null : parts.join(' ');
-    final yearStr = u.year?.toString();
-    final makeModelYear = [?makeModel, ?yearStr].join(' · ');
     final subtitleStr = u.vinNumber ?? '';
 
     String? contextText;
@@ -545,7 +551,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                   _isSuperAdmin ? 'Company' : 'License Plate',
                   _isSuperAdmin ? u.companyName : u.licensePlate,
                 ),
-                dataRow('Model', makeModelYear.isEmpty ? null : makeModelYear),
                 dataRow(
                   'Expiry',
                   u.registrationExpiry,
@@ -667,6 +672,28 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                 });
                 _load();
               },
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Text(
+                  'Total Units',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '$_total',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             if (_loading)

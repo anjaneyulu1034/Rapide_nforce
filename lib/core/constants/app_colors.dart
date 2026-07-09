@@ -9,14 +9,17 @@ class AppColors {
   static AppPalette get _p => ThemeService.instance.palette;
 
   // Brand accents (shared across themes)
-  static const Color primary = ThemeColor(Color(0xFF272A2D), Color(0xFFE22D2D));
+  static const Color _primaryLightTheme = Color(0xFF272A2D);
+  static const Color _primaryDarkTheme = Color(0xFFE22D2D);
+  static Color get primary =>
+      ThemeService.instance.isLight ? _primaryLightTheme : _primaryDarkTheme;
   static const Color primaryDark = Color(0xFF93000A);
   static Color get primaryLight => primary.withValues(alpha: 0.2);
   static Color get primaryTint => primary.withValues(alpha: 0.1);
   static const Color gold = Color(0xFFE22D2D);
   static Color get goldLight => gold.withValues(alpha: 0.2);
 
-  static const Color accent = ThemeColor(Color(0xFF272A2D), Color(0xFFE22D2D));
+  static Color get accent => primary;
   static Color get accentLight => accent.withValues(alpha: 0.2);
 
   static const Color secondary = Color(0xFF3A4968);
@@ -86,14 +89,4 @@ class AppColors {
   static const Color statusCompleted = Color(0xFF34D399);
   static Color get statusLow => warning;
   static Color get liveFeed => accent;
-}
-
-class ThemeColor extends Color {
-  final Color lightColor;
-  final Color darkColor;
-
-  const ThemeColor(this.lightColor, this.darkColor) : super(0);
-
-  @override
-  int get value => ThemeService.instance.isLight ? lightColor.toARGB32() : darkColor.toARGB32();
 }

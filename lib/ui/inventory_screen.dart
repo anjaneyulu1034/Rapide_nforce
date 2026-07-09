@@ -2,12 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
-import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/part_models.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/inventory_service.dart';
+import 'package:rapide_nforce/services/permission_service.dart';
 import 'package:rapide_nforce/ui/inventory/part_detail_screen.dart';
 import 'package:rapide_nforce/ui/inventory/part_form_screen.dart';
 import 'package:rapide_nforce/ui/inventory/part_type_form_screen.dart';
@@ -15,33 +15,147 @@ import 'package:rapide_nforce/ui/inventory/widgets/inventory_stock_badge.dart';
 import 'package:rapide_nforce/ui/widgets/list_empty_state.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
-enum InventoryTab { partsOverview, parts }
-
 class InventoryScreen extends StatefulWidget {
-  const InventoryScreen({
-    super.key,
-    this.initialTab = InventoryTab.partsOverview,
-  });
+  const InventoryScreen({super.key, this.initialIndex = 0});
 
-  final InventoryTab initialTab;
+  final int initialIndex;
 
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
 }
 
-class _InventoryScreenState extends State<InventoryScreen> {
-  late InventoryTab _tab = widget.initialTab;
+class _InventoryScreenState extends State<InventoryScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  String? _partsInitialSearch;
+  int? _partsInitialTypeId;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialIndex,
+    );
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _viewPartsForType(String name, int id) {
+    setState(() {
+      _partsInitialSearch = name;
+      _partsInitialTypeId = id;
+    });
+    _tabController.animateTo(1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(48),
+        child: TabBar(
+          controller: _tabController,
+          labelColor: AppColors.textPrimary,
+          unselectedLabelColor: AppColors.textSecondary,
+          indicatorColor: AppColors.primary,
+          labelStyle: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.normal,
+            fontSize: 14,
+          ),
+          tabs: const [
+            Tab(text: 'Inventory'),
+            Tab(text: 'Parts'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        physics: const NeverScrollableScrollPhysics(),
+        children: [
+          _PartTypesTab(onViewParts: _viewPartsForType),
+          _PartsTab(
+            key: ValueKey('$_partsInitialTypeId|$_partsInitialSearch'),
+            initialSearch: _partsInitialSearch,
+            initialTypeId: _partsInitialTypeId,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1. PARTS OVERVIEW TAB (Part Types)
+// ---------------------------------------------------------------------------
+
+class _PartTypesTab extends StatefulWidget {
+  const _PartTypesTab({required this.onViewParts});
+
+  final void Function(String name, int id) onViewParts;
+
+  @override
+  State<_PartTypesTab> createState() => _PartTypesTabState();
+}
+
+class _PartTypesTabState extends State<_PartTypesTab> {
   final _searchController = TextEditingController();
   final _scrollController = ScrollController();
   Timer? _debounce;
+
+  bool _loading = true;
+  bool _loadingMore = false;
+  String? _error;
+  List<PartTypeModel> _items = [];
+  int _page = 1;
+  final int _limit = 10;
+  int _total = 0;
+  int _totalPages = 1;
   String _search = '';
   String? _sortKey;
   String? _sortOrder;
+
+  bool get _isAdminOrAbove =>
+      isAdminRole(AuthService.instance.currentUser?.role);
+
+  MenuPermissions _permissions = const MenuPermissions();
+
+  bool get _canCreate => _isAdminOrAbove || _permissions.canCreate;
+  bool get _canDelete => _isAdminOrAbove || _permissions.canDelete;
+
+  String get _companyFallback {
+    final user = AuthService.instance.currentUser;
+    return user?.territory ?? '-';
+  }
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
+    _scrollController.addListener(_onScroll);
+    _load();
+    _loadPermissions();
+  }
+
+  Future<void> _loadPermissions() async {
+    final result = await PermissionService.instance.getMenuPermissions(
+      menuUrl: '/inventory',
+      menuName: 'Inventory',
+    );
+    if (!mounted) return;
+    if (result.isSuccess && result.data != null) {
+      setState(() => _permissions = result.data!);
+    }
   }
 
   @override
@@ -52,507 +166,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
     super.dispose();
   }
 
-  void _onSearchChanged() {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () {
-      final next = _searchController.text.trim();
-      if (next == _search) return;
-      setState(() => _search = next);
-    });
-  }
-
-  Future<void> _openAdd() async {
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => _tab == InventoryTab.partsOverview
-            ? const PartTypeFormScreen()
-            : const PartFormScreen(),
-      ),
-    );
-    if (changed == true && mounted) setState(() {});
-  }
-
-  void _showFiltersBottomSheet() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final isOverview = _tab == InventoryTab.partsOverview;
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Filters & Sorting',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          setSheetState(() {
-                            _sortKey = null;
-                            _sortOrder = null;
-                          });
-                          setState(() {});
-                          Navigator.pop(context);
-                        },
-                        child: const Text('Reset'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Sort By',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (isOverview)
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        ChoiceChip(
-                          label: const Text('Name'),
-                          selected: _sortKey == 'name',
-                          onSelected: (val) {
-                            setSheetState(() {
-                              _sortKey = val ? 'name' : null;
-                            });
-                          },
-                        ),
-                        ChoiceChip(
-                          label: const Text('Parts Count'),
-                          selected: _sortKey == 'count',
-                          onSelected: (val) {
-                            setSheetState(() {
-                              _sortKey = val ? 'count' : null;
-                            });
-                          },
-                        ),
-                      ],
-                    )
-                  else
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        ChoiceChip(
-                          label: const Text('Part Code'),
-                          selected: _sortKey == 'code',
-                          onSelected: (val) {
-                            setSheetState(() {
-                              _sortKey = val ? 'code' : null;
-                            });
-                          },
-                        ),
-                        ChoiceChip(
-                          label: const Text('Quantity'),
-                          selected: _sortKey == 'quantity',
-                          onSelected: (val) {
-                            setSheetState(() {
-                              _sortKey = val ? 'quantity' : null;
-                            });
-                          },
-                        ),
-                        ChoiceChip(
-                          label: const Text('Cost'),
-                          selected: _sortKey == 'cost',
-                          onSelected: (val) {
-                            setSheetState(() {
-                              _sortKey = val ? 'cost' : null;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Order',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: const Text('Ascending'),
-                        selected: _sortOrder == 'ASC',
-                        onSelected: (val) {
-                          setSheetState(() {
-                            _sortOrder = val ? 'ASC' : null;
-                          });
-                        },
-                      ),
-                      ChoiceChip(
-                        label: const Text('Descending'),
-                        selected: _sortOrder == 'DESC',
-                        onSelected: (val) {
-                          setSheetState(() {
-                            _sortOrder = val ? 'DESC' : null;
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        setState(() {});
-                        Navigator.pop(context);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF990000),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      child: const Text(
-                        'Apply Filters',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: WebPageBody(
-        child: ListView(
-          controller: _scrollController,
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: AppGradients.card,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.borderLight),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-
-                  Center(
-                    child: Text(
-                      'Inventory',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _InventoryTabBar(
-                    tab: _tab,
-                    onChanged: (t) => setState(() {
-                      _tab = t;
-                      _sortKey = null;
-                      _sortOrder = null;
-                    }),
-                  ),
-                  const SizedBox(height: 16),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final narrow = constraints.maxWidth < 520;
-                      if (narrow) {
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _SearchAndAddRow(
-                              tab: _tab,
-                              controller: _searchController,
-                              search: _search,
-                              onClear: () {
-                                _searchController.clear();
-                                setState(() => _search = '');
-                              },
-                              onAdd: _openAdd,
-                            ),
-                          ],
-                        );
-                      }
-                       final showAdd =
-                          isSuperAdminRole(AuthService.instance.currentUser?.role);
-                      return Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Expanded(
-                            child: WebSearchField(
-                              controller: _searchController,
-                              hintText: _tab == InventoryTab.partsOverview
-                                  ? 'Search by name or creator...'
-                                  : 'Search by code, type, or creator...',
-                              showClear: _search.isNotEmpty,
-                              onClear: () {
-                                _searchController.clear();
-                                setState(() => _search = '');
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            icon: const Icon(Icons.filter_list),
-                            onPressed: _showFiltersBottomSheet,
-                            style: IconButton.styleFrom(
-                              backgroundColor: AppColors.card,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                                side: BorderSide(color: AppColors.border),
-                              ),
-                              padding: const EdgeInsets.all(12),
-                            ),
-                          ),
-                          if (showAdd) ...[
-                            const SizedBox(width: 12),
-                            _AddButton(tab: _tab, onPressed: _openAdd),
-                          ],
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  if (_tab == InventoryTab.partsOverview)
-                    _PartTypesTable(
-                      key: ValueKey('pt-$_search-$_sortKey-$_sortOrder'),
-                      search: _search,
-                      scrollController: _scrollController,
-                      sortKey: _sortKey,
-                      sortOrder: _sortOrder,
-                    )
-                  else
-                    _PartsTable(
-                      key: ValueKey('p-$_search-$_sortKey-$_sortOrder'),
-                      search: _search,
-                      scrollController: _scrollController,
-                      sortKey: _sortKey,
-                      sortOrder: _sortOrder,
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SearchAndAddRow extends StatelessWidget {
-  const _SearchAndAddRow({
-    required this.tab,
-    required this.controller,
-    required this.search,
-    required this.onClear,
-    required this.onAdd,
-  });
-
-  final InventoryTab tab;
-  final TextEditingController controller;
-  final String search;
-  final VoidCallback onClear;
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    final showAdd = isSuperAdminRole(AuthService.instance.currentUser?.role);
-    return Column(
-      children: [
-        WebSearchField(
-          controller: controller,
-          hintText: tab == InventoryTab.partsOverview
-              ? 'Search by name or creator...'
-              : 'Search by code, type, or creator...',
-          showClear: search.isNotEmpty,
-          onClear: onClear,
-        ),
-        if (showAdd) ...[
-          const SizedBox(height: 10),
-          _AddButton(tab: tab, onPressed: onAdd, expand: true),
-        ],
-      ],
-    );
-  }
-}
-
-class _AddButton extends StatelessWidget {
-  const _AddButton({
-    required this.tab,
-    required this.onPressed,
-    this.expand = false,
-  });
-
-  final InventoryTab tab;
-  final VoidCallback onPressed;
-  final bool expand;
-
-  @override
-  Widget build(BuildContext context) {
-    final label = tab == InventoryTab.partsOverview
-        ? 'Add Part Type'
-        : 'Add Part';
-    final button = FilledButton.icon(
-      onPressed: onPressed,
-      style: FilledButton.styleFrom(
-        backgroundColor: AppColors.primary,
-        foregroundColor: AppColors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        minimumSize: const Size(0, 36),
-      ),
-      icon: const Icon(Icons.add, size: 18),
-      label: Text(label, style: const TextStyle(fontSize: 14)),
-    );
-    return expand ? SizedBox(width: double.infinity, child: button) : button;
-  }
-}
-
-class _InventoryTabBar extends StatelessWidget {
-  const _InventoryTabBar({required this.tab, required this.onChanged});
-
-  final InventoryTab tab;
-  final ValueChanged<InventoryTab> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(3.5),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceTertiary,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _TabChip(
-            label: 'Parts Overview',
-            selected: tab == InventoryTab.partsOverview,
-            onTap: () => onChanged(InventoryTab.partsOverview),
-          ),
-          const SizedBox(width: 8),
-          _TabChip(
-            label: 'Parts',
-            selected: tab == InventoryTab.parts,
-            onTap: () => onChanged(InventoryTab.parts),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TabChip extends StatelessWidget {
-  const _TabChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return WebTabPill(label: label, selected: selected, onTap: onTap);
-  }
-}
-
-class _PartTypesTable extends StatefulWidget {
-  const _PartTypesTable({
-    super.key,
-    required this.search,
-    required this.scrollController,
-    this.sortKey,
-    this.sortOrder,
-  });
-
-  final String search;
-  final ScrollController scrollController;
-  final String? sortKey;
-  final String? sortOrder;
-
-  @override
-  State<_PartTypesTable> createState() => _PartTypesTableState();
-}
-
-class _PartTypesTableState extends State<_PartTypesTable> {
-  bool _loading = true;
-  bool _loadingMore = false;
-  String? _error;
-  List<PartTypeModel> _items = [];
-  int _page = 1;
-  final int _limit = 10;
-  int _total = 0;
-  int _totalPages = 1;
-
-  String get _companyFallback {
-    final user = AuthService.instance.currentUser;
-    return user?.territory ?? '-';
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    widget.scrollController.addListener(_onScroll);
-    _load();
-  }
-
-  @override
-  void dispose() {
-    widget.scrollController.removeListener(_onScroll);
-    super.dispose();
-  }
-
   void _onScroll() {
-    if (!widget.scrollController.hasClients) return;
-    final maxScroll = widget.scrollController.position.maxScrollExtent;
-    final currentScroll = widget.scrollController.position.pixels;
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
     if (maxScroll - currentScroll <= 200) {
       _loadMore();
     }
   }
 
-  @override
-  void didUpdateWidget(covariant _PartTypesTable oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.search != widget.search ||
-        oldWidget.sortKey != widget.sortKey ||
-        oldWidget.sortOrder != widget.sortOrder) {
-      _page = 1;
+  void _onSearchChanged() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      final next = _searchController.text.trim();
+      if (next == _search) return;
+      setState(() {
+        _search = next;
+        _page = 1;
+      });
       _load();
-    }
+    });
   }
 
   Future<void> _load() async {
@@ -565,9 +198,9 @@ class _PartTypesTableState extends State<_PartTypesTable> {
     final result = await InventoryService.instance.fetchPartTypes(
       page: 1,
       limit: _limit,
-      search: widget.search.isEmpty ? null : widget.search,
-      sortKey: widget.sortKey,
-      sortOrder: widget.sortOrder,
+      search: _search.isEmpty ? null : _search,
+      sortKey: _sortKey,
+      sortOrder: _sortOrder,
     );
     if (!mounted) return;
     setState(() {
@@ -578,24 +211,21 @@ class _PartTypesTableState extends State<_PartTypesTable> {
         _totalPages = result.data!.totalPages;
         _page = result.data!.page;
       } else {
-        _error = result.message;
-        _items = [];
+        _error = result.message ?? 'Failed to load part types';
       }
     });
   }
 
   Future<void> _loadMore() async {
     if (_loading || _loadingMore || _page >= _totalPages) return;
-    setState(() {
-      _loadingMore = true;
-    });
+    setState(() => _loadingMore = true);
     final nextPage = _page + 1;
     final result = await InventoryService.instance.fetchPartTypes(
       page: nextPage,
       limit: _limit,
-      search: widget.search.isEmpty ? null : widget.search,
-      sortKey: widget.sortKey,
-      sortOrder: widget.sortOrder,
+      search: _search.isEmpty ? null : _search,
+      sortKey: _sortKey,
+      sortOrder: _sortOrder,
     );
     if (!mounted) return;
     setState(() {
@@ -607,6 +237,13 @@ class _PartTypesTableState extends State<_PartTypesTable> {
         _page = result.data!.page;
       }
     });
+  }
+
+  Future<void> _openAdd() async {
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const PartTypeFormScreen()));
+    if (changed == true) _load();
   }
 
   Future<void> _delete(PartTypeModel item) async {
@@ -645,9 +282,138 @@ class _PartTypesTableState extends State<_PartTypesTable> {
     _load();
   }
 
+  void _showFilters() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filters & Sorting',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setSheetState(() {
+                            _sortKey = null;
+                            _sortOrder = null;
+                          });
+                          setState(() {});
+                          Navigator.pop(context);
+                          _load();
+                        },
+                        child: const Text('Reset'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Sort By',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Name'),
+                        selected: _sortKey == 'name',
+                        onSelected: (val) {
+                          setSheetState(() => _sortKey = val ? 'name' : null);
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Parts Count'),
+                        selected: _sortKey == 'count',
+                        onSelected: (val) {
+                          setSheetState(() => _sortKey = val ? 'count' : null);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Order',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Ascending'),
+                        selected: _sortOrder == 'ASC',
+                        onSelected: (val) {
+                          setSheetState(() => _sortOrder = val ? 'ASC' : null);
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Descending'),
+                        selected: _sortOrder == 'DESC',
+                        onSelected: (val) {
+                          setSheetState(() => _sortOrder = val ? 'DESC' : null);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() {});
+                        Navigator.pop(context);
+                        _load();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF990000),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Apply Filters',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
-
-  Widget _buildPartTypeCard(PartTypeModel item) {
+  Widget _buildCard(PartTypeModel item) {
     final company = item.companyName?.trim().isNotEmpty == true
         ? item.companyName!
         : _companyFallback;
@@ -658,9 +424,10 @@ class _PartTypesTableState extends State<_PartTypesTable> {
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: AppColors.cardShadow.withValues(alpha: 0.35),
+            blurRadius: 16,
+            spreadRadius: 1,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -696,9 +463,10 @@ class _PartTypesTableState extends State<_PartTypesTable> {
             ],
           ),
           const SizedBox(height: 12),
-          Container(
+          Divider(
             height: 1,
-            color: AppColors.borderLight,
+            thickness: 1,
+            color: AppColors.textSecondary.withValues(alpha: 0.12),
           ),
           const SizedBox(height: 16),
           Row(
@@ -710,8 +478,8 @@ class _PartTypesTableState extends State<_PartTypesTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
-                          Icons.inventory_2,
+                        Icon(
+                          Icons.inventory_2_outlined,
                           size: 12,
                           color: AppColors.primary,
                         ),
@@ -728,8 +496,93 @@ class _PartTypesTableState extends State<_PartTypesTable> {
                       ],
                     ),
                     const SizedBox(height: 6),
+                    InkWell(
+                      onTap: () => widget.onViewParts(item.name, item.id),
+                      child: Text(
+                        '${item.count}',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                          decoration: TextDecoration.underline,
+                          decorationColor: AppColors.primary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.layers_outlined,
+                          size: 12,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'QUANTITY',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
                     Text(
-                      '${item.count}',
+                      '${item.totalQuantity ?? item.count}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.monetization_on_outlined,
+                          size: 12,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'TOTAL COST',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '\$${(item.totalCost ?? 0).toStringAsFixed(2)}',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
@@ -748,8 +601,8 @@ class _PartTypesTableState extends State<_PartTypesTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
-                          Icons.business,
+                        Icon(
+                          Icons.business_outlined,
                           size: 12,
                           color: AppColors.primary,
                         ),
@@ -790,8 +643,8 @@ class _PartTypesTableState extends State<_PartTypesTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
-                          Icons.calendar_today,
+                        Icon(
+                          Icons.calendar_today_outlined,
                           size: 12,
                           color: AppColors.primary,
                         ),
@@ -828,8 +681,8 @@ class _PartTypesTableState extends State<_PartTypesTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
-                          Icons.person,
+                        Icon(
+                          Icons.person_outline,
                           size: 12,
                           color: AppColors.primary,
                         ),
@@ -860,7 +713,7 @@ class _PartTypesTableState extends State<_PartTypesTable> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
@@ -871,6 +724,7 @@ class _PartTypesTableState extends State<_PartTypesTable> {
                         builder: (_) => PartTypeDetailScreen(
                           partType: item,
                           onChanged: _load,
+                          canDelete: _canDelete,
                         ),
                       ),
                     );
@@ -928,32 +782,34 @@ class _PartTypesTableState extends State<_PartTypesTable> {
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _delete(item),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.danger,
-                    backgroundColor: Colors.transparent,
-                    side: BorderSide(
-                      color: AppColors.danger.withValues(alpha: 0.4),
+              if (_canDelete) ...[
+                const SizedBox(width: 6),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => _delete(item),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.danger,
+                      backgroundColor: Colors.transparent,
+                      side: BorderSide(
+                        color: AppColors.danger.withValues(alpha: 0.4),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      minimumSize: const Size(0, 36),
+                      padding: EdgeInsets.zero,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    minimumSize: const Size(0, 36),
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Text(
-                    'Delete',
-                    style: TextStyle(
-                      letterSpacing: 0.8,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                    child: const Text(
+                      'Delete',
+                      style: TextStyle(
+                        letterSpacing: 0.8,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ],
@@ -963,100 +819,186 @@ class _PartTypesTableState extends State<_PartTypesTable> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Padding(
-        padding: EdgeInsets.all(32),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Center(child: Text(_error!)),
-      );
-    }
-    if (_items.isEmpty) {
-      return const ListEmptyState(
-        message: 'No part types found',
-        icon: Icons.inventory_2_outlined,
-      );
-    }
-
-    return Column(
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            if (constraints.maxWidth < 600) {
-              return Column(
-                children: _items.map((item) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: _buildPartTypeCard(item),
-                  );
-                }).toList(),
-              );
-            } else {
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _items.length,
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 500,
-                  mainAxisExtent: 320,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                ),
-                itemBuilder: (context, i) {
-                  return _buildPartTypeCard(_items[i]);
-                },
-              );
-            }
-          },
-        ),
-        const SizedBox(height: 20),
-        if (_loadingMore)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (_page >= _totalPages && _items.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Center(
-              child: Text(
-                'All $_total part types loaded',
+    return WebPageBody(
+      onRefresh: _load,
+      child: ListView(
+        controller: _scrollController,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Inventory',
                 style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 20,
+                  color: AppColors.textPrimary,
                 ),
               ),
-            ),
+              if (_total > 0) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '$_total',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 20,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ],
           ),
-      ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: WebSearchField(
+                  controller: _searchController,
+                  hintText: 'Search by name or creator...',
+                  showClear: _search.isNotEmpty,
+                  onClear: () {
+                    _searchController.clear();
+                    setState(() {
+                      _search = '';
+                      _page = 1;
+                    });
+                    _load();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.filter_list),
+                onPressed: _showFilters,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.card,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: AppColors.border),
+                  ),
+                  padding: const EdgeInsets.all(12),
+                ),
+              ),
+              if (_canCreate) ...[
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: _openAdd,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    minimumSize: const Size(0, 36),
+                  ),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text(
+                    'Add Part Type',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(48),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              ),
+            )
+          else if (_items.isEmpty)
+            ListEmptyState(
+              message: _search.isNotEmpty
+                  ? 'No part types match your search'
+                  : 'No part types found',
+              icon: Icons.inventory_2_outlined,
+            )
+          else ...[
+            LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth < 600) {
+                  return Column(
+                    children: _items.map((item) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: _buildCard(item),
+                      );
+                    }).toList(),
+                  );
+                } else {
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _items.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 500,
+                          mainAxisExtent: 310,
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
+                        ),
+                    itemBuilder: (context, i) {
+                      return _buildCard(_items[i]);
+                    },
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            if (_loadingMore)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_page >= _totalPages && _items.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'All $_total part types loaded',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
     );
   }
 }
 
-class _PartsTable extends StatefulWidget {
-  const _PartsTable({
-    super.key,
-    required this.search,
-    required this.scrollController,
-    this.sortKey,
-    this.sortOrder,
-  });
+// ---------------------------------------------------------------------------
+// 2. PARTS TAB
+// ---------------------------------------------------------------------------
 
-  final String search;
-  final ScrollController scrollController;
-  final String? sortKey;
-  final String? sortOrder;
+class _PartsTab extends StatefulWidget {
+  const _PartsTab({super.key, this.initialSearch, this.initialTypeId});
+
+  final String? initialSearch;
+  final int? initialTypeId;
 
   @override
-  State<_PartsTable> createState() => _PartsTableState();
+  State<_PartsTab> createState() => _PartsTabState();
 }
 
-class _PartsTableState extends State<_PartsTable> {
+class _PartsTabState extends State<_PartsTab> {
+  final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
+  Timer? _debounce;
+
   bool _loading = true;
   bool _loadingMore = false;
   String? _error;
@@ -1065,38 +1007,71 @@ class _PartsTableState extends State<_PartsTable> {
   final int _limit = 10;
   int _total = 0;
   int _totalPages = 1;
+  String _search = '';
+  int? _typeId;
+  String? _sortKey;
+  String? _sortOrder;
+
+  bool get _isAdminOrAbove =>
+      isAdminRole(AuthService.instance.currentUser?.role);
+
+  MenuPermissions _permissions = const MenuPermissions();
+
+  bool get _canCreate => _isAdminOrAbove || _permissions.canCreate;
+  bool get _canDelete => _isAdminOrAbove || _permissions.canDelete;
 
   @override
   void initState() {
     super.initState();
-    widget.scrollController.addListener(_onScroll);
+    _search = widget.initialSearch ?? '';
+    _typeId = widget.initialTypeId;
+    _searchController.text = _search;
+    _searchController.addListener(_onSearchChanged);
+    _scrollController.addListener(_onScroll);
     _load();
+    _loadPermissions();
+  }
+
+  Future<void> _loadPermissions() async {
+    final result = await PermissionService.instance.getMenuPermissions(
+      menuUrl: '/inventory',
+      menuName: 'Inventory',
+    );
+    if (!mounted) return;
+    if (result.isSuccess && result.data != null) {
+      setState(() => _permissions = result.data!);
+    }
   }
 
   @override
   void dispose() {
-    widget.scrollController.removeListener(_onScroll);
+    _debounce?.cancel();
+    _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   void _onScroll() {
-    if (!widget.scrollController.hasClients) return;
-    final maxScroll = widget.scrollController.position.maxScrollExtent;
-    final currentScroll = widget.scrollController.position.pixels;
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
     if (maxScroll - currentScroll <= 200) {
       _loadMore();
     }
   }
 
-  @override
-  void didUpdateWidget(covariant _PartsTable oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.search != widget.search ||
-        oldWidget.sortKey != widget.sortKey ||
-        oldWidget.sortOrder != widget.sortOrder) {
-      _page = 1;
+  void _onSearchChanged() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      final next = _searchController.text.trim();
+      if (next == _search) return;
+      setState(() {
+        _search = next;
+        _typeId = null;
+        _page = 1;
+      });
       _load();
-    }
+    });
   }
 
   Future<void> _load() async {
@@ -1109,9 +1084,10 @@ class _PartsTableState extends State<_PartsTable> {
     final result = await InventoryService.instance.fetchParts(
       page: 1,
       limit: _limit,
-      search: widget.search.isEmpty ? null : widget.search,
-      sortKey: widget.sortKey,
-      sortOrder: widget.sortOrder,
+      search: _search.isEmpty ? null : _search,
+      typeId: _typeId,
+      sortKey: _sortKey,
+      sortOrder: _sortOrder,
     );
     if (!mounted) return;
     setState(() {
@@ -1122,24 +1098,22 @@ class _PartsTableState extends State<_PartsTable> {
         _totalPages = result.data!.totalPages;
         _page = result.data!.page;
       } else {
-        _error = result.message;
-        _items = [];
+        _error = result.message ?? 'Failed to load parts';
       }
     });
   }
 
   Future<void> _loadMore() async {
     if (_loading || _loadingMore || _page >= _totalPages) return;
-    setState(() {
-      _loadingMore = true;
-    });
+    setState(() => _loadingMore = true);
     final nextPage = _page + 1;
     final result = await InventoryService.instance.fetchParts(
       page: nextPage,
       limit: _limit,
-      search: widget.search.isEmpty ? null : widget.search,
-      sortKey: widget.sortKey,
-      sortOrder: widget.sortOrder,
+      search: _search.isEmpty ? null : _search,
+      typeId: _typeId,
+      sortKey: _sortKey,
+      sortOrder: _sortOrder,
     );
     if (!mounted) return;
     setState(() {
@@ -1151,6 +1125,13 @@ class _PartsTableState extends State<_PartsTable> {
         _page = result.data!.page;
       }
     });
+  }
+
+  Future<void> _openAdd() async {
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const PartFormScreen()));
+    if (changed == true) _load();
   }
 
   Future<void> _delete(PartModel part) async {
@@ -1193,9 +1174,147 @@ class _PartsTableState extends State<_PartsTable> {
     _load();
   }
 
+  void _showFilters() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filters & Sorting',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          setSheetState(() {
+                            _sortKey = null;
+                            _sortOrder = null;
+                          });
+                          setState(() {});
+                          Navigator.pop(context);
+                          _load();
+                        },
+                        child: const Text('Reset'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Sort By',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Part Code'),
+                        selected: _sortKey == 'code',
+                        onSelected: (val) {
+                          setSheetState(() => _sortKey = val ? 'code' : null);
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Quantity'),
+                        selected: _sortKey == 'quantity',
+                        onSelected: (val) {
+                          setSheetState(
+                            () => _sortKey = val ? 'quantity' : null,
+                          );
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Cost'),
+                        selected: _sortKey == 'cost',
+                        onSelected: (val) {
+                          setSheetState(() => _sortKey = val ? 'cost' : null);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Order',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Ascending'),
+                        selected: _sortOrder == 'ASC',
+                        onSelected: (val) {
+                          setSheetState(() => _sortOrder = val ? 'ASC' : null);
+                        },
+                      ),
+                      ChoiceChip(
+                        label: const Text('Descending'),
+                        selected: _sortOrder == 'DESC',
+                        onSelected: (val) {
+                          setSheetState(() => _sortOrder = val ? 'DESC' : null);
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() {});
+                        Navigator.pop(context);
+                        _load();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF990000),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Apply Filters',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
-
-  Widget _buildPartCard(PartModel part) {
+  Widget _buildCard(PartModel part) {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.card,
@@ -1203,9 +1322,10 @@ class _PartsTableState extends State<_PartsTable> {
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: AppColors.cardShadow.withValues(alpha: 0.35),
+            blurRadius: 16,
+            spreadRadius: 1,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -1241,9 +1361,10 @@ class _PartsTableState extends State<_PartsTable> {
             ],
           ),
           const SizedBox(height: 12),
-          Container(
+          Divider(
             height: 1,
-            color: AppColors.borderLight,
+            thickness: 1,
+            color: AppColors.textSecondary.withValues(alpha: 0.12),
           ),
           const SizedBox(height: 16),
           Row(
@@ -1255,7 +1376,7 @@ class _PartsTableState extends State<_PartsTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.category_outlined,
                           size: 12,
                           color: AppColors.primary,
@@ -1293,7 +1414,7 @@ class _PartsTableState extends State<_PartsTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.layers_outlined,
                           size: 12,
                           color: AppColors.primary,
@@ -1335,7 +1456,7 @@ class _PartsTableState extends State<_PartsTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.monetization_on_outlined,
                           size: 12,
                           color: AppColors.primary,
@@ -1373,7 +1494,7 @@ class _PartsTableState extends State<_PartsTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.business_outlined,
                           size: 12,
                           color: AppColors.primary,
@@ -1415,7 +1536,7 @@ class _PartsTableState extends State<_PartsTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.receipt_long_outlined,
                           size: 12,
                           color: AppColors.primary,
@@ -1453,7 +1574,7 @@ class _PartsTableState extends State<_PartsTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.description_outlined,
                           size: 12,
                           color: AppColors.primary,
@@ -1495,7 +1616,7 @@ class _PartsTableState extends State<_PartsTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.calendar_today_outlined,
                           size: 12,
                           color: AppColors.primary,
@@ -1533,7 +1654,7 @@ class _PartsTableState extends State<_PartsTable> {
                   children: [
                     Row(
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.person_outline,
                           size: 12,
                           color: AppColors.primary,
@@ -1565,7 +1686,7 @@ class _PartsTableState extends State<_PartsTable> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
@@ -1573,7 +1694,11 @@ class _PartsTableState extends State<_PartsTable> {
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => PartDetailScreen(part: part, onChanged: _load),
+                        builder: (_) => PartDetailScreen(
+                          part: part,
+                          onChanged: _load,
+                          canDelete: _canDelete,
+                        ),
                       ),
                     );
                   },
@@ -1632,38 +1757,41 @@ class _PartsTableState extends State<_PartsTable> {
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: (!part.isProtected && !part.isUsedInWorkOrder)
-                      ? () => _delete(part)
-                      : null,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: (!part.isProtected && !part.isUsedInWorkOrder)
-                        ? AppColors.danger
-                        : AppColors.textSecondary.withValues(alpha: 0.3),
-                    backgroundColor: Colors.transparent,
-                    side: BorderSide(
-                      color: (!part.isProtected && !part.isUsedInWorkOrder)
-                          ? AppColors.danger.withValues(alpha: 0.4)
+              if (_canDelete) ...[
+                const SizedBox(width: 6),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: (!part.isProtected && !part.isUsedInWorkOrder)
+                        ? () => _delete(part)
+                        : null,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor:
+                          (!part.isProtected && !part.isUsedInWorkOrder)
+                          ? AppColors.danger
                           : AppColors.textSecondary.withValues(alpha: 0.3),
+                      backgroundColor: Colors.transparent,
+                      side: BorderSide(
+                        color: (!part.isProtected && !part.isUsedInWorkOrder)
+                            ? AppColors.danger.withValues(alpha: 0.4)
+                            : AppColors.textSecondary.withValues(alpha: 0.3),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      minimumSize: const Size(0, 36),
+                      padding: EdgeInsets.zero,
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    minimumSize: const Size(0, 36),
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Text(
-                    'Delete',
-                    style: TextStyle(
-                      letterSpacing: 0.8,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                    child: const Text(
+                      'Delete',
+                      style: TextStyle(
+                        letterSpacing: 0.8,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ],
@@ -1673,77 +1801,160 @@ class _PartsTableState extends State<_PartsTable> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Padding(
-        padding: EdgeInsets.all(32),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Center(child: Text(_error!)),
-      );
-    }
-    if (_items.isEmpty) {
-      return const ListEmptyState(
-        message: 'No parts found',
-        icon: Icons.build_outlined,
-      );
-    }
-
-    return Column(
-      children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            if (constraints.maxWidth < 600) {
-              return Column(
-                children: _items.map((part) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: _buildPartCard(part),
-                  );
-                }).toList(),
-              );
-            } else {
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _items.length,
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 500,
-                  mainAxisExtent: 390,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                ),
-                itemBuilder: (context, i) {
-                  return _buildPartCard(_items[i]);
-                },
-              );
-            }
-          },
-        ),
-        const SizedBox(height: 20),
-        if (_loadingMore)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (_page >= _totalPages && _items.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Center(
-              child: Text(
-                'All $_total parts loaded',
+    return WebPageBody(
+      onRefresh: _load,
+      child: ListView(
+        controller: _scrollController,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Parts',
                 style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 20,
+                  color: AppColors.textPrimary,
                 ),
               ),
-            ),
+              if (_total > 0) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '$_total',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 20,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ],
           ),
-      ],
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: WebSearchField(
+                  controller: _searchController,
+                  hintText: 'Search by code, type, or creator...',
+                  showClear: _search.isNotEmpty,
+                  onClear: () {
+                    _searchController.clear();
+                    setState(() {
+                      _search = '';
+                      _page = 1;
+                    });
+                    _load();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.filter_list),
+                onPressed: _showFilters,
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.card,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: AppColors.border),
+                  ),
+                  padding: const EdgeInsets.all(12),
+                ),
+              ),
+              if (_canCreate) ...[
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: _openAdd,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: AppColors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    minimumSize: const Size(0, 36),
+                  ),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add Part', style: TextStyle(fontSize: 14)),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(48),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              ),
+            )
+          else if (_items.isEmpty)
+            ListEmptyState(
+              message: _search.isNotEmpty
+                  ? 'No parts match your search'
+                  : 'No parts found',
+              icon: Icons.build_outlined,
+            )
+          else ...[
+            LayoutBuilder(
+              builder: (context, constraints) {
+                if (constraints.maxWidth < 600) {
+                  return Column(
+                    children: _items.map((part) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: _buildCard(part),
+                      );
+                    }).toList(),
+                  );
+                } else {
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _items.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 500,
+                          mainAxisExtent: 380,
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
+                        ),
+                    itemBuilder: (context, i) {
+                      return _buildCard(_items[i]);
+                    },
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            if (_loadingMore)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_page >= _totalPages && _items.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Text(
+                    'All $_total parts loaded',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ],
+      ),
     );
   }
 }

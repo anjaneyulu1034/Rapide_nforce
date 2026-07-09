@@ -388,6 +388,39 @@ class MaintenanceService {
     }
   }
 
+  /// Fetches image/file uploads attached to maintenance issues, keyed by
+  /// issue id — mirrors the web's `getMaintenanceIssueUploads`.
+  Future<ApiResult<Map<int, List<MaintenanceIssueUpload>>>>
+      getMaintenanceIssueUploads(List<int> issueIds) async {
+    if (issueIds.isEmpty) return ApiResult.ok(const {});
+    try {
+      final data = await _api.parseJson(
+        () => _api.get(
+          ApiConstants.maintenanceIssueUploads,
+          params: {'issueIds': issueIds.join(',')},
+        ),
+        onSuccess: (body) => body,
+      );
+      final root = data as Map<String, dynamic>? ?? {};
+      final rawMap = root['data'] as Map<String, dynamic>? ?? {};
+      final result = <int, List<MaintenanceIssueUpload>>{};
+      rawMap.forEach((key, value) {
+        final id = int.tryParse(key);
+        if (id == null || value is! List) return;
+        result[id] = value
+            .whereType<Map>()
+            .map((e) =>
+                MaintenanceIssueUpload.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      });
+      return ApiResult.ok(result);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to load issue images.');
+    }
+  }
+
   Future<ApiResult<List<WorkOrderAttachment>>> uploadWorkOrderAttachments({
     required int workOrderId,
     required List<String> filePaths,

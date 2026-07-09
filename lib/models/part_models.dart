@@ -7,6 +7,8 @@ class PartTypeModel {
     required this.name,
     required this.count,
     required this.lowStockTrigger,
+    this.totalQuantity,
+    this.totalCost,
     this.createdOn,
     this.createdByUsername,
     this.modifiedOn,
@@ -18,14 +20,18 @@ class PartTypeModel {
   final String name;
   final int count;
   final int lowStockTrigger;
+  final int? totalQuantity;
+  final double? totalCost;
   final String? createdOn;
   final String? createdByUsername;
   final String? modifiedOn;
   final String? modifiedByUsername;
   final String? companyName;
 
-  StockLevel get stockLevel =>
-      InventoryItemModel.computeStockLevel(count, lowStockTrigger);
+  StockLevel get stockLevel => InventoryItemModel.computeStockLevel(
+        totalQuantity ?? count,
+        lowStockTrigger,
+      );
 
   factory PartTypeModel.fromJson(Map<String, dynamic> json) {
     final count = (json['count'] as num?)?.toInt() ?? 0;
@@ -38,6 +44,8 @@ class PartTypeModel {
       name: json['name'] as String? ?? '',
       count: count,
       lowStockTrigger: trigger,
+      totalQuantity: (json['totalQuantity'] as num?)?.toInt(),
+      totalCost: (json['totalCost'] as num?)?.toDouble(),
       createdOn: json['createdOn'] as String?,
       createdByUsername: json['createdByUsername'] as String? ??
           (json['creator'] is Map

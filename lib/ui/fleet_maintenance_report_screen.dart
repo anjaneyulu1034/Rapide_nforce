@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
+import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/services/report_service.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
 
@@ -45,6 +49,52 @@ class _FleetMaintenanceReportScreenState
     });
   }
 
+  Future<void> _downloadPdf() async {
+    if (_rows.isEmpty) {
+      AppToast.showError('No data available to download');
+      return;
+    }
+    final doc = pw.Document();
+    final headers = ['Unit No', 'VIN', 'Plate', 'Make', 'Model'];
+    final data = _rows
+        .map((r) => [r.unitNo, r.vin, r.plate, r.make, r.model])
+        .toList();
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.letter,
+        margin: const pw.EdgeInsets.fromLTRB(24, 32, 24, 32),
+        build: (context) => [
+          pw.Text(
+            'Fleet Maintenance Report',
+            style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            '${_assetType == ReportService.assetTypePowerUnit ? 'Power Unit' : 'Trailer'} · $_timeframe',
+            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+          ),
+          pw.SizedBox(height: 16),
+          pw.TableHelper.fromTextArray(
+            headers: headers,
+            data: data,
+            headerDecoration:
+                const pw.BoxDecoration(color: PdfColor.fromInt(0xFFF2F2F2)),
+            headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+            cellStyle: const pw.TextStyle(fontSize: 9),
+            cellAlignment: pw.Alignment.centerLeft,
+            border: pw.TableBorder.all(color: PdfColors.black, width: 0.5),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (_) => doc.save(),
+      name: 'fleet_maintenance_report.pdf',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -53,6 +103,13 @@ class _FleetMaintenanceReportScreenState
           'Fleet Maintenance Report',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.download_outlined),
+            tooltip: 'Download PDF',
+            onPressed: _downloadPdf,
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -146,7 +203,7 @@ class _FleetMaintenanceReportScreenState
                         children: [
                           Text(
                             row.unitNo,
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 15,
                               color: AppColors.primary,

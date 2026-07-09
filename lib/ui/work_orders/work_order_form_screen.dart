@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
@@ -8,6 +9,7 @@ import 'package:rapide_nforce/ui/work_orders/widgets/work_order_section_header.d
 import 'package:rapide_nforce/ui/work_orders/widgets/pm_inspection_widgets.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_upload_attachment_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
+import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/services/maintenance_service.dart';
 
@@ -51,6 +53,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   final _endOdometerController = TextEditingController();
   final _costController = TextEditingController();
   final _hoursController = TextEditingController();
+  final _totalLabourCostController = TextEditingController();
   final _notesController = TextEditingController();
   final _resolutionController = TextEditingController();
 
@@ -59,6 +62,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   DateTime? _endDate;
 
   final List<_PartLineForm> _partLines = [];
+  final List<PlatformFile> _pendingAttachments = [];
 
   bool _pmLoading = false;
   List<PmInspectionCategory> _pmCategories = [];
@@ -69,6 +73,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   bool _eventsLoading = false;
   List<MaintenanceIssueSummary> _events = [];
   final Set<int> _linkedEventIds = {};
+  bool _uploadsLoading = false;
+  Map<int, List<MaintenanceIssueUpload>> _eventUploads = {};
 
   EntityModel? get _selectedEntity {
     if (_selectedEntityId == null) return null;
@@ -108,6 +114,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     _costController.text =
         order.workOrderDetails?.estimatedCost?.toString() ?? '';
     _hoursController.text = order.workOrderDetails?.hours ?? '';
+    _totalLabourCostController.text = order.totalLabourCost?.toString() ?? '';
     _assigneeId = order.workOrderDetails?.assignee;
     _priority = order.priority ?? WorkOrderPriority.medium;
 
@@ -147,6 +154,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     _endOdometerController.dispose();
     _costController.dispose();
     _hoursController.dispose();
+    _totalLabourCostController.dispose();
     _notesController.dispose();
     _resolutionController.dispose();
     for (final line in _partLines) {
@@ -262,6 +270,23 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       _eventsLoading = false;
       _events = result.data ?? [];
     });
+    _loadEventUploads();
+  }
+
+  Future<void> _loadEventUploads() async {
+    final ids = _events.map((e) => e.id).toList();
+    if (ids.isEmpty) {
+      setState(() => _eventUploads = {});
+      return;
+    }
+    setState(() => _uploadsLoading = true);
+    final result =
+        await MaintenanceService.instance.getMaintenanceIssueUploads(ids);
+    if (!mounted) return;
+    setState(() {
+      _uploadsLoading = false;
+      _eventUploads = result.data ?? {};
+    });
   }
 
   Future<void> _linkEvent(MaintenanceIssueSummary issue) async {
@@ -313,6 +338,16 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       context: context,
       workOrderId: existing.id,
     );
+  }
+
+  Future<void> _pickPendingAttachments() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
+      allowMultiple: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    setState(() => _pendingAttachments.addAll(picked.files));
   }
 
   Future<void> _fetchOdometer() async {
@@ -377,6 +412,12 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   bool get _isCompletedRestrictedEdit =>
       widget.isEdit && _status == WorkOrderStatus.completed;
 
+  /// Entity type id 2 is Trailer (same convention used for PM inspection layout).
+  bool get _isTrailerUnit => (_entityTypeId ?? 1) == 2;
+
+  /// Odometer readings don't apply to trailers or preventive maintenance work.
+  bool get _showOdometerFields => !_isTrailerUnit && !_isPm;
+
   void _onStatusChanged(WorkOrderStatus? next) {
     if (next == null) return;
 
@@ -398,12 +439,19 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       return;
     }
 
+    final wasCompleted = _status == WorkOrderStatus.completed;
     setState(() {
       _status = next;
       _statusFieldGen++;
+      if (next == WorkOrderStatus.completed) {
+        _endDate = DateTime.now();
+      } else if (wasCompleted) {
+        _endDate = null;
+      }
     });
 
     if (next == WorkOrderStatus.completed &&
+        _showOdometerFields &&
         _endOdometerController.text.trim().isEmpty) {
       _fetchEndOdometer();
     }
@@ -443,6 +491,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
           : _endOdometerController.text.trim(),
       odometerDisplayUnit: _odometerUnit.apiValue,
       hours: _hoursController.text.trim(),
+      totalLabourHours: num.tryParse(_hoursController.text.trim()),
+      totalLabourCost: num.tryParse(_totalLabourCostController.text.trim()),
       notes: _notesController.text.trim(),
       resolutionNotes: _resolutionController.text.trim().isEmpty
           ? null
@@ -502,24 +552,53 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     setState(() => _submitting = true);
     final payload = _buildPayload();
 
-    final result = widget.isEdit
-        ? await MaintenanceService.instance.updateWorkOrder(
-            widget.existing!.id,
-            payload,
-          )
-        : await MaintenanceService.instance.createWorkOrder(payload);
+    if (widget.isEdit) {
+      final result = await MaintenanceService.instance.updateWorkOrder(
+        widget.existing!.id,
+        payload,
+      );
+      if (!mounted) return;
+      setState(() => _submitting = false);
+      if (!result.isSuccess) {
+        ApiFeedback.showError(result, fallback: 'Save failed');
+        return;
+      }
+      AppToast.showSuccess('Work order updated');
+      Navigator.of(context).pop(true);
+      return;
+    }
 
+    final result = await MaintenanceService.instance.createWorkOrder(payload);
     if (!mounted) return;
-    setState(() => _submitting = false);
-
     if (!result.isSuccess) {
+      setState(() => _submitting = false);
       ApiFeedback.showError(result, fallback: 'Save failed');
       return;
     }
 
-    AppToast.showSuccess(
-      widget.isEdit ? 'Work order updated' : 'Work order created',
-    );
+    final newId = result.data ?? 0;
+    if (newId > 0 && _pendingAttachments.isNotEmpty) {
+      final paths = _pendingAttachments
+          .map((f) => f.path)
+          .whereType<String>()
+          .toList();
+      if (paths.isNotEmpty) {
+        final uploadResult =
+            await MaintenanceService.instance.uploadWorkOrderAttachments(
+          workOrderId: newId,
+          filePaths: paths,
+        );
+        if (!uploadResult.isSuccess) {
+          AppToast.showError(
+            'Work order created, but attachments failed to upload.',
+          );
+        }
+      }
+    }
+
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    AppToast.showSuccess('Work order created');
     Navigator.of(context).pop(true);
   }
 
@@ -585,12 +664,52 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                           },
                           validator: (v) => v == null ? 'Required' : null,
                         ),
+                        _DropdownField<WorkOrderPriority>(
+                          label: 'Priority *',
+                          value: _priority,
+                          items: WorkOrderPriority.values
+                              .map(
+                                (p) => DropdownMenuItem(
+                                    value: p, child: Text(p.label)),
+                              )
+                              .toList(),
+                          onChanged: (v) =>
+                              setState(() => _priority = v ?? _priority),
+                          enabled: _entityTypeId != null,
+                          disabledHint: _entityTypeId == null
+                              ? 'Select a Unit Type first'
+                              : null,
+                        ),
+                        _DropdownField<bool>(
+                          label: 'Work Order Type *',
+                          value: _isPm,
+                          items: const [
+                            DropdownMenuItem(
+                                value: false, child: Text('Repair')),
+                            DropdownMenuItem(
+                                value: true,
+                                child: Text('Preventive Maintenance')),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _isPm = v ?? _isPm);
+                            if (_isPm && _pmCategories.isEmpty) {
+                              _loadPmChecklist(_entityTypeId ?? 1);
+                            }
+                          },
+                          validator: (v) => v == null ? 'Required' : null,
+                          enabled: _entityTypeId != null,
+                          disabledHint: _entityTypeId == null
+                              ? 'Select a Unit Type first'
+                              : null,
+                        ),
                         if (_selectedEntityId != null) ...[
                           const SizedBox(height: 8),
                           _EventsSection(
                             loading: _eventsLoading,
                             events: _events,
                             linkedIds: _linkedEventIds,
+                            uploads: _eventUploads,
+                            uploadsLoading: _uploadsLoading,
                             onTap: _linkEvent,
                           ),
                         ],
@@ -621,36 +740,21 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                                   .toList(),
                           onChanged: _onStatusChanged,
                         ),
-                        _DropdownField<WorkOrderPriority>(
-                          label: 'Priority *',
-                          value: _priority,
-                          items: WorkOrderPriority.values
+                        _DropdownField<int>(
+                          label: 'Assign To *',
+                          value: _assigneeId,
+                          items: _technicians
                               .map(
-                                (p) => DropdownMenuItem(
-                                    value: p, child: Text(p.label)),
+                                (t) => DropdownMenuItem(
+                                  value: t.userId != 0 ? t.userId : t.id,
+                                  child: Text(t.name),
+                                ),
                               )
                               .toList(),
                           onChanged: (v) =>
-                              setState(() => _priority = v ?? _priority),
+                              setState(() => _assigneeId = v),
+                          validator: (v) => v == null ? 'Required' : null,
                         ),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: SegmentedButton<bool>(
-                            segments: const [
-                              ButtonSegment(
-                                  value: false, label: Text('Repair')),
-                              ButtonSegment(value: true, label: Text('PM')),
-                            ],
-                            selected: {_isPm},
-                            onSelectionChanged: (s) {
-                              setState(() => _isPm = s.first);
-                              if (_isPm && _pmCategories.isEmpty) {
-                                _loadPmChecklist(_entityTypeId ?? 1);
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 10),
                         _DateField(
                           label: 'Start Date *',
                           value: _startDate,
@@ -667,36 +771,57 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                             onPicked: (d) => setState(() => _dueDate = d),
                           ),
                         ),
-                        _OdometerField(
-                          label: 'Start Odometer',
-                          kmController: _odometerController,
-                          unit: _odometerUnit,
-                          onUnitChanged: (u) =>
-                              setState(() => _odometerUnit = u),
-                          onKmChanged: () => setState(() {}),
-                          loading: _fetchingOdometer,
-                          onFetch: _fetchOdometer,
-                        ),
-                        const SizedBox(height: 8),
-                        _OdometerField(
-                          label: 'End Odometer',
-                          kmController: _endOdometerController,
-                          unit: _odometerUnit,
-                          onUnitChanged: (u) =>
-                              setState(() => _odometerUnit = u),
-                          onKmChanged: () => setState(() {}),
-                          enabled: _status == WorkOrderStatus.completed,
-                          disabledHint: 'Available when status is Completed',
-                          loading: _fetchingEndOdometer,
-                          onFetch: _fetchEndOdometer,
-                          errorText: _odometerRangeError,
+                        if (_status == WorkOrderStatus.completed) ...[
+                          _DateField(
+                            label: 'End Date *',
+                            value: _endDate,
+                            enabled: false,
+                            onTap: () {},
+                          ),
+                        ],
+                        if (_showOdometerFields) ...[
+                          _OdometerField(
+                            label: 'Start Odometer',
+                            kmController: _odometerController,
+                            unit: _odometerUnit,
+                            onUnitChanged: (u) =>
+                                setState(() => _odometerUnit = u),
+                            onKmChanged: () => setState(() {}),
+                            loading: _fetchingOdometer,
+                            onFetch: _fetchOdometer,
+                          ),
+                          const SizedBox(height: 8),
+                          _OdometerField(
+                            label: 'End Odometer',
+                            kmController: _endOdometerController,
+                            unit: _odometerUnit,
+                            onUnitChanged: (u) =>
+                                setState(() => _odometerUnit = u),
+                            onKmChanged: () => setState(() {}),
+                            enabled: _status == WorkOrderStatus.completed,
+                            disabledHint: 'Available when status is Completed',
+                            loading: _fetchingEndOdometer,
+                            onFetch: _fetchEndOdometer,
+                            errorText: _odometerRangeError,
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        TextFormField(
+                          controller: _hoursController,
+                          decoration: const InputDecoration(
+                              labelText: 'Total Labour Hours'),
+                          keyboardType: TextInputType.number,
                         ),
                         const SizedBox(height: 8),
                         TextFormField(
-                          controller: _hoursController,
-                          decoration:
-                              const InputDecoration(labelText: 'Total Hours'),
-                          keyboardType: TextInputType.number,
+                          controller: _totalLabourCostController,
+                          decoration: const InputDecoration(
+                            labelText: 'Total Labour Cost',
+                            prefixText: '\$ ',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                         ),
                       ],
                     ),
@@ -764,21 +889,6 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                               ),
                             ),
                           ),
-                        _DropdownField<int>(
-                          label: 'Assign To *',
-                          value: _assigneeId,
-                          items: _technicians
-                              .map(
-                                (t) => DropdownMenuItem(
-                                  value: t.userId != 0 ? t.userId : t.id,
-                                  child: Text(t.name),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (v) =>
-                              setState(() => _assigneeId = v),
-                          validator: (v) => v == null ? 'Required' : null,
-                        ),
                         if (_partLines.isEmpty)
                           Text(
                             'No repair lines yet — tap + to add one',
@@ -877,12 +987,47 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                             icon: const Icon(Icons.upload_rounded),
                             label: const Text('Upload attachment'),
                           ),
-                        ] else
-                          Text(
-                            'Save the work order first, then attach files from its detail screen.',
-                            style:
-                                TextStyle(color: AppColors.textSecondary),
+                        ] else ...[
+                          WebFileUploadZone(
+                            fileName: _pendingAttachments.isEmpty
+                                ? null
+                                : '${_pendingAttachments.length} file'
+                                    '${_pendingAttachments.length > 1 ? 's' : ''} selected',
+                            subtitle:
+                                'Supported formats: Images (JPG, PNG) and PDF',
+                            onBrowse: _pickPendingAttachments,
                           ),
+                          if (_pendingAttachments.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            for (var i = 0; i < _pendingAttachments.length; i++)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.insert_drive_file_outlined,
+                                        size: 18,
+                                        color: AppColors.textSecondary),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _pendingAttachments[i].name,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(Icons.close,
+                                          size: 16,
+                                          color: AppColors.textSecondary),
+                                      onPressed: () => setState(
+                                        () => _pendingAttachments.removeAt(i),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ],
                       ],
                     ),
                     const SizedBox(height: 14),
@@ -1002,27 +1147,17 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
+          spacing: 12,
           children: [
             Row(
               children: [
                 Expanded(
-                  child: DropdownButtonFormField<int>(
-                    decoration: const InputDecoration(labelText: 'Part type'),
-                    initialValue: line.partTypeId,
-                    items: _partTypes
-                        .map(
-                          (t) => DropdownMenuItem(
-                            value: t.id,
-                            child: Text(t.name),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: restricted
-                        ? null
-                        : (v) => setState(() {
-                              line.partTypeId = v;
-                              line.partId = null;
-                            }),
+                  child: TextFormField(
+                    controller: line.descriptionController,
+                    enabled: !restricted,
+                    decoration: const InputDecoration(
+                      labelText: 'Repair description',
+                    ),
                   ),
                 ),
                 IconButton(
@@ -1036,40 +1171,19 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                 ),
               ],
             ),
-            DropdownButtonFormField<int>(
-              decoration: const InputDecoration(labelText: 'Part'),
-              initialValue: line.partId,
-              items: filteredParts
-                  .map(
-                    (p) => DropdownMenuItem(
-                      value: p.id,
-                      child: Text('${p.code} (${p.quantity ?? 0})'),
-                    ),
-                  )
+            DropdownButtonFormField<RepairPerformedBy>(
+              decoration: const InputDecoration(labelText: 'Repaired By *'),
+              initialValue: line.repairPerformedBy,
+              items: RepairPerformedBy.values
+                  .map((p) => DropdownMenuItem(value: p, child: Text(p.label)))
                   .toList(),
-              onChanged:
-                  restricted ? null : (v) => setState(() => line.partId = v),
-            ),
-            TextFormField(
-              controller: line.hoursController,
-              decoration: const InputDecoration(labelText: 'Hours *'),
-              keyboardType: TextInputType.number,
-            ),
-            TextFormField(
-              controller: line.quantityController,
-              enabled: !restricted,
-              decoration: const InputDecoration(labelText: 'Quantity *'),
-              keyboardType: TextInputType.number,
-            ),
-            TextFormField(
-              controller: line.descriptionController,
-              enabled: !restricted,
-              decoration: const InputDecoration(
-                labelText: 'Repair description',
-              ),
+              onChanged: restricted
+                  ? null
+                  : (v) => setState(() =>
+                      line.repairPerformedBy = v ?? line.repairPerformedBy),
             ),
             DropdownButtonFormField<RepairStatus>(
-              decoration: const InputDecoration(labelText: 'Repair status'),
+              decoration: const InputDecoration(labelText: 'Repair Status'),
               initialValue: line.repairStatus,
               items: RepairStatus.values
                   .map((s) => DropdownMenuItem(value: s, child: Text(s.label)))
@@ -1085,8 +1199,12 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                       }),
             ),
             DropdownButtonFormField<int>(
-              decoration:
-                  const InputDecoration(labelText: 'Assigned technician'),
+              decoration: InputDecoration(
+                labelText: line.repairStatus != RepairStatus.deferred &&
+                        line.repairStatus != RepairStatus.notStarted
+                    ? 'Assign To *'
+                    : 'Assign To',
+              ),
               initialValue: _technicians.any(
                 (t) =>
                     (t.userId != 0 ? t.userId : t.id) ==
@@ -1105,30 +1223,16 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
               onChanged: restricted
                   ? null
                   : (v) => setState(() => line.assignedTechnicianId = v),
+              validator: (v) => v == null &&
+                      line.repairStatus != RepairStatus.deferred &&
+                      line.repairStatus != RepairStatus.notStarted
+                  ? 'Required unless repair status is Deferred'
+                  : null,
             ),
-            DropdownButtonFormField<RepairPerformedBy>(
-              decoration: const InputDecoration(labelText: 'Performed by'),
-              initialValue: line.repairPerformedBy,
-              items: RepairPerformedBy.values
-                  .map((p) => DropdownMenuItem(value: p, child: Text(p.label)))
-                  .toList(),
-              onChanged: restricted
-                  ? null
-                  : (v) => setState(() =>
-                      line.repairPerformedBy = v ?? line.repairPerformedBy),
-            ),
-            if (line.repairPerformedBy == RepairPerformedBy.external)
-              TextFormField(
-                controller: line.vendorNameController,
-                enabled: !restricted,
-                decoration: const InputDecoration(labelText: 'Vendor name'),
-              ),
             TextFormField(
               controller: line.repairNotesController,
               decoration: InputDecoration(
-                labelText: deferredMissingNotes
-                    ? 'Repair notes *'
-                    : 'Repair notes',
+                labelText: deferredMissingNotes ? 'Notes *' : 'Notes',
                 helperText: deferredMissingNotes
                     ? 'Required when repair status is Deferred'
                     : null,
@@ -1137,6 +1241,62 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
               maxLines: 2,
               onChanged: (_) => setState(() {}),
             ),
+            DropdownButtonFormField<int>(
+              decoration:
+                  const InputDecoration(labelText: 'Part Type Name *'),
+              initialValue: line.partTypeId,
+              items: _partTypes
+                  .map(
+                    (t) => DropdownMenuItem(
+                      value: t.id,
+                      child: Text(t.name),
+                    ),
+                  )
+                  .toList(),
+              onChanged: restricted
+                  ? null
+                  : (v) => setState(() {
+                        line.partTypeId = v;
+                        line.partId = null;
+                      }),
+            ),
+            DropdownButtonFormField<int>(
+              decoration: const InputDecoration(labelText: 'Part *'),
+              initialValue: line.partId,
+              items: filteredParts
+                  .map(
+                    (p) => DropdownMenuItem(
+                      value: p.id,
+                      child: Text('${p.code} (${p.quantity ?? 0})'),
+                    ),
+                  )
+                  .toList(),
+              onChanged:
+                  restricted ? null : (v) => setState(() => line.partId = v),
+            ),
+            TextFormField(
+              controller: line.hoursController,
+              readOnly: line.repairStatus == RepairStatus.inProgress,
+              decoration: InputDecoration(
+                labelText: 'Hours',
+                helperText: line.repairStatus == RepairStatus.inProgress
+                    ? 'Read-only while repair is in progress'
+                    : null,
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            TextFormField(
+              controller: line.quantityController,
+              enabled: !restricted,
+              decoration: const InputDecoration(labelText: 'Quantity *'),
+              keyboardType: TextInputType.number,
+            ),
+            if (line.repairPerformedBy == RepairPerformedBy.external)
+              TextFormField(
+                controller: line.vendorNameController,
+                enabled: !restricted,
+                decoration: const InputDecoration(labelText: 'Vendor name'),
+              ),
           ],
         ),
       ),
@@ -1149,12 +1309,16 @@ class _EventsSection extends StatelessWidget {
     required this.loading,
     required this.events,
     required this.linkedIds,
+    required this.uploads,
+    required this.uploadsLoading,
     required this.onTap,
   });
 
   final bool loading;
   final List<MaintenanceIssueSummary> events;
   final Set<int> linkedIds;
+  final Map<int, List<MaintenanceIssueUpload>> uploads;
+  final bool uploadsLoading;
   final ValueChanged<MaintenanceIssueSummary> onTap;
 
   @override
@@ -1176,43 +1340,375 @@ class _EventsSection extends StatelessWidget {
           style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 8),
-        for (final e in events)
-          Container(
-            margin: const EdgeInsets.only(bottom: 6),
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: linkedIds.contains(e.id)
-                    ? AppColors.primary
-                    : AppColors.border,
-                width: linkedIds.contains(e.id) ? 1.6 : 1.0,
-              ),
-            ),
-            child: ListTile(
-              dense: true,
-              leading: Icon(
-                e.issueSource.toUpperCase().contains('FAULT')
-                    ? Icons.report_gmailerrorred_outlined
-                    : Icons.assignment_late_outlined,
-                size: 18,
-                color: AppColors.textSecondary,
-              ),
-              title: Text(
-                e.issueName ?? e.issueDescription ?? 'Issue #${e.id}',
-                style: const TextStyle(fontSize: 13),
-              ),
-              subtitle: Text(
-                e.issueSource,
-                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-              ),
-              trailing: linkedIds.contains(e.id)
-                  ? Icon(Icons.check_circle, size: 18, color: AppColors.primary)
-                  : null,
-              onTap: () => onTap(e),
-            ),
-          ),
+        for (final e in events) _EventCard(
+          issue: e,
+          linked: linkedIds.contains(e.id),
+          uploads: uploads[e.id] ?? const [],
+          uploadsLoading: uploadsLoading,
+          onTap: () => onTap(e),
+        ),
       ],
+    );
+  }
+}
+
+class _EventCard extends StatelessWidget {
+  const _EventCard({
+    required this.issue,
+    required this.linked,
+    required this.uploads,
+    required this.uploadsLoading,
+    required this.onTap,
+  });
+
+  final MaintenanceIssueSummary issue;
+  final bool linked;
+  final List<MaintenanceIssueUpload> uploads;
+  final bool uploadsLoading;
+  final VoidCallback onTap;
+
+  static String _formatSource(String source) {
+    switch (source.toUpperCase()) {
+      case 'FAULT_CODE':
+        return 'Fault Code';
+      case 'DVIR':
+        return 'DVIR';
+      case 'GENERAL':
+        return 'General';
+      case 'MANUAL':
+        return 'Manual';
+      default:
+        return source;
+    }
+  }
+
+  static String _formatReportedDate(String? value) {
+    if (value == null || value.isEmpty) return '—';
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null) return value;
+    return DateFormat('MM-dd-yyyy hh:mm a').format(parsed.toLocal());
+  }
+
+  void _openImagePreview(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _ImagePreviewSheet(
+        uploads: uploads,
+        loading: uploadsLoading,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: linked ? AppColors.primary : AppColors.border,
+          width: linked ? 1.6 : 1.0,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    issue.issueSource.toUpperCase().contains('FAULT')
+                        ? Icons.report_gmailerrorred_outlined
+                        : Icons.assignment_late_outlined,
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      issue.issueName ??
+                          issue.defect ??
+                          issue.issueDescription ??
+                          'Issue #${issue.id}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Preview images',
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      Icons.image_outlined,
+                      size: 18,
+                      color: AppColors.textSecondary,
+                    ),
+                    onPressed: () => _openImagePreview(context),
+                  ),
+                  if (linked)
+                    Icon(Icons.check_circle, size: 18, color: AppColors.primary),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  if ((issue.category ?? '').isNotEmpty)
+                    _EventChip(label: 'Category', value: issue.category!),
+                  _EventChip(
+                    label: 'Type',
+                    value: _formatSource(issue.issueSource),
+                  ),
+                  if ((issue.status ?? '').isNotEmpty)
+                    _EventStatusChip(status: issue.status!),
+                  if ((issue.severity ?? '').isNotEmpty)
+                    _EventSeverityChip(severity: issue.severity!),
+                ],
+              ),
+              if ((issue.externalReference ?? '').isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Reference: ${issue.externalReference}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
+              if ((issue.reportedDate ?? '').isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Reported: ${_formatReportedDate(issue.reportedDate)}',
+                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EventChip extends StatelessWidget {
+  const _EventChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.border.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+class _EventStatusChip extends StatelessWidget {
+  const _EventStatusChip({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = status.toLowerCase();
+    Color bg;
+    Color fg;
+    if (normalized.contains('progress')) {
+      bg = const Color(0xFFDBEAFE);
+      fg = const Color(0xFF1D4ED8);
+    } else if (normalized.contains('complete') || normalized.contains('resolved')) {
+      bg = const Color(0xFFDCFCE7);
+      fg = const Color(0xFF15803D);
+    } else if (normalized.contains('not started') || normalized.contains('open')) {
+      bg = const Color(0xFFFEF3C7);
+      fg = const Color(0xFF92400E);
+    } else {
+      bg = const Color(0xFFF1F5F9);
+      fg = const Color(0xFF475569);
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(
+        status,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg),
+      ),
+    );
+  }
+}
+
+class _EventSeverityChip extends StatelessWidget {
+  const _EventSeverityChip({required this.severity});
+
+  final String severity;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = severity.toUpperCase();
+    final milMatch = RegExp(r'MIL:\s*(\d+)').firstMatch(normalized);
+    final milLevel = milMatch != null ? int.tryParse(milMatch.group(1)!) : null;
+
+    Color bg;
+    Color fg;
+    if (normalized.contains('HIGH') || (milLevel != null && milLevel >= 2)) {
+      bg = const Color(0xFFFEE2E2);
+      fg = const Color(0xFFB91C1C);
+    } else if (normalized.contains('MEDIUM') || milLevel == 1) {
+      bg = const Color(0xFFFEF3C7);
+      fg = const Color(0xFF92400E);
+    } else {
+      bg = const Color(0xFFF1F5F9);
+      fg = const Color(0xFF475569);
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(
+        severity,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg),
+      ),
+    );
+  }
+}
+
+class _ImagePreviewSheet extends StatefulWidget {
+  const _ImagePreviewSheet({required this.uploads, required this.loading});
+
+  final List<MaintenanceIssueUpload> uploads;
+  final bool loading;
+
+  @override
+  State<_ImagePreviewSheet> createState() => _ImagePreviewSheetState();
+}
+
+class _ImagePreviewSheetState extends State<_ImagePreviewSheet> {
+  int _selectedIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final images = widget.uploads
+        .where((u) => u.isImage && (u.signedUrl ?? '').isNotEmpty)
+        .toList();
+    final selected =
+        images.isNotEmpty ? images[_selectedIndex.clamp(0, images.length - 1)] : null;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Image preview',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.close, color: AppColors.textSecondary),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            Container(
+              height: 260,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.border, style: BorderStyle.solid),
+              ),
+              child: widget.loading
+                  ? const CircularProgressIndicator()
+                  : selected == null
+                      ? Text(
+                          'No image found',
+                          style: TextStyle(color: AppColors.textSecondary),
+                        )
+                      : ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.network(
+                            selected.signedUrl!,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, _, _) => Text(
+                              'No image found',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
+                          ),
+                        ),
+            ),
+            if (images.length > 1) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 64,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: images.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, i) {
+                    final isSelected = i == _selectedIndex;
+                    return InkWell(
+                      onTap: () => setState(() => _selectedIndex = i),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isSelected
+                                ? AppColors.primary
+                                : Colors.transparent,
+                            width: 2,
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.network(
+                            images[i].signedUrl!,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1280,6 +1776,8 @@ class _DropdownField<T> extends StatelessWidget {
     required this.items,
     required this.onChanged,
     this.validator,
+    this.enabled = true,
+    this.disabledHint,
   });
 
   final String label;
@@ -1287,18 +1785,33 @@ class _DropdownField<T> extends StatelessWidget {
   final List<DropdownMenuItem<T>> items;
   final ValueChanged<T?> onChanged;
   final String? Function(T?)? validator;
+  final bool enabled;
+  final String? disabledHint;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: DropdownButtonFormField<T>(
-        decoration: InputDecoration(labelText: label),
-        initialValue: value,
-        items: items,
-        onChanged: onChanged,
-        validator: validator,
-        menuMaxHeight: 300,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DropdownButtonFormField<T>(
+            decoration: InputDecoration(labelText: label),
+            initialValue: value,
+            items: items,
+            onChanged: enabled ? onChanged : null,
+            validator: validator,
+            menuMaxHeight: 300,
+          ),
+          if (!enabled && disabledHint != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 4),
+              child: Text(
+                disabledHint!,
+                style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1309,11 +1822,13 @@ class _DateField extends StatelessWidget {
     required this.label,
     required this.value,
     required this.onTap,
+    this.enabled = true,
   });
 
   final String label;
   final DateTime? value;
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -1321,19 +1836,27 @@ class _DateField extends StatelessWidget {
         ? DateFormat('MM-dd-yyyy').format(value!)
         : 'Select date';
 
+    final decorator = InputDecorator(
+      decoration: InputDecoration(
+        labelText: label,
+        suffixIcon: Icon(
+          Icons.calendar_month_outlined,
+          color: enabled ? null : AppColors.textSecondary,
+        ),
+        enabled: enabled,
+      ),
+      child: Text(text),
+    );
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: InputDecorator(
-          decoration: InputDecoration(
-            labelText: label,
-            suffixIcon: const Icon(Icons.calendar_month_outlined),
-          ),
-          child: Text(text),
-        ),
-      ),
+      child: enabled
+          ? InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(12),
+              child: decorator,
+            )
+          : decorator,
     );
   }
 }

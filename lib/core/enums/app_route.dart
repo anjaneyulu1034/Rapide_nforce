@@ -12,6 +12,8 @@ enum AppRoute {
   requests,
   approvals,
   profile,
+  drivers,
+  dvir,
 }
 
 extension AppRouteX on AppRoute {
@@ -43,6 +45,10 @@ extension AppRouteX on AppRoute {
         return 'Approvals';
       case AppRoute.profile:
         return 'Profile';
+      case AppRoute.drivers:
+        return 'Drivers';
+      case AppRoute.dvir:
+        return 'DVIR';
     }
   }
 }
@@ -50,8 +56,10 @@ extension AppRouteX on AppRoute {
 const List<AppRoute> kDrawerRoutes = [
   AppRoute.dashboard,
   AppRoute.carriers,
+  AppRoute.drivers,
   AppRoute.powerUnit,
   AppRoute.myTrailers,
+  AppRoute.dvir,
   AppRoute.maintenance,
   AppRoute.inventory,
   AppRoute.logs,

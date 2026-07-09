@@ -132,7 +132,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 32),
           WebSectionCard(
             title: 'Recent Work Orders',
             child: data.recentWorkOrders.isEmpty
@@ -149,7 +149,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         .toList(),
                   ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 32),
           WebSectionCard(
             title: 'Inventory Usage Status',
             child: data.inventoryItems.isEmpty
@@ -165,6 +165,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         data.inventoryItems.map(_InventoryTile.new).toList(),
                   ),
           ),
+          const SizedBox(height: 56),
         ]),
       ),
     );

@@ -27,6 +27,7 @@ dependencies:
   printing: ^5.13.4
   signature: ^5.5.0
   image_picker: ^1.2.3
+  cunning_document_scanner: ^2.5.0
 
 dev_dependencies:
   flutter_test:

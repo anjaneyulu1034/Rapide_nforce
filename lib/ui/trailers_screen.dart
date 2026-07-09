@@ -134,7 +134,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
                         children: [
                           Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.category,
                                 size: 12,
                                 color: AppColors.primary,
@@ -172,7 +172,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
                         children: [
                           Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.credit_card,
                                 size: 12,
                                 color: AppColors.primary,
@@ -214,7 +214,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
                         children: [
                           Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.fingerprint,
                                 size: 12,
                                 color: AppColors.primary,
@@ -252,7 +252,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
                         children: [
                           Row(
                             children: [
-                              const Icon(
+                              Icon(
                                 Icons.event_busy,
                                 size: 12,
                                 color: AppColors.primary,

@@ -1,3 +1,4 @@
+import 'package:cunning_document_scanner/cunning_document_scanner.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
@@ -10,6 +11,7 @@ import 'package:rapide_nforce/models/power_unit_model.dart';
 import 'package:rapide_nforce/models/truck_permit_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/fleet_lookup_service.dart';
+import 'package:rapide_nforce/services/ocr_service.dart';
 import 'package:rapide_nforce/services/power_unit_service.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
@@ -54,7 +56,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   final _ownerPhone = TextEditingController();
   final _ownerAddress = TextEditingController();
   String _status = 'active';
-  String? _assignedDriver;
+  final _assignedDriver = TextEditingController();
   String? _fuelType;
   int? _countryId;
   int? _stateId;
@@ -103,7 +105,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   List<LookupOption> _fuelTypes = [];
   List<LookupOption> _policies = [];
   List<LookupOption> _permitTypes = [];
-  List<LookupOption> _drivers = [];
 
   bool get _isSuperAdmin =>
       isSuperAdminRole(AuthService.instance.currentUser?.role);
@@ -121,7 +122,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       FleetLookupService.instance.fetchFuelTypes(),
       FleetLookupService.instance.fetchMaintenancePolicies(),
       FleetLookupService.instance.fetchPermitTypes(),
-      FleetLookupService.instance.fetchDrivers(),
     ]);
     if (widget.isEdit) {
       final unit = await PowerUnitService.instance.fetchPowerUnitById(
@@ -139,7 +139,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       _fuelTypes = lookups[1].data ?? [];
       _policies = lookups[2].data ?? [];
       _permitTypes = lookups[3].data ?? [];
-      _drivers = lookups[4].data ?? [];
     });
     if (_countryId != null) await _loadStates(_countryId!);
     if (_stateId != null) await _loadCities(_stateId!);
@@ -172,7 +171,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _purchasePrice.text = u.purchasePrice?.toString() ?? '';
     _startDate.text = u.startDate ?? '';
     _status = u.isActive ? 'active' : 'inactive';
-    _assignedDriver = u.assignedDriver;
+    _assignedDriver.text = u.assignedDriver ?? '';
     _plate.text = u.licensePlate ?? '';
     _countryId = u.countryId;
     _stateId = null;
@@ -265,6 +264,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       _ownerEmail,
       _ownerPhone,
       _ownerAddress,
+      _assignedDriver,
       _maintenancePolicy,
       _cviExpiry,
       _currentOdometer,
@@ -387,8 +387,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       'purchasePrice': double.tryParse(_purchasePrice.text.trim()),
       'startDate': _startDate.text.trim(),
       'status': _status,
-      if (_assignedDriver != null && _assignedDriver!.isNotEmpty)
-        'assignedDriver': _assignedDriver,
+      if (_assignedDriver.text.trim().isNotEmpty)
+        'assignedDriver': _assignedDriver.text.trim(),
       'plateNumber': _plate.text.trim(),
       'plateProvince':
           _states
@@ -479,9 +479,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       final picker = ImagePicker();
       final XFile? photo = await picker.pickImage(source: ImageSource.camera);
       if (photo == null) return;
-      setState(() {
-        _browseFileName = photo.name;
-      });
+      await _runOcrScan(photo.path, photo.name);
     } catch (e) {
       AppToast.showError('Failed to capture image: $e');
     }
@@ -492,56 +490,139 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       type: FileType.custom,
       allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
     );
-    if (picked != null && picked.files.isNotEmpty) {
-      setState(() {
-        _browseFileName = picked.files.first.name;
-      });
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.first;
+    if (file.path == null) {
+      // No filesystem path available (e.g. some web/desktop pickers) — keep
+      // the file attached but skip OCR, which needs a real path to upload.
+      setState(() => _browseFileName = file.name);
+      return;
     }
+    await _runOcrScan(file.path!, file.name);
   }
 
   Future<void> _scanDocument() async {
     try {
-      final picker = ImagePicker();
-      final XFile? photo = await picker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
+      final pages = await CunningDocumentScanner.getPictures(
+        noOfPages: 1,
+        scannerSource: ScannerSource.camera,
       );
-      if (photo == null) return;
-
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => const AlertDialog(
-          backgroundColor: Colors.black87,
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircularProgressIndicator(color: Colors.white),
-              SizedBox(height: 16),
-              Text(
-                'Scanning document...',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-
-      await Future.delayed(const Duration(seconds: 1));
-      if (!mounted) return;
-      Navigator.pop(context);
-
-      setState(() {
-        _browseFileName = 'Scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      });
-      AppToast.showSuccess('Document scanned successfully');
+      if (pages == null || pages.isEmpty) return;
+      final path = pages.first;
+      await _runOcrScan(path, path.split('/').last);
     } catch (e) {
-      if (mounted) Navigator.pop(context);
       AppToast.showError('Failed to scan document: $e');
+    }
+  }
+
+  /// Uploads the picked/captured file, runs it through the real OCR
+  /// pipeline (same `/documents` + `/ocr/ocr-results` flow the web app
+  /// uses), and auto-fills blank form fields from whatever gets extracted.
+  Future<void> _runOcrScan(String filePath, String fileName) async {
+    setState(() => _browseFileName = fileName);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const AlertDialog(
+        backgroundColor: Colors.black87,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 16),
+            Text(
+              'Extracting information…',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final prefill = await OcrService.instance.scanAndExtract(
+      filePath: filePath,
+      fileName: fileName,
+      companyId: AuthService.instance.selectedCompanyId,
+    );
+
+    if (!mounted) return;
+    Navigator.pop(context);
+
+    if (prefill == null) {
+      AppToast.showError(
+        'No data could be extracted — you can still fill the form manually',
+      );
+      return;
+    }
+    _applyOcrPrefill(prefill);
+    AppToast.showSuccess('Document scanned — fields auto-filled');
+  }
+
+  /// Fills blank controllers only — never clobbers what the user already
+  /// typed, mirroring the web's `flat.x || prev.x` prefill merge.
+  void _applyOcrPrefill(TruckOcrPrefill prefill) {
+    void fill(TextEditingController ctrl, String? value) {
+      if (ctrl.text.trim().isEmpty && value != null && value.isNotEmpty) {
+        ctrl.text = value;
+      }
+    }
+
+    void fillDate(TextEditingController ctrl, String? value) {
+      if (ctrl.text.trim().isEmpty && value != null && value.isNotEmpty) {
+        ctrl.text = OcrService.normalizeDate(value);
+      }
+    }
+
+    setState(() {
+      fill(_vin, prefill['vin']);
+      fill(_make, prefill['make']);
+      fill(_model, prefill['model']);
+      fill(_year, prefill['year']);
+      fill(_color, prefill['color']);
+      fill(_plate, prefill['plateNumber']);
+      fill(_registrationNumber, prefill['registrationNumber']);
+      fillDate(_registrationExpiry, prefill['registrationExpiry']);
+      fill(_gvwr, prefill['gvwr']);
+      fill(_transmission, prefill['transmission']);
+      fill(_engineMake, prefill['engineMake']);
+      fill(_engineModel, prefill['engineModel']);
+      fillDate(_purchaseDate, prefill['purchaseDate']);
+      fill(_certificateNumber, prefill['certificateNumber']);
+      fillDate(_inspectionDate, prefill['inspectionDate']);
+      fillDate(_expiryDate, prefill['expiryDate']);
+      fill(_inspectorName, prefill['inspectorName']);
+      fill(_inspectorLicense, prefill['inspectorLicense']);
+      fill(_inspectionFacility, prefill['inspectionFacility']);
+      fill(_facilityNumber, prefill['facilityNumber']);
+      fill(_ownerName, prefill['ownerName']);
+      fill(_ownerEmail, prefill['ownerEmail']);
+      fill(_ownerPhone, prefill['ownerPhone']);
+      fill(_ownerAddress, prefill['ownerAddress']);
+      fill(_imsNumber, prefill['imsNumber']);
+      fill(_currentOdometer, prefill['odometer']);
+      fill(_safetyVehicleType, prefill['vehicleType']);
+
+      final extractedFuelType = prefill['fuelType'];
+      if ((_fuelType == null || _fuelType!.isEmpty) && extractedFuelType != null) {
+        final match = _fuelTypes.where(
+          (f) => f.name.toLowerCase() == extractedFuelType.toLowerCase(),
+        );
+        if (match.isNotEmpty) _fuelType = match.first.name;
+      }
+    });
+
+    // Plate province → match against the already-loaded states list, same
+    // pattern used for edit-mode state matching in _bootstrap().
+    final province = prefill['plateProvince'];
+    if (province != null && _stateId == null && _states.isNotEmpty) {
+      final match = _states.where(
+        (s) => s.name.toLowerCase() == province.toLowerCase(),
+      );
+      if (match.isNotEmpty) {
+        setState(() => _stateId = match.first.id);
+        _loadCities(_stateId!);
+      }
     }
   }
 
@@ -746,12 +827,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           itemLabel: (v) => v == 'active' ? 'Active' : 'Inactive',
           onChanged: (v) => setState(() => _status = v ?? 'active'),
         ),
-        WebDropdownField<String>(
+        WebTextFormField(
+          controller: _assignedDriver,
           label: 'Assigned Driver',
-          value: _assignedDriver,
-          items: _drivers.map((d) => d.name).toList(),
-          itemLabel: (v) => v,
-          onChanged: (v) => setState(() => _assignedDriver = v),
         ),
       ],
     ),

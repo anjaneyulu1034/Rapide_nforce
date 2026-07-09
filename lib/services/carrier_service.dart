@@ -3,6 +3,7 @@ import 'package:rapide_nforce/core/models/api_result.dart';
 import 'package:rapide_nforce/core/models/paginated_result.dart';
 import 'package:rapide_nforce/core/utils/api_parse.dart';
 import 'package:rapide_nforce/models/carrier_model.dart';
+import 'package:rapide_nforce/models/document_model.dart';
 import 'package:rapide_nforce/services/api_client.dart';
 import 'package:http/http.dart' as http;
 
@@ -227,6 +228,100 @@ class CarrierService {
       return ApiResult.fail(e.message, statusCode: e.statusCode);
     } catch (_) {
       return ApiResult.fail('Failed to load billing cycles.');
+    }
+  }
+
+  Future<ApiResult<CarrierComplianceData>> fetchCarrierCompliance(int companyId) async {
+    try {
+      final body = await _api.parseJson(
+        () => _api.get(
+          '/carrier-fileuploads',
+          params: {'companyId': companyId.toString()},
+        ),
+        onSuccess: (b) => b,
+      );
+
+      final items = ApiParse.listItems(body)
+          .map(DocumentModel.fromJson)
+          .toList();
+
+      final dataMap = ApiParse.asMap(body) ?? {};
+      final summary = ApiParse.asMap(dataMap['summary']) ?? {};
+
+      final data = CarrierComplianceData(
+        documents: items,
+        totalDocuments: summary['totalDocuments'] as int? ?? items.length,
+        validDocuments: summary['validDocuments'] as int? ?? 0,
+        expiringDocuments: summary['expiringDocuments'] as int? ?? 0,
+        expiredDocuments: summary['expiredDocuments'] as int? ?? 0,
+      );
+
+      return ApiResult.ok(data);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to load carrier compliance.');
+    }
+  }
+
+  Future<ApiResult<void>> uploadCarrierDocument({
+    required int companyId,
+    required String filePath,
+    required String fileName,
+    required String documentCategory,
+    required String documentType,
+    String? documentNumber,
+    required String issueDate,
+    String? expiryDate,
+    String? notes,
+  }) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('dummy'))
+        ..fields['companyId'] = companyId.toString()
+        ..fields['documentCategory'] = documentCategory
+        ..fields['documentType'] = documentType
+        ..fields['issueDate'] = issueDate;
+
+      if (documentNumber != null) request.fields['documentNumber'] = documentNumber;
+      if (expiryDate != null) request.fields['expiryDate'] = expiryDate;
+      if (notes != null) request.fields['notes'] = notes;
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'file',
+          filePath,
+          filename: fileName,
+        ),
+      );
+
+      await _api.parseJson(
+        () => _api.postMultipart('/carrier-fileuploads', request),
+        onSuccess: (b) => b,
+      );
+      return ApiResult.ok(null);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to upload compliance document.');
+    }
+  }
+
+  Future<ApiResult<String>> getDownloadUrl(int id) async {
+    try {
+      final body = await _api.parseJson(
+        () => _api.get(
+          '/carrier-fileuploads/$id/download',
+          params: {'mode': 'preview'},
+        ),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.unwrapData(body);
+      final map = ApiParse.asMap(data);
+      return ApiResult.ok(map?['presignedUrl'] as String? ?? '');
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to get download URL.');
     }
   }
 }

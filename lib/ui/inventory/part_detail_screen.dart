@@ -13,10 +13,12 @@ class PartTypeDetailScreen extends StatelessWidget {
     super.key,
     required this.partType,
     this.onChanged,
+    this.canDelete = true,
   });
 
   final PartTypeModel partType;
   final VoidCallback? onChanged;
+  final bool canDelete;
 
   Future<void> _delete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
@@ -71,10 +73,11 @@ class PartTypeDetailScreen extends StatelessWidget {
               }
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: AppColors.danger),
-            onPressed: () => _delete(context),
-          ),
+          if (canDelete)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+              onPressed: () => _delete(context),
+            ),
         ],
       ),
       body: WebPageBody(
@@ -104,10 +107,16 @@ class PartTypeDetailScreen extends StatelessWidget {
 }
 
 class PartDetailScreen extends StatelessWidget {
-  const PartDetailScreen({super.key, required this.part, this.onChanged});
+  const PartDetailScreen({
+    super.key,
+    required this.part,
+    this.onChanged,
+    this.canDelete = true,
+  });
 
   final PartModel part;
   final VoidCallback? onChanged;
+  final bool canDelete;
 
   Future<void> _delete(BuildContext context) async {
     if (part.isUsedInWorkOrder) {
@@ -148,15 +157,15 @@ class PartDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final canEdit = !part.isProtected;
-    final canDelete = canEdit && !part.isUsedInWorkOrder;
+    final showEdit = !part.isProtected;
+    final showDelete = canDelete && showEdit && !part.isUsedInWorkOrder;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
         title: Text(part.code),
         actions: [
-          if (canEdit)
+          if (showEdit)
             IconButton(
               icon: const Icon(Icons.edit_outlined),
               onPressed: () async {
@@ -169,7 +178,7 @@ class PartDetailScreen extends StatelessWidget {
                 }
               },
             ),
-          if (canDelete)
+          if (showDelete)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: AppColors.danger),
               onPressed: () => _delete(context),
@@ -191,7 +200,7 @@ class PartDetailScreen extends StatelessWidget {
                     color: AppColors.primary.withValues(alpha: 0.2),
                   ),
                 ),
-                child: const Text(
+                child: Text(
                   'System part — view only (None / Shop Supplies)',
                   style: TextStyle(
                     color: AppColors.primary,

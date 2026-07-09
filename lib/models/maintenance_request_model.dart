@@ -42,7 +42,7 @@ class MaintenanceRequestModel {
     if (createdOn == null || createdOn!.isEmpty) return '—';
     final parsed = DateTime.tryParse(createdOn!);
     if (parsed == null) return createdOn!;
-    return DateFormat('MMM d, yyyy').format(parsed.toLocal());
+    return DateFormat('MMM d, yyyy').format(parsed);
   }
 
   RequestApprovalStatus get approvalStatusEnum =>

@@ -11,6 +11,8 @@ class TruckDocumentModel {
     this.location,
     this.issueDate,
     this.expiryDate,
+    this.issueDateIso,
+    this.expiryDateIso,
     this.documentNumber,
     this.notes,
     this.updatedOn,
@@ -27,6 +29,9 @@ class TruckDocumentModel {
   final String? location;
   final String? issueDate;
   final String? expiryDate;
+  /// Raw (unformatted) ISO dates — used to prefill editable date fields.
+  final String? issueDateIso;
+  final String? expiryDateIso;
   final String? documentNumber;
   final String? notes;
   final String? updatedOn;
@@ -34,6 +39,9 @@ class TruckDocumentModel {
   final String? fileUrl;
 
   factory TruckDocumentModel.fromJson(Map<String, dynamic> json) {
+    final issueRaw = json['issueDate'] as String? ?? json['issue_date'] as String?;
+    final expiryRaw =
+        json['expiryDate'] as String? ?? json['expiry_date'] as String?;
     return TruckDocumentModel(
       id: json['id'] as int? ?? 0,
       truckId: json['truckId'] as int? ?? json['truck_id'] as int? ?? 0,
@@ -47,12 +55,10 @@ class TruckDocumentModel {
       documentCategory: json['documentCategory'] as String? ??
           json['document_category'] as String?,
       location: json['location'] as String?,
-      issueDate: _formatDate(
-        json['issueDate'] as String? ?? json['issue_date'] as String?,
-      ),
-      expiryDate: _formatDate(
-        json['expiryDate'] as String? ?? json['expiry_date'] as String?,
-      ),
+      issueDate: _formatDate(issueRaw),
+      expiryDate: _formatDate(expiryRaw),
+      issueDateIso: _isoDate(issueRaw),
+      expiryDateIso: _isoDate(expiryRaw),
       documentNumber: json['documentNumber'] as String? ??
           json['document_number'] as String?,
       notes: json['notes'] as String?,
@@ -68,6 +74,13 @@ class TruckDocumentModel {
     if (iso == null || iso.isEmpty) return null;
     final parsed = DateTime.tryParse(iso);
     if (parsed == null) return iso;
-    return DateFormat('d MMM yyyy').format(parsed.toLocal());
+    return DateFormat('d MMM yyyy').format(parsed);
+  }
+
+  static String? _isoDate(String? iso) {
+    if (iso == null || iso.isEmpty) return null;
+    final parsed = DateTime.tryParse(iso);
+    if (parsed == null) return null;
+    return DateFormat('yyyy-MM-dd').format(parsed);
   }
 }

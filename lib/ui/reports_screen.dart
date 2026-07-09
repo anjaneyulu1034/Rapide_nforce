@@ -144,7 +144,7 @@ class _ReportCard extends StatelessWidget {
                       const SizedBox(height: 6),
                       Text(
                         report.category,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           color: AppColors.primary,
                           fontWeight: FontWeight.w600,

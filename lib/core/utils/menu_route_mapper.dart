@@ -16,6 +16,7 @@ class MenuRouteMapper {
         return AppRoute.dashboard;
       case '/carriers':
       case '/carrier-management':
+      case '/compliance':
         return AppRoute.carriers;
       case '/powerunit':
       case '/trucks':
@@ -37,9 +38,14 @@ class MenuRouteMapper {
       case '/maintenance/logs':
         return AppRoute.logs;
       case '/documents':
+        return AppRoute.documents;
       case '/dvir-reports':
       case '/dvir':
-        return AppRoute.documents;
+        return AppRoute.dvir;
+      case '/drivers':
+        return AppRoute.drivers;
+      case '/consent-document-approvals':
+        return AppRoute.approvals;
       case '/reports':
       case '/reports/ocr-audit-logs':
         return AppRoute.reports;

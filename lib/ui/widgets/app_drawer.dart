@@ -68,7 +68,8 @@ class _AppDrawerState extends State<AppDrawer> {
       return widget.currentRoute == AppRoute.maintenance ||
           widget.currentRoute == AppRoute.inventory ||
           widget.currentRoute == AppRoute.logs ||
-          widget.currentRoute == AppRoute.faultCodes;
+          widget.currentRoute == AppRoute.faultCodes ||
+          widget.currentRoute == AppRoute.dvir;
     }
     return false;
   }
@@ -197,6 +198,7 @@ class _AppDrawerState extends State<AppDrawer> {
     return const [
       NavMenuItem(id: 'dashboard', label: 'Dashboard', path: '/dashboard'),
       NavMenuItem(id: 'carriers', label: 'Carrier', path: '/carriers'),
+      NavMenuItem(id: 'drivers', label: 'Drivers', path: '/drivers'),
       NavMenuItem(id: 'powerunit', label: 'Power Unit', path: '/powerunit'),
       NavMenuItem(id: 'trailers', label: 'My Trailers', path: '/trailers'),
       NavMenuItem(
@@ -386,6 +388,10 @@ class _DrawerTile extends StatelessWidget {
         return Icons.check_circle_outline;
       case AppRoute.profile:
         return Icons.settings_outlined;
+      case AppRoute.drivers:
+        return Icons.people_outline;
+      case AppRoute.dvir:
+        return Icons.description_outlined;
     }
   }
 

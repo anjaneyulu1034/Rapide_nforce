@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
@@ -6,6 +9,7 @@ import 'package:rapide_nforce/models/truck_document_model.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/maintenance_service.dart';
+import 'package:rapide_nforce/services/permission_service.dart';
 import 'package:rapide_nforce/services/power_unit_service.dart';
 import 'package:rapide_nforce/ui/power_unit/power_unit_summary_cards.dart';
 import 'package:rapide_nforce/ui/power_unit/power_unit_upload_document_sheet.dart';
@@ -713,237 +717,870 @@ class _ComplianceTab extends StatefulWidget {
 }
 
 class _ComplianceTabState extends State<_ComplianceTab> {
-  final _searchCtrl = TextEditingController();
-  String _search = '';
-  String? _filterStatus;
-  int _page = 0;
-  static const _pageSize = 10;
+  bool _generatingQr = false;
 
-  @override
-  void dispose() {
-    _searchCtrl.dispose();
-    super.dispose();
-  }
+  static const List<String> _requiredDocTypes = [
+    'Vehicle Registration',
+    'Annual Safety / CVIP',
+    'Proof of Insurance',
+    'Operating Authority (Copy)',
+    'Maintenance Records',
+    'IFTA Permit',
+    'KYU Permit',
+    'NY HUT Permit',
+    'NM Weight-Distance',
+    'DTOPS Permit',
+  ];
+
+  static const List<String> _categoryOrder = [
+    'Vehicle-Specific Documents',
+    'Carrier Authority Documents',
+    'Permits',
+    'Lease & Ownership Documents',
+  ];
 
   static String _docStatus(TruckDocumentModel d) {
+    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
+    if (expiry != null) {
+      final daysLeft = expiry.difference(DateTime.now()).inDays;
+      if (daysLeft < 0) return 'expired';
+      if (daysLeft <= 30) return 'expiring';
+      return 'active';
+    }
     final s = (d.statusLabel ?? '').toLowerCase();
     if (s == 'expired') return 'expired';
     if (s.contains('expir')) return 'expiring';
     return 'active';
   }
 
-  int _count(String status) =>
-      widget.documents.where((d) => _docStatus(d) == status).length;
+  /// Flexible document-type matcher — ported from the web app's
+  /// `matchesDocType`, used only for the Roadside Readiness checklist (the
+  /// Missing stat tile above uses an exact match, same as web).
+  static bool _matchesDocType(String docType, String requiredType) {
+    if (docType.isEmpty || requiredType.isEmpty) return false;
+    final docLower = docType.toLowerCase().trim();
+    final reqLower = requiredType.toLowerCase().trim();
+    if (docLower == reqLower) return true;
 
-  List<TruckDocumentModel> get _filtered {
-    var list = widget.documents;
-    if (_filterStatus != null) {
-      list = list.where((d) => _docStatus(d) == _filterStatus).toList();
+    if (reqLower.contains('vehicle registration')) {
+      return docLower.contains('registration') ||
+          docLower.contains('vehicle reg');
     }
-    if (_search.isNotEmpty) {
-      final q = _search.toLowerCase();
-      list = list
-          .where(
-            (d) =>
-                (d.documentType ?? d.fileName).toLowerCase().contains(q) ||
-                (d.documentNumber ?? '').toLowerCase().contains(q) ||
-                (d.documentCategory ?? '').toLowerCase().contains(q),
-          )
-          .toList();
+    if (reqLower.contains('annual safety / cvip') ||
+        reqLower.contains('annual safety inspection')) {
+      return docLower.contains('annual safety') ||
+          docLower.contains('safety certificate') ||
+          docLower.contains('cvip') ||
+          docLower.contains('asc') ||
+          docLower.contains('annual inspection') ||
+          docLower.contains('safety inspection') ||
+          docLower.contains('safety cert');
     }
-    return list;
+    if (reqLower.contains('proof of insurance')) {
+      return docLower.contains('insurance') ||
+          docLower.contains('coi') ||
+          docLower.contains('certificate of insurance');
+    }
+    if (reqLower.contains('operating authority')) {
+      return docLower.contains('operating authority') ||
+          (docLower.contains('authority') && !docLower.contains('power')) ||
+          docLower.contains('operating auth');
+    }
+    if (reqLower.contains('maintenance records')) {
+      return docLower.contains('maintenance') &&
+          (docLower.contains('record') || docLower.contains('records'));
+    }
+    if (reqLower.contains('ifta permit')) return docLower.contains('ifta');
+    if (reqLower.contains('kyu permit')) return docLower.contains('kyu');
+    if (reqLower.contains('ny hut permit')) {
+      return docLower.contains('ny hut') ||
+          (docLower.contains('hut') && docLower.contains('ny'));
+    }
+    if (reqLower.contains('nm weight-distance') ||
+        reqLower.contains('nm weight')) {
+      return docLower.contains('nm weight') ||
+          docLower.contains('weight-distance') ||
+          docLower.contains('new mexico') ||
+          (docLower.contains('weight') && docLower.contains('distance'));
+    }
+    if (reqLower.contains('dtops permit')) return docLower.contains('dtops');
+    return false;
   }
 
-  List<TruckDocumentModel> get _currentPage {
-    final list = _filtered;
-    final start = _page * _pageSize;
-    if (start >= list.length) return [];
-    return list.sublist(start, (start + _pageSize).clamp(0, list.length));
+  List<TruckDocumentModel> _categoryDocs(String category) {
+    final normalized = category.trim().toLowerCase();
+    return widget.documents
+        .where(
+          (d) => (d.documentCategory ?? '').trim().toLowerCase() == normalized,
+        )
+        .toList();
   }
 
-  int get _totalPages =>
-      _filtered.isEmpty ? 1 : ((_filtered.length - 1) ~/ _pageSize) + 1;
+  Future<void> _generateQrCode() async {
+    setState(() => _generatingQr = true);
+    final result = await PowerUnitService.instance.generateQrCode(
+      widget.unit.id,
+    );
+    if (!mounted) return;
+    setState(() => _generatingQr = false);
+    if (!result.isSuccess || result.data == null) {
+      ApiFeedback.showError(result, fallback: 'Failed to generate QR code');
+      return;
+    }
+
+    Uint8List? bytes;
+    try {
+      final dataUrl = result.data!.qrCodeDataUrl;
+      final base64Part = dataUrl.contains(',')
+          ? dataUrl.split(',').last
+          : dataUrl;
+      bytes = base64Decode(base64Part);
+    } catch (_) {}
+
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _QrCodeSheet(
+        imageBytes: bytes,
+        unitNumber: widget.unit.unitNumber,
+        onDownloadPacket: () =>
+            DocumentDownloadService.instance.downloadPdfPacket(
+              context: context,
+              truckId: widget.unit.id,
+              scope: 'compliance',
+              hasDocuments: widget.documents.isNotEmpty,
+            ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final active = _count('active');
-    final expiring = _count('expiring');
-    final expired = _count('expired');
-    final filtered = _filtered;
-    final page = _currentPage;
-    final start = filtered.isEmpty ? 0 : _page * _pageSize + 1;
-    final end = _page * _pageSize + page.length;
+    final docs = widget.documents;
+    int currentCount = 0;
+    int expiringCount = 0;
+    for (final d in docs) {
+      final s = _docStatus(d);
+      if (s == 'active') {
+        currentCount++;
+      } else if (s == 'expiring') {
+        expiringCount++;
+      }
+    }
+    final uploadedTypes = docs
+        .map((d) => d.documentType)
+        .whereType<String>()
+        .toList();
+    final missingCount = _requiredDocTypes
+        .where((t) => !uploadedTypes.contains(t))
+        .length;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       children: [
-        // Header
-        Row(
+        if (widget.loading) const Center(child: CircularProgressIndicator()),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Compliance history',
+              'Vehicle Compliance Binder — ${widget.unit.unitNumber}',
               style: TextStyle(
                 fontWeight: FontWeight.w700,
-                fontSize: 20,
+                fontSize: 18,
                 color: AppColors.textPrimary,
               ),
             ),
-            const SizedBox(width: 8),
-            Text(
-              '${filtered.length}',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 20,
-                color: AppColors.textSecondary,
+            const SizedBox(height: 4),
+            // Text(
+            //   'Required documents for roadside inspections and vehicle compliance',
+            //   style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            // ),
+            const SizedBox(height: 10),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _BlackButton(
+                  label: 'Download Roadside Packet',
+                  icon: Icons.download_outlined,
+                  onPressed: () =>
+                      DocumentDownloadService.instance.downloadPdfPacket(
+                        context: context,
+                        truckId: widget.unit.id,
+                        scope: 'compliance',
+                        hasDocuments: widget.documents.isNotEmpty,
+                      ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _BinderMetricTile(
+                label: 'Total Documents',
+                value: docs.length,
+                icon: Icons.description_outlined,
+                iconColor: const Color(0xFF374151),
+                iconBg: const Color(0xFFF3F4F6),
               ),
             ),
-            const Spacer(),
-            _BlackButton(
-              label: 'PDF',
-              icon: Icons.picture_as_pdf_outlined,
+            const SizedBox(width: 12),
+            Expanded(
+              child: _BinderMetricTile(
+                label: 'Current',
+                value: currentCount,
+                icon: Icons.check_circle_outline,
+                iconColor: const Color(0xFF16A34A),
+                iconBg: const Color(0xFFDCFCE7),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _BinderMetricTile(
+                label: 'Expiring Soon',
+                value: expiringCount,
+                icon: Icons.access_time_outlined,
+                iconColor: const Color(0xFFEA580C),
+                iconBg: const Color(0xFFFFEDD5),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _BinderMetricTile(
+                label: 'Missing',
+                value: missingCount,
+                icon: Icons.error_outline,
+                iconColor: const Color(0xFFDC2626),
+                iconBg: const Color(0xFFFEE2E2),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        for (final category in _categoryOrder) _buildCategorySection(category),
+        _buildReadinessSection(),
+      ],
+    );
+  }
+
+  Widget _buildCategorySection(String category) {
+    final isPermits = category == 'Permits';
+    final categoryDocs = _categoryDocs(category);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (isPermits) ...[
+                      const Icon(
+                        Icons.folder_outlined,
+                        size: 18,
+                        color: Color(0xFFB45309),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                    Expanded(
+                      child: Text(
+                        category,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (category == 'Vehicle-Specific Documents')
+                      _CategoryBadge(
+                        label: 'Must be with truck',
+                        color: const Color(0xFF7C3AED),
+                        bg: const Color(0xFFF3E8FF),
+                      ),
+                    if (isPermits)
+                      _CategoryBadge(
+                        label: 'Jurisdiction Required',
+                        color: const Color(0xFFB45309),
+                        bg: const Color(0xFFFFF3E0),
+                      ),
+                  ],
+                ),
+                if (isPermits) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'State and jurisdiction-specific permits required for '
+                    'this unit to operate in certain territories.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Divider(height: 1, color: AppColors.border),
+          Padding(
+            padding: const EdgeInsets.all(14),
+            child: categoryDocs.isEmpty
+                ? Text(
+                    isPermits
+                        ? 'No permits in this category yet.'
+                        : 'No documents in this category yet.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                  )
+                : Column(
+                    children: categoryDocs
+                        .map((d) => _BinderDocCard(doc: d, isPermit: isPermits))
+                        .toList(),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadinessSection() {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE9D5FF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Roadside Inspection Readiness',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Required Documents Checklist',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (final type in _requiredDocTypes) _readinessRow(type),
+          const SizedBox(height: 18),
+          Text(
+            'Digital Roadside Packet',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          // Text(
+          //   'Generate a complete digital packet with all required documents '
+          //   'for roadside inspections.',
+          //   style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          // ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
               onPressed: () =>
                   DocumentDownloadService.instance.downloadPdfPacket(
                     context: context,
                     truckId: widget.unit.id,
                     scope: 'compliance',
+                    hasDocuments: widget.documents.isNotEmpty,
                   ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Status count boxes
-        Row(
-          children: [
-            _ComplianceStatBox(
-              label: 'ACTIVE',
-              count: active,
-              textColor: const Color(0xFF1B7A3E),
-              bgColor: const Color(0xFFE6F4EC),
-              selected: _filterStatus == 'active',
-              onTap: () => setState(() {
-                _page = 0;
-                _filterStatus = _filterStatus == 'active' ? null : 'active';
-              }),
-            ),
-            const SizedBox(width: 8),
-            _ComplianceStatBox(
-              label: 'EXPIRING',
-              count: expiring,
-              textColor: const Color(0xFF8B5E00),
-              bgColor: const Color(0xFFFFF3E0),
-              selected: _filterStatus == 'expiring',
-              onTap: () => setState(() {
-                _page = 0;
-                _filterStatus = _filterStatus == 'expiring' ? null : 'expiring';
-              }),
-            ),
-            const SizedBox(width: 8),
-            _ComplianceStatBox(
-              label: 'EXPIRED',
-              count: expired,
-              textColor: const Color(0xFFBA1A1A),
-              bgColor: const Color(0xFFFCE8E8),
-              selected: _filterStatus == 'expired',
-              onTap: () => setState(() {
-                _page = 0;
-                _filterStatus = _filterStatus == 'expired' ? null : 'expired';
-              }),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Search + filter row
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.card,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFBA1A1A),
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 46),
+                elevation: 2,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: TextField(
-                  controller: _searchCtrl,
-                  onChanged: (v) => setState(() {
-                    _search = v;
-                    _page = 0;
-                  }),
-                  decoration: InputDecoration(
-                    hintText: 'Search doc #, type',
-                    hintStyle: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search,
-                      size: 18,
-                      color: AppColors.textSecondary,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
                 ),
               ),
+              icon: const Icon(Icons.download_outlined, size: 18),
+              label: const Text(
+                'Download PDF Packet',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
-            const SizedBox(width: 8),
-            _IconSquareBtn(icon: Icons.tune_outlined, onTap: () {}),
-            const SizedBox(width: 8),
-            _IconSquareBtn(icon: Icons.swap_vert_outlined, onTap: () {}),
-          ],
-        ),
-        const SizedBox(height: 12),
-        // Document cards
-        if (widget.loading)
-          const Center(child: CircularProgressIndicator())
-        else if (page.isEmpty)
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _generatingQr ? null : _generateQrCode,
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF1D4ED8),
+                foregroundColor: Colors.white,
+                disabledBackgroundColor:
+                    const Color(0xFF1D4ED8).withValues(alpha: 0.5),
+                minimumSize: const Size(double.infinity, 46),
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              icon: _generatingQr
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.qr_code_2_outlined, size: 18),
+              label: Text(
+                _generatingQr ? 'Generating…' : 'Generate QR Code',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Text(
+          //   'QR code provides inspectors instant access to digital copies '
+          //   'of all documents.',
+          //   style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          // ),
+        ],
+      ),
+    );
+  }
+
+  Widget _readinessRow(String requiredType) {
+    TruckDocumentModel? matchingDoc;
+    for (final d in widget.documents) {
+      final docType = (d.documentType ?? '').trim();
+      final fileName = d.fileName.trim();
+      final docNumber = (d.documentNumber ?? '').trim();
+      if (docType.isNotEmpty && _matchesDocType(docType, requiredType)) {
+        matchingDoc = d;
+        break;
+      }
+      if (fileName.isNotEmpty && _matchesDocType(fileName, requiredType)) {
+        matchingDoc = d;
+        break;
+      }
+      if (docNumber.isNotEmpty && _matchesDocType(docNumber, requiredType)) {
+        matchingDoc = d;
+        break;
+      }
+    }
+
+    IconData icon;
+    Color color;
+    String statusText;
+
+    if (matchingDoc == null) {
+      icon = Icons.cancel_outlined;
+      color = const Color(0xFFDC2626);
+      statusText = 'Missing';
+    } else {
+      final expiry = DateTime.tryParse(matchingDoc.expiryDateIso ?? '');
+      final daysLeft = expiry?.difference(DateTime.now()).inDays;
+      if (expiry != null && daysLeft! < 0) {
+        icon = Icons.cancel_outlined;
+        color = const Color(0xFFDC2626);
+        statusText = 'Expired';
+      } else if (expiry != null && daysLeft! <= 30) {
+        icon = Icons.access_time_outlined;
+        color = const Color(0xFFEA580C);
+        statusText = 'Expiring in $daysLeft days';
+      } else {
+        icon = Icons.check_circle_outline;
+        color = const Color(0xFF16A34A);
+        statusText = requiredType == 'Maintenance Records'
+            ? 'Up to date'
+            : 'Current';
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                children: [
+                  TextSpan(text: requiredType),
+                  TextSpan(
+                    text: ' - $statusText',
+                    style: TextStyle(color: color, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Binder metric tile (Total Documents / Current / Expiring Soon / Missing)
+// ---------------------------------------------------------------------------
+
+class _BinderMetricTile extends StatelessWidget {
+  const _BinderMetricTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.iconColor,
+    required this.iconBg,
+  });
+
+  final String label;
+  final int value;
+  final IconData icon;
+  final Color iconColor;
+  final Color iconBg;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
           Container(
-            padding: const EdgeInsets.all(32),
-            alignment: Alignment.center,
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
+              color: iconBg,
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Text(
-              'No compliance records found',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          )
-        else
-          ...page.map((d) => _ComplianceDocCard(doc: d)),
-        // Pagination
-        if (!widget.loading && filtered.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Icon(icon, size: 18, color: iconColor),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$start–$end of ${filtered.length}',
+                  '$value',
                   style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
                   ),
                 ),
-                Row(
-                  children: [
-                    _PagBtn(
-                      icon: Icons.chevron_left,
-                      enabled: _page > 0,
-                      onTap: () => setState(() => _page--),
-                    ),
-                    const SizedBox(width: 8),
-                    _PagBtn(
-                      icon: Icons.chevron_right,
-                      enabled: _page < _totalPages - 1,
-                      onTap: () => setState(() => _page++),
-                    ),
-                  ],
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Category badge (e.g. "Must be with truck", "Jurisdiction Required")
+// ---------------------------------------------------------------------------
+
+class _CategoryBadge extends StatelessWidget {
+  const _CategoryBadge({
+    required this.label,
+    required this.color,
+    required this.bg,
+  });
+
+  final String label;
+  final Color color;
+  final Color bg;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Binder category document card
+// ---------------------------------------------------------------------------
+
+class _BinderDocCard extends StatelessWidget {
+  const _BinderDocCard({required this.doc, required this.isPermit});
+
+  final TruckDocumentModel doc;
+  final bool isPermit;
+
+  static String _status(TruckDocumentModel d) {
+    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
+    if (expiry != null) {
+      final daysLeft = expiry.difference(DateTime.now()).inDays;
+      if (daysLeft < 0) return 'expired';
+      if (daysLeft <= 30) return 'expiring';
+      return 'active';
+    }
+    final s = (d.statusLabel ?? '').toLowerCase();
+    if (s == 'expired') return 'expired';
+    if (s.contains('expir')) return 'expiring';
+    return 'active';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _status(doc);
+    final textColor = status == 'expired'
+        ? const Color(0xFFBA1A1A)
+        : status == 'expiring'
+        ? const Color(0xFF8B5E00)
+        : const Color(0xFF1B7A3E);
+    final bgColor = status == 'expired'
+        ? const Color(0xFFFCE8E8)
+        : status == 'expiring'
+        ? const Color(0xFFFFF3E0)
+        : const Color(0xFFE6F4EC);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  doc.documentType ?? doc.fileName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: bgColor,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  status == 'expired'
+                      ? 'Expired'
+                      : status == 'expiring'
+                      ? 'Expiring Soon'
+                      : 'Current',
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _InfoCell(
+                  label: isPermit ? 'PERMIT NUMBER' : 'DOC NUMBER',
+                  value: doc.documentNumber ?? 'N/A',
+                ),
+              ),
+              Expanded(
+                child: _InfoCell(
+                  label: 'ISSUE DATE',
+                  value: doc.issueDate ?? 'N/A',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: _InfoCell(
+                  label: 'EXPIRY DATE',
+                  value: doc.expiryDate ?? 'N/A',
+                  valueColor: status != 'active'
+                      ? const Color(0xFFBA1A1A)
+                      : null,
+                ),
+              ),
+              Expanded(
+                child: isPermit
+                    ? const SizedBox.shrink()
+                    : _InfoCell(
+                        label: 'LOCATION',
+                        value: doc.location ?? 'In Vehicle',
+                      ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// QR code display sheet
+// ---------------------------------------------------------------------------
+
+class _QrCodeSheet extends StatelessWidget {
+  const _QrCodeSheet({
+    required this.imageBytes,
+    required this.unitNumber,
+    required this.onDownloadPacket,
+  });
+
+  final Uint8List? imageBytes;
+  final String unitNumber;
+  final VoidCallback onDownloadPacket;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Compliance QR Code',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              unitNumber,
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            if (imageBytes != null)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Image.memory(imageBytes!, width: 220, height: 220),
+              )
+            else
+              Text(
+                'Could not render QR code',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+            const SizedBox(height: 8),
+            Text(
+              "Scan to instantly access this vehicle's compliance documents.",
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onDownloadPacket,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF1A1A1A),
+                  minimumSize: const Size(double.infinity, 46),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                icon: const Icon(Icons.download_outlined, size: 18),
+                label: const Text('Download PDF Packet'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 46),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                child: const Text('Close'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -977,6 +1614,29 @@ class _DocumentsTabState extends State<_DocumentsTab> {
   final _searchCtrl = TextEditingController();
   String _search = '';
   String? _filterStatus;
+  bool _canUpload = false;
+  bool _canReplace = false;
+  bool _canDelete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPermissions();
+  }
+
+  Future<void> _loadPermissions() async {
+    final result = await PermissionService.instance.getMenuPermissions(
+      menuUrl: '/documents',
+      menuName: 'Documents',
+    );
+    if (!mounted) return;
+    final perms = result.isSuccess ? result.data : null;
+    setState(() {
+      _canUpload = perms?.canCreate ?? false;
+      _canReplace = perms?.canUpdate ?? false;
+      _canDelete = perms?.canDelete ?? false;
+    });
+  }
 
   @override
   void dispose() {
@@ -985,6 +1645,13 @@ class _DocumentsTabState extends State<_DocumentsTab> {
   }
 
   static String _docStatus(TruckDocumentModel d) {
+    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
+    if (expiry != null) {
+      final daysLeft = expiry.difference(DateTime.now()).inDays;
+      if (daysLeft < 0) return 'expired';
+      if (daysLeft <= 30) return 'expiring';
+      return 'active';
+    }
     final s = (d.statusLabel ?? '').toLowerCase();
     if (s == 'expired') return 'expired';
     if (s.contains('expir')) return 'expiring';
@@ -1022,6 +1689,16 @@ class _DocumentsTabState extends State<_DocumentsTab> {
     );
   }
 
+  Future<void> _replaceDocument(TruckDocumentModel doc) async {
+    final changed = await showPowerUnitEditDocumentSheet(
+      context: context,
+      truckId: doc.truckId,
+      unit: widget.unit,
+      doc: doc,
+    );
+    if (changed == true) widget.onRefresh();
+  }
+
   void _showVersionHistory(TruckDocumentModel doc) {
     showModalBottomSheet(
       context: context,
@@ -1042,9 +1719,10 @@ class _DocumentsTabState extends State<_DocumentsTab> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Header
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        // Header — title above, actions in a Wrap below so nothing overlaps
+        // or overflows on narrow phones.
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
@@ -1067,21 +1745,19 @@ class _DocumentsTabState extends State<_DocumentsTab> {
                 ),
               ],
             ),
-            _BlackButton(
-              label: 'PDF',
-              icon: Icons.picture_as_pdf_outlined,
-              onPressed: () =>
-                  DocumentDownloadService.instance.downloadPdfPacket(
-                    context: context,
-                    truckId: widget.unit.id,
+            if (_canUpload) ...[
+              const SizedBox(height: 10),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  _BlackButton(
+                    label: 'Upload New',
+                    onPressed: widget.onUpload,
+                    icon: Icons.upload_rounded,
                   ),
-            ),
-            const SizedBox(width: 8),
-            _BlackButton(
-              label: 'Upload',
-              onPressed: widget.onUpload,
-              icon: Icons.upload_rounded,
-            ),
+                ],
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 12),
@@ -1177,15 +1853,19 @@ class _DocumentsTabState extends State<_DocumentsTab> {
           ...filtered.map(
             (d) => _DocCard(
               doc: d,
+              canReplace: _canReplace,
+              canDelete: _canDelete,
               onView: () => _showDetails(d),
               onDelete: () => widget.onDelete(d),
+              onReplace: () => _replaceDocument(d),
               onVersionHistory: () => _showVersionHistory(d),
-              onDownload: () => DocumentDownloadService.instance.downloadAndOpen(
-                context: context,
-                truckId: d.truckId,
-                documentId: d.id,
-                displayFileName: d.fileName,
-              ),
+              onDownload: () =>
+                  DocumentDownloadService.instance.downloadAndOpen(
+                    context: context,
+                    truckId: d.truckId,
+                    documentId: d.id,
+                    displayFileName: d.fileName,
+                  ),
             ),
           ),
         if (!widget.loading && filtered.isNotEmpty)
@@ -1218,14 +1898,39 @@ class _MaintenanceTab extends StatefulWidget {
 
 class _MaintenanceTabState extends State<_MaintenanceTab> {
   final _searchCtrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
   String _search = '';
   WorkOrderStatus? _filterStatus;
   int _page = 0;
   static const _pageSize = 10;
 
   @override
+  void initState() {
+    super.initState();
+    _scrollToBottom();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MaintenanceTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.loading && !widget.loading) _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollCtrl.hasClients) return;
+      _scrollCtrl.animateTo(
+        _scrollCtrl.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
   void dispose() {
     _searchCtrl.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
@@ -1270,10 +1975,9 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
   Widget build(BuildContext context) {
     final filtered = _filtered;
     final page = _currentPage;
-    final start = filtered.isEmpty ? 0 : _page * _pageSize + 1;
-    final end = _page * _pageSize + page.length;
 
     return ListView(
+      controller: _scrollCtrl,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       children: [
         // Header
@@ -1297,77 +2001,6 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 12),
-        // Auto-fetch banner
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF9C4),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.bolt,
-                  color: Color(0xFFF9A825),
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Auto-fetch work orders',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    Text(
-                      'Sync from Fullbay, Shop-Ware',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Material(
-                color: const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.circular(8),
-                child: InkWell(
-                  onTap: () => AppToast.showSuccess('Fetching work orders…'),
-                  borderRadius: BorderRadius.circular(8),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    child: Text(
-                      'FETCH',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
         ),
         const SizedBox(height: 12),
         // Status boxes
@@ -1466,29 +2099,18 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Text(
-                  '$start–$end of ${filtered.length}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
+                _PagBtn(
+                  icon: Icons.chevron_left,
+                  enabled: _page > 0,
+                  onTap: () => setState(() => _page--),
                 ),
-                Row(
-                  children: [
-                    _PagBtn(
-                      icon: Icons.chevron_left,
-                      enabled: _page > 0,
-                      onTap: () => setState(() => _page--),
-                    ),
-                    const SizedBox(width: 8),
-                    _PagBtn(
-                      icon: Icons.chevron_right,
-                      enabled: _page < _totalPages - 1,
-                      onTap: () => setState(() => _page++),
-                    ),
-                  ],
+                const SizedBox(width: 8),
+                _PagBtn(
+                  icon: Icons.chevron_right,
+                  enabled: _page < _totalPages - 1,
+                  onTap: () => setState(() => _page++),
                 ),
               ],
             ),
@@ -1675,19 +2297,32 @@ class _StatusChipBox extends StatelessWidget {
 class _DocCard extends StatelessWidget {
   const _DocCard({
     required this.doc,
+    required this.canReplace,
+    required this.canDelete,
     required this.onView,
     required this.onDelete,
+    required this.onReplace,
     required this.onVersionHistory,
     required this.onDownload,
   });
 
   final TruckDocumentModel doc;
+  final bool canReplace;
+  final bool canDelete;
   final VoidCallback onView;
   final VoidCallback onDelete;
+  final VoidCallback onReplace;
   final VoidCallback onVersionHistory;
   final VoidCallback onDownload;
 
   static String _status(TruckDocumentModel d) {
+    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
+    if (expiry != null) {
+      final daysLeft = expiry.difference(DateTime.now()).inDays;
+      if (daysLeft < 0) return 'expired';
+      if (daysLeft <= 30) return 'expiring';
+      return 'active';
+    }
     final s = (d.statusLabel ?? '').toLowerCase();
     if (s == 'expired') return 'expired';
     if (s.contains('expir')) return 'expiring';
@@ -1770,7 +2405,11 @@ class _DocCard extends StatelessWidget {
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(
-                              doc.statusLabel ?? 'Active',
+                              status == 'expired'
+                                  ? 'Expired'
+                                  : status == 'expiring'
+                                  ? 'Expiring'
+                                  : 'Active',
                               style: TextStyle(
                                 color: textColor,
                                 fontSize: 11,
@@ -1851,23 +2490,24 @@ class _DocCard extends StatelessWidget {
                   tooltip: 'Download',
                   onTap: onDownload,
                 ),
-                _ActionBtn(
-                  icon: Icons.upload_file_outlined,
-                  tooltip: 'Replace',
-                  onTap: () =>
-                      AppToast.showSuccess('Replace document coming soon'),
-                ),
+                if (canReplace)
+                  _ActionBtn(
+                    icon: Icons.upload_file_outlined,
+                    tooltip: 'Replace',
+                    onTap: onReplace,
+                  ),
                 _ActionBtn(
                   icon: Icons.history_outlined,
                   tooltip: 'Version history',
                   onTap: onVersionHistory,
                 ),
-                _ActionBtn(
-                  icon: Icons.delete_outline,
-                  tooltip: 'Delete',
-                  color: const Color(0xFFBA1A1A),
-                  onTap: onDelete,
-                ),
+                if (canDelete)
+                  _ActionBtn(
+                    icon: Icons.delete_outline,
+                    tooltip: 'Delete',
+                    color: const Color(0xFFBA1A1A),
+                    onTap: onDelete,
+                  ),
               ],
             ),
           ),
@@ -1917,6 +2557,13 @@ class _DocumentDetailsSheet extends StatelessWidget {
   final String unitNumber;
 
   static String _status(TruckDocumentModel d) {
+    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
+    if (expiry != null) {
+      final daysLeft = expiry.difference(DateTime.now()).inDays;
+      if (daysLeft < 0) return 'expired';
+      if (daysLeft <= 30) return 'expiring';
+      return 'active';
+    }
     final s = (d.statusLabel ?? '').toLowerCase();
     if (s == 'expired') return 'expired';
     if (s.contains('expir')) return 'expiring';
@@ -2036,7 +2683,11 @@ class _DocumentDetailsSheet extends StatelessWidget {
                                   ),
                                 ),
                                 Text(
-                                  doc.statusLabel ?? 'Active',
+                                  status == 'expired'
+                                      ? 'Expired'
+                                      : status == 'expiring'
+                                      ? 'Expiring'
+                                      : 'Active',
                                   style: TextStyle(
                                     color: textColor,
                                     fontSize: 12,
@@ -2196,8 +2847,8 @@ class _DocumentDetailsSheet extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton.icon(
-                      onPressed: () => DocumentDownloadService.instance
-                          .downloadAndOpen(
+                      onPressed: () =>
+                          DocumentDownloadService.instance.downloadAndOpen(
                             context: context,
                             truckId: doc.truckId,
                             documentId: doc.id,
@@ -2235,6 +2886,13 @@ class _VersionHistorySheet extends StatelessWidget {
   final String unitNumber;
 
   static String _status(TruckDocumentModel d) {
+    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
+    if (expiry != null) {
+      final daysLeft = expiry.difference(DateTime.now()).inDays;
+      if (daysLeft < 0) return 'expired';
+      if (daysLeft <= 30) return 'expiring';
+      return 'active';
+    }
     final s = (d.statusLabel ?? '').toLowerCase();
     if (s == 'expired') return 'expired';
     if (s.contains('expir')) return 'expiring';
@@ -2367,14 +3025,14 @@ class _VersionHistorySheet extends StatelessWidget {
                                   ),
                                   const SizedBox(width: 4),
                                   InkWell(
-                                    onTap: () =>
-                                        DocumentDownloadService.instance
-                                            .downloadAndOpen(
-                                              context: context,
-                                              truckId: doc.truckId,
-                                              documentId: doc.id,
-                                              displayFileName: doc.fileName,
-                                            ),
+                                    onTap: () => DocumentDownloadService
+                                        .instance
+                                        .downloadAndOpen(
+                                          context: context,
+                                          truckId: doc.truckId,
+                                          documentId: doc.id,
+                                          displayFileName: doc.fileName,
+                                        ),
                                     borderRadius: BorderRadius.circular(6),
                                     child: Padding(
                                       padding: const EdgeInsets.all(6),
@@ -2416,7 +3074,11 @@ class _VersionHistorySheet extends StatelessWidget {
                                             ),
                                           ),
                                           child: Text(
-                                            doc.statusLabel ?? 'Active',
+                                            status == 'expired'
+                                                ? 'Expired'
+                                                : status == 'expiring'
+                                                ? 'Expiring'
+                                                : 'Active',
                                             style: TextStyle(
                                               color: textColor,
                                               fontSize: 11,
@@ -2753,14 +3415,14 @@ class _WoCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _InfoCell(
-                    label: 'COST',
-                    value: _fmtCost(details?.estimatedCost),
+                    label: 'WO TYPE',
+                    value: PowerUnitModel.displayOrDash(wo.workOrderType),
                   ),
                 ),
                 Expanded(
                   child: _InfoCell(
-                    label: 'ODOMETER',
-                    value: _fmtOdo(details?.odometer ?? details?.startOdometer),
+                    label: 'COST',
+                    value: _fmtCost(details?.estimatedCost),
                   ),
                 ),
               ],
@@ -2770,16 +3432,28 @@ class _WoCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: _InfoCell(
+                    label: 'ODOMETER',
+                    value: _fmtOdo(details?.odometer ?? details?.startOdometer),
+                  ),
+                ),
+                Expanded(
+                  child: _InfoCell(
                     label: 'START DATE',
                     value: _fmtDate(details?.startDate),
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
                 Expanded(
                   child: _InfoCell(
                     label: 'DUE DATE',
                     value: _fmtDate(details?.dueDate),
                   ),
                 ),
+                const Expanded(child: SizedBox.shrink()),
               ],
             ),
             const SizedBox(height: 10),
@@ -2900,167 +3574,6 @@ class _ComplianceStatBox extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Compliance document card  (work-order card style)
-// ---------------------------------------------------------------------------
-
-class _ComplianceDocCard extends StatelessWidget {
-  const _ComplianceDocCard({required this.doc});
-  final TruckDocumentModel doc;
-
-  static String _status(TruckDocumentModel d) {
-    final s = (d.statusLabel ?? '').toLowerCase();
-    if (s == 'expired') return 'expired';
-    if (s.contains('expir')) return 'expiring';
-    return 'active';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final status = _status(doc);
-    final chipColor = status == 'expired'
-        ? const Color(0xFFBA1A1A)
-        : status == 'expiring'
-        ? const Color(0xFF8B5E00)
-        : const Color(0xFF1B7A3E);
-    final chipBg = status == 'expired'
-        ? const Color(0xFFFCE8E8)
-        : status == 'expiring'
-        ? const Color(0xFFFFF3E0)
-        : const Color(0xFFE6F4EC);
-    final expiryHighlight = status == 'expired' || status == 'expiring';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Title row
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    doc.documentType ?? doc.fileName,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: chipBg,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    doc.statusLabel ?? 'Active',
-                    style: TextStyle(
-                      color: chipColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            if (doc.documentCategory != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                doc.documentCategory!,
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
-            ],
-            const SizedBox(height: 10),
-            Divider(height: 1, color: AppColors.border),
-            const SizedBox(height: 10),
-            // Data grid
-            Row(
-              children: [
-                Expanded(
-                  child: _InfoCell(
-                    label: 'DOC NUMBER',
-                    value: doc.documentNumber ?? '—',
-                  ),
-                ),
-                Expanded(
-                  child: _InfoCell(
-                    label: 'UPLOADED',
-                    value: doc.updatedOn ?? '—',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _InfoCell(
-                    label: 'ISSUE DATE',
-                    value: doc.issueDate ?? '—',
-                  ),
-                ),
-                Expanded(
-                  child: _InfoCell(
-                    label: 'EXPIRY DATE',
-                    value: doc.expiryDate ?? '—',
-                    valueColor: expiryHighlight
-                        ? const Color(0xFFBA1A1A)
-                        : null,
-                  ),
-                ),
-              ],
-            ),
-            if (doc.notes != null && doc.notes!.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Divider(height: 1, color: AppColors.border),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(
-                    Icons.notes_outlined,
-                    size: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      doc.notes!,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ],
         ),
       ),
     );

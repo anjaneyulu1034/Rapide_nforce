@@ -41,6 +41,9 @@ class ApiConstants {
   static const String documentsExpiring = '/documents/expiring';
   static const String documentsNoExpiry = '/documents/no-expiry';
 
+  // OCR (Browse/Scan auto-fill on Add/Edit forms)
+  static const String ocrResults = '/ocr/ocr-results';
+
   // Notifications
   static const String notifications = '/notifications';
 
@@ -63,6 +66,8 @@ class ApiConstants {
   static const String samsaraOdometer = '/maintenance/samsara-odometer';
   static const String pmInspectionItems = '/maintenance/pm-inspection-items';
   static const String maintenanceIssues = '/maintenance/maintenance-issues';
+  static const String maintenanceIssueUploads =
+      '/maintenance/maintenance-issues/uploads';
   static const String workOrderLabourEntries =
       '/maintenance/work-order-labour-entries';
   static const String workOrderLabourTimerLogs =
@@ -75,6 +80,9 @@ class ApiConstants {
   static const String menus = '/menus';
   static const String menusMe = '/menus/me';
   static const String menusAccess = '/menus/access';
+
+  // Menu CRUD permissions (same as web GET /manage-permissions/by-user/:id)
+  static const String managePermissionsByUser = '/manage-permissions/by-user';
 
   // Reports
   static const String reportsOcrAuditLogs = '/reports/ocr-audit-logs';

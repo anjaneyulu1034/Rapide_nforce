@@ -392,6 +392,12 @@ class MaintenanceIssueSummary {
     this.severity,
     this.firstReportedAt,
     this.lastReportedAt,
+    this.defect,
+    this.category,
+    this.status,
+    this.externalReference,
+    this.reportedDate,
+    this.reportedBy,
   });
 
   final int id;
@@ -401,6 +407,12 @@ class MaintenanceIssueSummary {
   final String? severity;
   final String? firstReportedAt;
   final String? lastReportedAt;
+  final String? defect;
+  final String? category;
+  final String? status;
+  final String? externalReference;
+  final String? reportedDate;
+  final String? reportedBy;
 
   factory MaintenanceIssueSummary.fromJson(Map<String, dynamic> json) {
     return MaintenanceIssueSummary(
@@ -411,6 +423,49 @@ class MaintenanceIssueSummary {
       severity: json['severity']?.toString(),
       firstReportedAt: json['firstReportedAt']?.toString(),
       lastReportedAt: json['lastReportedAt']?.toString(),
+      defect: json['defect']?.toString(),
+      category: json['category']?.toString(),
+      status: json['status']?.toString(),
+      externalReference: json['externalReference']?.toString() ??
+          json['external_reference']?.toString(),
+      reportedDate: json['reportedDate']?.toString(),
+      reportedBy: json['reportedBy']?.toString(),
+    );
+  }
+}
+
+class MaintenanceIssueUpload {
+  const MaintenanceIssueUpload({
+    required this.id,
+    required this.fileName,
+    this.fileType,
+    this.signedUrl,
+  });
+
+  final int id;
+  final String fileName;
+  final String? fileType;
+  final String? signedUrl;
+
+  bool get isImage {
+    final type = (fileType ?? '').toLowerCase();
+    if (type.startsWith('image/')) return true;
+    final name = fileName.toLowerCase();
+    return name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.png') ||
+        name.endsWith('.gif') ||
+        name.endsWith('.webp') ||
+        name.endsWith('.bmp') ||
+        name.endsWith('.svg');
+  }
+
+  factory MaintenanceIssueUpload.fromJson(Map<String, dynamic> json) {
+    return MaintenanceIssueUpload(
+      id: _asInt(json['id']) ?? 0,
+      fileName: json['fileName']?.toString() ?? 'file',
+      fileType: json['fileType']?.toString(),
+      signedUrl: json['signedUrl']?.toString(),
     );
   }
 }

@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>RAPIDÉnforce uses the camera to capture and scan vehicle documents.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>RAPIDÉnforce needs photo library access to attach existing images as documents.</string>
 </dict>
 </plist>

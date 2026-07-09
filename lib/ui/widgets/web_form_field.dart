@@ -4,6 +4,31 @@ import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/utils/responsive.dart';
 import 'package:intl/intl.dart';
 
+/// Renders a field label, coloring a trailing " *" red so required fields
+/// are visually distinct (plain [Text] can't mix colors within one string).
+Widget buildFieldLabel(String label, double fontSize) {
+  final trimmed = label.trimRight();
+  if (!trimmed.endsWith('*')) {
+    return Text(
+      label,
+      style: TextStyle(color: AppColors.textSecondary, fontSize: fontSize - 1),
+    );
+  }
+  final base = trimmed.substring(0, trimmed.length - 1).trimRight();
+  return RichText(
+    text: TextSpan(
+      style: TextStyle(color: AppColors.textSecondary, fontSize: fontSize - 1),
+      children: [
+        TextSpan(text: base),
+        const TextSpan(
+          text: ' *',
+          style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.bold),
+        ),
+      ],
+    ),
+  );
+}
+
 class WebFormSection extends StatefulWidget {
   const WebFormSection({
     super.key,
@@ -202,13 +227,9 @@ class WebTextFormField extends StatelessWidget {
         onChanged: onChanged,
         style: TextStyle(color: AppColors.textPrimary, fontSize: fontSize),
         decoration: InputDecoration(
-          labelText: label,
+          label: buildFieldLabel(label, fontSize),
           hintText: hint,
           suffixIcon: suffix,
-          labelStyle: TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: fontSize - 1,
-          ),
           hintStyle: TextStyle(
             color: AppColors.textSecondary,
             fontSize: fontSize - 1,
@@ -262,10 +283,11 @@ class WebDropdownField<T> extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<T>(
         initialValue: value,
+        isExpanded: true,
         dropdownColor: AppColors.card,
         style: TextStyle(color: AppColors.textPrimary),
         decoration: InputDecoration(
-          labelText: label,
+          label: buildFieldLabel(label, 15),
           filled: true,
           fillColor: isLight ? Colors.white : AppColors.inputFill,
           border: OutlineInputBorder(
@@ -284,12 +306,209 @@ class WebDropdownField<T> extends StatelessWidget {
         hint: Text(hint, style: TextStyle(color: AppColors.textSecondary)),
         items: items
             .map(
-              (item) =>
-                  DropdownMenuItem(value: item, child: Text(itemLabel(item))),
+              (item) => DropdownMenuItem(
+                value: item,
+                child: Text(
+                  itemLabel(item),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             )
             .toList(),
         onChanged: onChanged,
         validator: validator,
+      ),
+    );
+  }
+}
+
+/// A dropdown-styled field that opens a searchable, scrollable bottom sheet
+/// instead of the native dropdown menu — better for long option lists.
+class WebSearchableDropdownField<T> extends StatelessWidget {
+  const WebSearchableDropdownField({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.items,
+    required this.itemLabel,
+    required this.onChanged,
+    this.hint = 'Select',
+    this.searchHint = 'Search...',
+  });
+
+  final String label;
+  final T? value;
+  final List<T> items;
+  final String Function(T) itemLabel;
+  final ValueChanged<T?> onChanged;
+  final String hint;
+  final String searchHint;
+
+  Future<void> _open(BuildContext context) async {
+    final selected = await showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _SearchableListSheet<T>(
+        title: label,
+        items: items,
+        itemLabel: itemLabel,
+        searchHint: searchHint,
+      ),
+    );
+    if (selected != null) onChanged(selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    final selectedLabel = value != null ? itemLabel(value as T) : null;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _open(context),
+        child: InputDecorator(
+          decoration: InputDecoration(
+            label: buildFieldLabel(label, 15),
+            filled: true,
+            fillColor: isLight ? Colors.white : AppColors.inputFill,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: AppColors.border),
+            ),
+            suffixIcon: Icon(
+              Icons.keyboard_arrow_down_rounded,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          child: Text(
+            selectedLabel ?? hint,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: selectedLabel != null
+                  ? AppColors.textPrimary
+                  : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchableListSheet<T> extends StatefulWidget {
+  const _SearchableListSheet({
+    required this.title,
+    required this.items,
+    required this.itemLabel,
+    required this.searchHint,
+  });
+
+  final String title;
+  final List<T> items;
+  final String Function(T) itemLabel;
+  final String searchHint;
+
+  @override
+  State<_SearchableListSheet<T>> createState() =>
+      _SearchableListSheetState<T>();
+}
+
+class _SearchableListSheetState<T> extends State<_SearchableListSheet<T>> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _query.isEmpty
+        ? widget.items
+        : widget.items
+            .where((i) =>
+                widget.itemLabel(i).toLowerCase().contains(_query.toLowerCase()))
+            .toList();
+
+    return SafeArea(
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                widget.title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: widget.searchHint,
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  isDense: true,
+                  filled: true,
+                  fillColor: AppColors.inputFill,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: AppColors.border),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: AppColors.border),
+                  ),
+                ),
+                onChanged: (v) => setState(() => _query = v),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: filtered.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        'No matches',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    )
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) {
+                        final item = filtered[i];
+                        return ListTile(
+                          title: Text(widget.itemLabel(item)),
+                          onTap: () => Navigator.pop(context, item),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -342,63 +561,106 @@ class WebFileUploadZone extends StatelessWidget {
     super.key,
     required this.fileName,
     required this.onBrowse,
+    this.onCamera,
+    this.onScan,
     this.subtitle =
         'Click to browse files. Supported: JPG, PNG, PDF (max 20MB)',
   });
 
   final String? fileName;
   final VoidCallback onBrowse;
+  /// When set, shows a "Camera" action alongside Browse (and Scan below).
+  final VoidCallback? onCamera;
+  /// When set, shows a "Scan to File" action that runs real document
+  /// scanning (edge detection + crop) instead of a raw photo.
+  final VoidCallback? onScan;
   final String subtitle;
 
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
+    final showPickerActions = onCamera != null || onScan != null;
 
-    return InkWell(
-      onTap: onBrowse,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border, width: 1.5),
-          color: isLight
-              ? const Color(0xFFF9FAFB)
-              : AppColors.inputFill.withValues(alpha: 0.35),
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: isLight
-                    ? const Color(0xFFF3F4F6)
-                    : AppColors.primary.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.cloud_upload_outlined,
-                size: 28,
-                color: AppColors.textPrimary,
-              ),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border, width: 1.5),
+        color: isLight
+            ? const Color(0xFFF9FAFB)
+            : AppColors.inputFill.withValues(alpha: 0.35),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: isLight
+                  ? const Color(0xFFF3F4F6)
+                  : AppColors.primary.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(height: 10),
+            child: Icon(
+              Icons.cloud_upload_outlined,
+              size: 28,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          ),
+          if (fileName != null && fileName!.isNotEmpty) ...[
+            const SizedBox(height: 8),
             Text(
-              subtitle,
+              fileName!,
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-            ),
-            if (fileName != null && fileName!.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                fileName!,
-                style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-            const SizedBox(height: 12),
+            ),
+          ],
+          const SizedBox(height: 14),
+          if (showPickerActions)
+            Row(
+              children: [
+                if (onCamera != null)
+                  Expanded(
+                    child: _PickerActionButton(
+                      icon: Icons.camera_alt_outlined,
+                      label: 'Camera',
+                      color: const Color(0xFF7C3AED),
+                      bg: const Color(0xFFF3E8FF),
+                      onTap: onCamera!,
+                    ),
+                  ),
+                if (onCamera != null) const SizedBox(width: 8),
+                Expanded(
+                  child: _PickerActionButton(
+                    icon: Icons.folder_open_outlined,
+                    label: 'Browse',
+                    color: const Color(0xFF0284C7),
+                    bg: const Color(0xFFE0F2FE),
+                    onTap: onBrowse,
+                  ),
+                ),
+                if (onScan != null) const SizedBox(width: 8),
+                if (onScan != null)
+                  Expanded(
+                    child: _PickerActionButton(
+                      icon: Icons.document_scanner_outlined,
+                      label: 'Scan',
+                      color: const Color(0xFF15803D),
+                      bg: const Color(0xFFDCFCE7),
+                      onTap: onScan!,
+                    ),
+                  ),
+              ],
+            )
+          else
             OutlinedButton(
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.textPrimary,
@@ -410,7 +672,57 @@ class WebFileUploadZone extends StatelessWidget {
               onPressed: onBrowse,
               child: const Text('Browse Files'),
             ),
-          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PickerActionButton extends StatelessWidget {
+  const _PickerActionButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.bg,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final Color bg;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = Theme.of(context).brightness == Brightness.light;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isLight ? bg : color.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.5)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 20, color: color),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -436,7 +748,7 @@ class WebInfoBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline, color: AppColors.primary, size: 20),
+          Icon(Icons.info_outline, color: AppColors.primary, size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

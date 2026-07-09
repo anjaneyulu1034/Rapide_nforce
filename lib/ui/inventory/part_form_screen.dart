@@ -148,7 +148,7 @@ class _PartFormScreenState extends State<PartFormScreen> {
                                 ),
                               )
                               .toList(),
-                          onChanged: widget.isEdit && widget.part!.isProtected
+                          onChanged: widget.isEdit
                               ? null
                               : (v) => setState(() => _selectedTypeId = v),
                           validator: (v) =>
@@ -174,8 +174,9 @@ class _PartFormScreenState extends State<PartFormScreen> {
                           ),
                           validator: (v) {
                             final n = int.tryParse(v?.trim() ?? '');
-                            if (n == null || n < 0)
+                            if (n == null || n < 0) {
                               return 'Enter valid quantity';
+                            }
                             return null;
                           },
                         ),

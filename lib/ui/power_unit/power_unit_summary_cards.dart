@@ -25,16 +25,27 @@ class PowerUnitSummaryCards extends StatelessWidget {
     return parsed.difference(DateTime.now()).inDays;
   }
 
+  static String _withCommas(int value) {
+    final regExp = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
+    return value.toString().replaceAllMapped(regExp, (Match m) => '${m[1]},');
+  }
+
   @override
   Widget build(BuildContext context) {
     final regDays = _daysUntil(unit.registrationExpiry);
     final inspDays = _daysUntil(unit.annualInspectionDue ?? unit.nextInspectionDue);
+    final pmDays = _daysUntil(unit.nextPmDue);
+    final pmOverdue = pmDays != null && pmDays < 0;
+
+    final nextPmOdometer = int.tryParse(unit.nextPmOdometer ?? '');
+    final kmOverdue = (nextPmOdometer != null && unit.odometer != null)
+        ? unit.odometer! - nextPmOdometer
+        : null;
 
     // Format Odometer with commas
     String odometerStr = '—';
     if (unit.odometer != null) {
-      final regExp = RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))');
-      odometerStr = '${unit.odometer!.toString().replaceAllMapped(regExp, (Match m) => '${m[1]},')} km';
+      odometerStr = '${_withCommas(unit.odometer!)} km';
     }
 
     return Padding(
@@ -57,7 +68,7 @@ class PowerUnitSummaryCards extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _SummaryCard(
-                    label: 'REGISTRATION',
+                    label: 'REGISTRATION EXPIRY',
                     value: unit.registrationExpiry ?? '—',
                     icon: Icons.circle,
                     iconColor: const Color(0xFFE22D2D),
@@ -102,11 +113,27 @@ class PowerUnitSummaryCards extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: _SummaryCard(
-                    label: 'FUEL EFFICIENCY',
-                    value: '8.4 L/100km',
-                    icon: Icons.local_gas_station_outlined,
-                    iconColor: const Color(0xFF16A34A),
-                    cardBg: const Color(0xFFECFDF5),
+                    label: 'NEXT PM DUE',
+                    value: unit.nextPmDue ?? '—',
+                    icon: Icons.build_circle_outlined,
+                    iconColor: const Color(0xFF374151),
+                    cardBg: const Color(0xFFF1F5F9),
+                    sub: pmOverdue
+                        ? 'OVERDUE'
+                        : (pmDays != null ? '$pmDays DAYS REMAINING' : null),
+                    subBg: pmOverdue
+                        ? const Color(0xFFFFF3E0)
+                        : const Color(0xFFDCFCE7),
+                    subTextColor: pmOverdue
+                        ? const Color(0xFF8B5E00)
+                        : const Color(0xFF15803D),
+                    detailLines: pmOverdue
+                        ? [
+                            '${pmDays.abs()} days overdue',
+                            if (kmOverdue != null && kmOverdue > 0)
+                              '${_withCommas(kmOverdue)} km overdue (odometer)',
+                          ]
+                        : null,
                   ),
                 ),
               ],
@@ -128,6 +155,7 @@ class _SummaryCard extends StatelessWidget {
     this.sub,
     this.subBg,
     this.subTextColor,
+    this.detailLines,
   });
 
   final String label;
@@ -138,6 +166,9 @@ class _SummaryCard extends StatelessWidget {
   final String? sub;
   final Color? subBg;
   final Color? subTextColor;
+  /// Extra red detail lines rendered below the [sub] badge (e.g. overdue
+  /// day/odometer counts).
+  final List<String>? detailLines;
 
   @override
   Widget build(BuildContext context) {
@@ -208,6 +239,20 @@ class _SummaryCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+          ],
+          if (detailLines != null && detailLines!.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            for (final line in detailLines!)
+              Text(
+                line,
+                style: const TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFBA1A1A),
+                ),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+              ),
           ],
         ],
       ),

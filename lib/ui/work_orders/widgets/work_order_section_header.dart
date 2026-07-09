@@ -27,7 +27,7 @@ class WorkOrderSectionHeader extends StatelessWidget {
               width: 24,
               height: 24,
               alignment: Alignment.center,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 color: AppColors.primary,
                 shape: BoxShape.circle,
               ),
@@ -48,7 +48,7 @@ class WorkOrderSectionHeader extends StatelessWidget {
                 child: Text.rich(
                   TextSpan(
                     text: title.toUpperCase(),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: AppColors.primary,

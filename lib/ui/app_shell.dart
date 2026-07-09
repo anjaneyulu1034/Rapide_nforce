@@ -13,6 +13,8 @@ import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/company_service.dart';
 
 import 'package:rapide_nforce/ui/approvals_screen.dart';
+import 'package:rapide_nforce/ui/drivers/drivers_screen.dart';
+import 'package:rapide_nforce/ui/dvir/dvir_screen.dart';
 
 import 'package:rapide_nforce/ui/carriers_screen.dart';
 
@@ -257,6 +259,12 @@ class _AppShellState extends State<AppShell> {
 
       case AppRoute.profile:
         return ProfileScreen(onLogout: _onLogout);
+
+      case AppRoute.drivers:
+        return const DriversScreen();
+
+      case AppRoute.dvir:
+        return const DvirScreen();
     }
   }
 

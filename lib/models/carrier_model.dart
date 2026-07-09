@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'package:rapide_nforce/models/document_model.dart';
 
 class CarrierModel {
   const CarrierModel({
@@ -149,7 +150,7 @@ class CarrierModel {
     if (iso == null || iso.isEmpty) return null;
     final parsed = DateTime.tryParse(iso);
     if (parsed == null) return iso;
-    return DateFormat('d MMM yyyy').format(parsed.toLocal());
+    return DateFormat('d MMM yyyy').format(parsed);
   }
 }
 
@@ -179,4 +180,20 @@ class BillingCycleOption {
       name: json['name'] as String? ?? '',
     );
   }
+}
+
+class CarrierComplianceData {
+  const CarrierComplianceData({
+    required this.documents,
+    required this.totalDocuments,
+    required this.validDocuments,
+    required this.expiringDocuments,
+    required this.expiredDocuments,
+  });
+
+  final List<DocumentModel> documents;
+  final int totalDocuments;
+  final int validDocuments;
+  final int expiringDocuments;
+  final int expiredDocuments;
 }

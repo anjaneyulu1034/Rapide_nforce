@@ -312,7 +312,7 @@ class PowerUnitModel {
     if (iso == null || iso.isEmpty) return null;
     final parsed = DateTime.tryParse(iso);
     if (parsed == null) return iso;
-    return DateFormat('MM-dd-yyyy').format(parsed.toLocal());
+    return DateFormat('MM-dd-yyyy').format(parsed);
   }
 
   static String displayOrDash(String? value) =>

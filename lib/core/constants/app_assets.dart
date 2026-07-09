@@ -20,7 +20,6 @@ class AppAssets {
     if (key.isEmpty) return null;
 
     if (key.contains('dashboard')) return iconDashboard;
-    if (key.contains('carrier')) return iconMyTrucks;
     if (key.contains('mytruck') ||
         key.contains('powerunit') ||
         key.contains('power unit') ||
@@ -37,9 +36,7 @@ class AppAssets {
     }
     if (key.contains('document')) return iconDocuments;
     if (key.contains('report')) return iconReports;
-    if (key.contains('request') || key.contains('approval')) {
-      return iconRequests;
-    }
+    if (key.contains('request')) return iconRequests;
     return null;
   }
 }

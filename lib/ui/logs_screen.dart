@@ -169,7 +169,7 @@ class _LogsScreenState extends State<LogsScreen> {
                           border: Border.all(color: AppColors.borderLight),
                         ),
                         child: ListTile(
-                          leading: const Icon(
+                          leading: Icon(
                             Icons.history_rounded,
                             color: AppColors.primary,
                           ),

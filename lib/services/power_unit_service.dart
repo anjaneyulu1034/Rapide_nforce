@@ -123,6 +123,31 @@ class PowerUnitService {
     }
   }
 
+  /// Generates a QR code (base64 PNG data URL) that links to a signed,
+  /// time-limited download of the truck's roadside compliance PDF packet.
+  /// Mirrors the web's `generateTruckQrCode` (`GET /trucks/:id/documents/qrcode`).
+  Future<ApiResult<TruckQrCode>> generateQrCode(int truckId) async {
+    try {
+      final body = await _api.parseJson(
+        () => _api.get('${ApiConstants.trucks}/$truckId/documents/qrcode'),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.asMap(ApiParse.unwrapData(body)) ?? {};
+      final qrCode = data['qrCode'] as String?;
+      final downloadUrl = data['downloadUrl'] as String?;
+      if (qrCode == null) {
+        return ApiResult.fail('QR code was not returned by the server.');
+      }
+      return ApiResult.ok(
+        TruckQrCode(qrCodeDataUrl: qrCode, downloadUrl: downloadUrl ?? ''),
+      );
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to generate QR code.');
+    }
+  }
+
   Future<ApiResult<void>> deletePowerUnit(int id) async {
     try {
       await _api.parseJson(
@@ -305,4 +330,82 @@ class PowerUnitService {
       return ApiResult.fail('Failed to upload document.');
     }
   }
+
+  /// Replaces/edits an existing document — mirrors the web's
+  /// `updateTruckDocument` (PUT with optional new file).
+  Future<ApiResult<TruckDocumentModel>> updateDocument({
+    required int truckId,
+    required int documentId,
+    required String vinNumber,
+    String? documentType,
+    String? documentCategory,
+    String? location,
+    String? issueDate,
+    String? expiryDate,
+    String? documentNumber,
+    String? notes,
+    String? filePath,
+    String? fileName,
+    String? companyId,
+  }) async {
+    try {
+      final request = http.MultipartRequest('PUT', Uri.parse('dummy'))
+        ..fields['vin_number'] = vinNumber;
+
+      if (documentType != null && documentType.isNotEmpty) {
+        request.fields['documentType'] = documentType;
+      }
+      if (documentCategory != null && documentCategory.isNotEmpty) {
+        request.fields['documentCategory'] = documentCategory;
+      }
+      if (location != null && location.isNotEmpty) {
+        request.fields['location'] = location;
+      }
+      if (issueDate != null && issueDate.isNotEmpty) {
+        request.fields['issue_date'] = issueDate;
+      }
+      if (expiryDate != null && expiryDate.isNotEmpty) {
+        request.fields['expiry_date'] = expiryDate;
+      }
+      if (documentNumber != null) {
+        request.fields['document_number'] = documentNumber;
+      }
+      if (notes != null) {
+        request.fields['notes'] = notes;
+      }
+      if (filePath != null && filePath.isNotEmpty) {
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            filename: fileName,
+          ),
+        );
+      }
+
+      final body = await _api.parseJson(
+        () => _api.postMultipart(
+          '${ApiConstants.trucks}/$truckId/documents/$documentId',
+          request,
+          companyId: companyId,
+        ),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.asMap(ApiParse.unwrapData(body)) ?? {};
+      return ApiResult.ok(TruckDocumentModel.fromJson(data));
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to update document.');
+    }
+  }
+}
+
+/// A generated compliance QR code — a base64 PNG data URL plus the signed
+/// download link it points to.
+class TruckQrCode {
+  const TruckQrCode({required this.qrCodeDataUrl, required this.downloadUrl});
+
+  final String qrCodeDataUrl;
+  final String downloadUrl;
 }

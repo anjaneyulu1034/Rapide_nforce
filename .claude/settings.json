@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze *)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\web_frontend-ui\" && find src -maxdepth 3 -type d | sort)",
+      "Read(//c/Users/anjik/Desktop/web_frontend-ui/**)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\web_frontend-ui\" && find src -maxdepth 5 -type f -iname \"*.ts*\" | sort | wc -l)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\bakend_rapidenforce\" && find src -type d | sort)",
+      "Read(//c/Users/anjik/Desktop/bakend_rapidenforce/**)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\bakend_rapidenforce\" && find prisma -type f | sort)",
+      "Bash(xargs wc -l)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\web_frontend-ui\" && find src/pages -type f | sort)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\web_frontend-ui\" && find src/services -type f | sort)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\web_frontend-ui\" && find src/components -type f | sort)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\web_frontend-ui\" && find src/types src/hooks src/context src/data src/constants src/config -type f | sort)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\bakend_rapidenforce\" && find src/routes -type f | sort)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\bakend_rapidenforce\" && find src/controllers -type f | sort)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\bakend_rapidenforce\" && find src/services -type f | sort)",
+      "Read(//c/Users/anjik/Desktop/web_frontend-ui/src/**)",
+      "Read(//c/Users/anjik/Desktop/bakend_rapidenforce/src/**)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\web_frontend-ui\" && grep -n -i \"power unit\\\\|powerunit\\\\|trucks\\\\|inventory\\\\|work order\" src/constants/routes.ts src/components/layout/Sidebar.tsx | head -100)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\bakend_rapidenforce\" && wc -l prisma/schema.prisma)",
+      "Read(//c/Users/anjik/Desktop/bakend_rapidenforce/prisma/**)",
+      "Read(//c/Users/anjik/Desktop/web_frontend-ui/src/pages/**)",
+      "Read(//c/Users/anjik/Desktop/web_frontend-ui/src/components/maintenance/**)",
+      "Read(//c/Users/anjik/Desktop/web_frontend-ui/src/services/**)",
+      "Read(//c/Users/anjik/Desktop/bakend_rapidenforce/src/routes/**)",
+      "Read(//c/Users/anjik/Desktop/bakend_rapidenforce/src/config/**)",
+      "Read(//c/Users/anjik/Desktop/bakend_rapidenforce/src/controllers/**)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\web_frontend-ui\" && grep -n \"WORK_ORDER_REVIEW\" -A 5 src/constants/app.constants.ts | head -20)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\bakend_rapidenforce\" && wc -l src/services/truck.service.ts src/repositories/truck.repository.ts src/controllers/maintenance.controller.ts src/services/maintenance.service.ts src/repositories/maintenance.repository.ts)",
+      "Read(//c/Users/anjik/Desktop/bakend_rapidenforce/src/services/**)",
+      "Read(//c/Users/anjik/Desktop/bakend_rapidenforce/src/repositories/**)",
+      "Read(//c/Users/anjik/Desktop/web_frontend-ui/src/types/**)",
+      "Read(//c/Users/anjik/Desktop/web_frontend-ui/src/components/vehicles/**)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\bakend_rapidenforce\" && wc -l src/controllers/maintenance-policy.controller.ts src/services/maintenance-policy.service.ts)",
+      "Read(//c/Users/anjik/Desktop/web_frontend-ui/src/constants/**)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\web_frontend-ui\" && grep -n \"approval_status\\\\|isPending\\\\|isRejected\\\\|Approve\\\\|Reject\" src/components/maintenance/WorkOrderViewEditDrawer.tsx | head -60)",
+      "Bash(cd \"C:\\\\Users\\\\anjik\\\\Desktop\\\\web_frontend-ui\" && wc -l src/pages/LeadApprovalsPage.tsx src/pages/LeadApprovalsTab.tsx src/pages/RequestsPage.tsx src/services/requests.service.ts)"
+    ]
+  }
+}
