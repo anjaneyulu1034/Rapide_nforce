@@ -79,7 +79,9 @@ String _initials(String name) {
 }
 
 class DvirScreen extends StatefulWidget {
-  const DvirScreen({super.key});
+  const DvirScreen({super.key, this.initialSearch});
+
+  final String? initialSearch;
 
   @override
   State<DvirScreen> createState() => _DvirScreenState();
@@ -128,6 +130,12 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
       });
       _loadCurrentTab();
     });
+
+    final initialSearch = widget.initialSearch?.trim();
+    if (initialSearch != null && initialSearch.isNotEmpty) {
+      _search = initialSearch;
+      _searchController.text = initialSearch;
+    }
 
     _searchController.addListener(_onSearchChanged);
     _reportsScrollController.addListener(_onReportsScroll);

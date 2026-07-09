@@ -5,6 +5,7 @@ import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/odometer_unit.dart';
+import 'package:rapide_nforce/ui/work_orders/widgets/source_events_widgets.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/work_order_section_header.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/pm_inspection_widgets.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_upload_attachment_sheet.dart';
@@ -711,6 +712,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                             uploads: _eventUploads,
                             uploadsLoading: _uploadsLoading,
                             onTap: _linkEvent,
+                            vin: _selectedEntity?.vinNumber,
+                            unitNumber: _selectedEntity?.name,
                           ),
                         ],
                       ],
@@ -1304,7 +1307,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   }
 }
 
-class _EventsSection extends StatelessWidget {
+class _EventsSection extends StatefulWidget {
   const _EventsSection({
     required this.loading,
     required this.events,
@@ -1312,6 +1315,8 @@ class _EventsSection extends StatelessWidget {
     required this.uploads,
     required this.uploadsLoading,
     required this.onTap,
+    this.vin,
+    this.unitNumber,
   });
 
   final bool loading;
@@ -1320,18 +1325,41 @@ class _EventsSection extends StatelessWidget {
   final Map<int, List<MaintenanceIssueUpload>> uploads;
   final bool uploadsLoading;
   final ValueChanged<MaintenanceIssueSummary> onTap;
+  final String? vin;
+  final String? unitNumber;
+
+  @override
+  State<_EventsSection> createState() => _EventsSectionState();
+}
+
+class _EventsSectionState extends State<_EventsSection> {
+  int _page = 1;
+
+  @override
+  void didUpdateWidget(covariant _EventsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.events.length != widget.events.length) _page = 1;
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (loading) {
+    if (widget.loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (events.isEmpty) {
+    if (widget.events.isEmpty) {
       return Text(
         'No linked DVIR defects or fault codes for this unit',
         style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
       );
     }
+    final rawTotalPages = (widget.events.length / sourceEventsPageSize).ceil();
+    final totalPages = rawTotalPages < 1 ? 1 : rawTotalPages;
+    final page = _page < 1 ? 1 : (_page > totalPages ? totalPages : _page);
+    final start = (page - 1) * sourceEventsPageSize;
+    final end = (start + sourceEventsPageSize) > widget.events.length
+        ? widget.events.length
+        : start + sourceEventsPageSize;
+    final pageItems = widget.events.sublist(start, end);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1340,12 +1368,23 @@ class _EventsSection extends StatelessWidget {
           style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
         ),
         const SizedBox(height: 8),
-        for (final e in events) _EventCard(
+        SourceEventsDetailsLink(
+          events: widget.events,
+          vin: widget.vin,
+          unitNumber: widget.unitNumber,
+        ),
+        const SizedBox(height: 8),
+        for (final e in pageItems) _EventCard(
           issue: e,
-          linked: linkedIds.contains(e.id),
-          uploads: uploads[e.id] ?? const [],
-          uploadsLoading: uploadsLoading,
-          onTap: () => onTap(e),
+          linked: widget.linkedIds.contains(e.id),
+          uploads: widget.uploads[e.id] ?? const [],
+          uploadsLoading: widget.uploadsLoading,
+          onTap: () => widget.onTap(e),
+        ),
+        SourceEventsPager(
+          page: page,
+          totalPages: totalPages,
+          onPageChanged: (p) => setState(() => _page = p),
         ),
       ],
     );

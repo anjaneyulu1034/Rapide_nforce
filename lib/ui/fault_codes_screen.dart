@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
-import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/models/fault_code_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
@@ -12,7 +11,9 @@ import 'package:rapide_nforce/ui/widgets/web_pagination.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class FaultCodesScreen extends StatefulWidget {
-  const FaultCodesScreen({super.key});
+  const FaultCodesScreen({super.key, this.initialSearch});
+
+  final String? initialSearch;
 
   @override
   State<FaultCodesScreen> createState() => _FaultCodesScreenState();
@@ -36,6 +37,11 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
   @override
   void initState() {
     super.initState();
+    final initialSearch = widget.initialSearch?.trim();
+    if (initialSearch != null && initialSearch.isNotEmpty) {
+      _searchTerm = initialSearch;
+      _searchController.text = initialSearch;
+    }
     _searchController.addListener(_onSearchChanged);
     _load();
   }
@@ -128,6 +134,13 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: _buildBody(context),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     return WebListPage(
       title: 'Fault Codes',
       subtitle:
@@ -166,6 +179,26 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
             ApiErrorBanner(message: _error!, onRetry: _load),
           WebSectionCard(
             title: 'Fault codes',
+            action: _totalItems > 0
+                ? Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      '$_totalItems total',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  )
+                : null,
             child: _loading
                 ? const Padding(
                     padding: EdgeInsets.all(32),
@@ -175,38 +208,55 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
                     ? Padding(
                         padding: const EdgeInsets.all(32),
                         child: Center(
-                          child: Text(
-                            _error != null
-                                ? 'No fault codes available'
-                                : 'No fault codes found',
-                            style: TextStyle(
-                              color: AppColors.textSecondary,
-                            ),
-                            textAlign: TextAlign.center,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.search_off_rounded,
+                                size: 32,
+                                color: AppColors.textSecondary,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _error != null
+                                    ? 'No fault codes available'
+                                    : 'No fault codes found',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ),
                         ),
                       )
-                    : Column(
-                        children: [
-                          for (final item in _items) _FaultCodeRow(item: item),
-                          WebPaginationBar(
-                            page: _page,
-                            totalPages: _totalPages,
-                            total: _totalItems,
-                            limit: _pageSize,
-                            onPageChanged: (p) {
-                              setState(() => _page = p);
-                              _load();
-                            },
-                            onLimitChanged: (size) {
-                              setState(() {
-                                _pageSize = size;
-                                _page = 1;
-                              });
-                              _load();
-                            },
-                          ),
-                        ],
+                    : Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+                        child: Column(
+                          children: [
+                            for (final item in _items) _FaultCodeRow(item: item),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              child: WebPaginationBar(
+                                page: _page,
+                                totalPages: _totalPages,
+                                total: _totalItems,
+                                limit: _pageSize,
+                                onPageChanged: (p) {
+                                  setState(() => _page = p);
+                                  _load();
+                                },
+                                onLimitChanged: (size) {
+                                  setState(() {
+                                    _pageSize = size;
+                                    _page = 1;
+                                  });
+                                  _load();
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
           ),
         ]),
@@ -238,45 +288,70 @@ class _StatsRow extends StatelessWidget {
             label: 'Total fault codes',
             value: '$total',
             hint: 'Across selected filters',
+            icon: Icons.confirmation_number_outlined,
+            accentColor: AppColors.primary,
           ),
           _SimpleStatCard(
             label: 'Active on page',
             value: '$active',
-            hint: 'Open / active codes in current view',
-            valueColor: const Color(0xFF16A34A),
+            hint: 'Open / active in current view',
+            icon: Icons.bolt_outlined,
+            accentColor: const Color(0xFF16A34A),
           ),
           _SimpleStatCard(
             label: 'Critical / high',
             value: '$critical',
-            hint: 'High-priority codes in current view',
-            valueColor: const Color(0xFFD97706),
+            hint: 'High-priority in current view',
+            icon: Icons.warning_amber_rounded,
+            accentColor: const Color(0xFFD97706),
           ),
           _SimpleStatCard(
             label: 'Cleared on page',
             value: '$cleared',
-            hint: 'Resolved codes in current view',
-            valueColor: AppColors.primary,
+            hint: 'Resolved in current view',
+            icon: Icons.check_circle_outline,
+            accentColor: const Color(0xFF2563EB),
           ),
         ];
 
         if (twoCol) {
           return Column(
             children: [
-              for (var i = 0; i < children.length; i++) ...[
-                children[i],
-                if (i < children.length - 1) const SizedBox(height: 10),
-              ],
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: children[0]),
+                    const SizedBox(width: 10),
+                    Expanded(child: children[1]),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: children[2]),
+                    const SizedBox(width: 10),
+                    Expanded(child: children[3]),
+                  ],
+                ),
+              ),
             ],
           );
         }
 
-        return Row(
-          children: [
-            for (var i = 0; i < children.length; i++) ...[
-              Expanded(child: children[i]),
-              if (i < children.length - 1) const SizedBox(width: 10),
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                Expanded(child: children[i]),
+                if (i < children.length - 1) const SizedBox(width: 10),
+              ],
             ],
-          ],
+          ),
         );
       },
     );
@@ -288,49 +363,79 @@ class _SimpleStatCard extends StatelessWidget {
     required this.label,
     required this.value,
     required this.hint,
-    this.valueColor,
+    required this.icon,
+    required this.accentColor,
   });
 
   final String label;
   final String value;
   final String hint;
-  final Color? valueColor;
+  final IconData icon;
+  final Color accentColor;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        gradient: AppGradients.card,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.alphaBlend(
+              accentColor.withValues(alpha: 0.20),
+              AppColors.cardElevated,
+            ),
+            Color.alphaBlend(
+              accentColor.withValues(alpha: 0.06),
+              AppColors.card,
+            ),
+          ],
+        ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: accentColor.withValues(alpha: 0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
+          Container(
+            width: 30,
+            height: 30,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(9),
             ),
+            child: Icon(icon, size: 16, color: accentColor),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             value,
             style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-              color: valueColor ?? AppColors.textPrimary,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+              height: 1.1,
+              color: AppColors.textPrimary,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
           Text(
             hint,
-            style: TextStyle(
-              fontSize: 12,
-              color: AppColors.textSecondary,
-            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10.5, color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -416,8 +521,21 @@ class _FilterDropdown extends StatelessWidget {
     return InputDecorator(
       decoration: InputDecoration(
         labelText: label,
+        filled: true,
+        fillColor: AppColors.surfaceTertiary,
         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primary),
+        ),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -444,51 +562,111 @@ class _FaultCodeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final severityTone = _severityTone(item.severity);
+    final accent = _toneColors(severityTone).$2;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.borderLight)),
+        color: accent.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.borderLight),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  item.faultCode,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: accent),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(9),
+                          ),
+                          child: Icon(
+                            Icons.report_gmailerrorred_rounded,
+                            size: 16,
+                            color: accent,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              item.faultCode,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      item.faultDescription,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        if (item.severity != null && item.severity!.isNotEmpty)
+                          _Pill(label: item.severity!, tone: severityTone),
+                        _Pill(
+                          label: _formatStatus(item.faultStatus),
+                          tone: _statusTone(item.faultStatus),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.local_shipping_outlined,
+                          size: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '${item.vehicleNumber} · ${item.companyName ?? '—'}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              if (item.severity != null && item.severity!.isNotEmpty)
-                _Pill(
-                  label: item.severity!,
-                  tone: _severityTone(item.severity),
-                ),
-              const SizedBox(width: 6),
-              _Pill(
-                label: _formatStatus(item.faultStatus),
-                tone: _statusTone(item.faultStatus),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            item.faultDescription,
-            style: TextStyle(
-              fontSize: 13,
-              color: AppColors.textSecondary,
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '${item.vehicleNumber} · ${item.companyName ?? '—'}',
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -521,6 +699,36 @@ class _FaultCodeRow extends StatelessWidget {
 
 enum _PillTone { danger, warning, success, info, neutral }
 
+(Color, Color, Color) _toneColors(_PillTone tone) {
+  return switch (tone) {
+    _PillTone.danger => (
+        const Color(0xFFFEF2F2),
+        const Color(0xFFDC2626),
+        const Color(0xFFFECACA),
+      ),
+    _PillTone.warning => (
+        const Color(0xFFFFFBEB),
+        const Color(0xFFD97706),
+        const Color(0xFFFDE68A),
+      ),
+    _PillTone.success => (
+        const Color(0xFFF0FDF4),
+        const Color(0xFF16A34A),
+        const Color(0xFFBBF7D0),
+      ),
+    _PillTone.info => (
+        const Color(0xFFEFF6FF),
+        const Color(0xFF2563EB),
+        const Color(0xFFBFDBFE),
+      ),
+    _PillTone.neutral => (
+        const Color(0xFFF8FAFC),
+        const Color(0xFF475569),
+        const Color(0xFFE2E8F0),
+      ),
+  };
+}
+
 class _Pill extends StatelessWidget {
   const _Pill({required this.label, required this.tone});
 
@@ -529,33 +737,7 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = switch (tone) {
-      _PillTone.danger => (
-          const Color(0xFFFEF2F2),
-          const Color(0xFFDC2626),
-          const Color(0xFFFECACA),
-        ),
-      _PillTone.warning => (
-          const Color(0xFFFFFBEB),
-          const Color(0xFFD97706),
-          const Color(0xFFFDE68A),
-        ),
-      _PillTone.success => (
-          const Color(0xFFF0FDF4),
-          const Color(0xFF16A34A),
-          const Color(0xFFBBF7D0),
-        ),
-      _PillTone.info => (
-          const Color(0xFFEFF6FF),
-          const Color(0xFF2563EB),
-          const Color(0xFFBFDBFE),
-        ),
-      _PillTone.neutral => (
-          const Color(0xFFF8FAFC),
-          const Color(0xFF475569),
-          const Color(0xFFE2E8F0),
-        ),
-    };
+    final colors = _toneColors(tone);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

@@ -69,6 +69,11 @@ class _AppShellState extends State<AppShell> {
   bool _loadingMenus = false;
   bool _bootstrapping = false;
 
+  // Keeps already-visited tab screens alive so switching tabs doesn't dispose
+  // and re-fetch them from scratch every time — only the first visit to a
+  // route pays the network cost, matching e.g. IndexedStack-based tab bars.
+  final Map<AppRoute, Widget> _screenCache = {};
+
   bool get _isLoggedIn => AuthService.instance.isLoggedIn;
 
   List<AppRoute> get _bottomNavRoutes {
@@ -187,6 +192,7 @@ class _AppShellState extends State<AppShell> {
     setState(() {
       _selectedCompanyId = AuthService.instance.selectedCompanyId;
       _bootstrapping = true;
+      _screenCache.clear();
     });
     _bootstrapSession();
   }
@@ -204,6 +210,7 @@ class _AppShellState extends State<AppShell> {
       _selectedCompanyId = null;
       _loadingCompanies = false;
       _bootstrapping = false;
+      _screenCache.clear();
     });
   }
 
@@ -214,10 +221,17 @@ class _AppShellState extends State<AppShell> {
   void _onCompanyChanged(String companyId) {
     AuthService.instance.setSelectedCompanyId(companyId);
 
-    setState(() => _selectedCompanyId = companyId);
+    setState(() {
+      _selectedCompanyId = companyId;
+      _screenCache.clear();
+    });
   }
 
   Widget _screenFor(AppRoute route) {
+    return _screenCache.putIfAbsent(route, () => _buildScreen(route));
+  }
+
+  Widget _buildScreen(AppRoute route) {
     switch (route) {
       case AppRoute.dashboard:
         return DashboardScreen(onNavigate: _onRouteSelected);
@@ -274,7 +288,14 @@ class _AppShellState extends State<AppShell> {
       return LoginScreen(onLoginSuccess: _onLoginSuccess);
     }
 
-    if (_bootstrapping) {
+    // Only block on the full-screen splash when we don't even know which
+    // company to scope requests to yet (true first-ever login). Once a
+    // company is known (restored from disk on every subsequent launch),
+    // render immediately and let the drawer/header show their own small
+    // loading indicators while companies/menus refresh in the background —
+    // this is what was making every login feel like two loading screens
+    // back-to-back.
+    if (_bootstrapping && _selectedCompanyId == null) {
       return Scaffold(
         backgroundColor: AppColors.surface,
         body: const Center(
@@ -329,7 +350,16 @@ class _AppShellState extends State<AppShell> {
       body: KeyedSubtree(
         key: ValueKey(_selectedCompanyId),
 
-        child: _screenFor(_currentRoute),
+        child: IndexedStack(
+          index: AppRoute.values.indexOf(_currentRoute),
+          children: [
+            for (final route in AppRoute.values)
+              if (route == _currentRoute || _screenCache.containsKey(route))
+                _screenFor(route)
+              else
+                const SizedBox.shrink(),
+          ],
+        ),
       ),
 
       floatingActionButton: _currentRoute == AppRoute.powerUnit
@@ -341,7 +371,10 @@ class _AppShellState extends State<AppShell> {
                   ),
                 );
                 if (changed == true) {
-                  setState(() => _powerUnitRefreshKey++);
+                  setState(() {
+                    _powerUnitRefreshKey++;
+                    _screenCache.remove(AppRoute.powerUnit);
+                  });
                 }
               },
               backgroundColor: const Color(0xFF990000),
@@ -358,7 +391,10 @@ class _AppShellState extends State<AppShell> {
                   ),
                 );
                 if (changed == true) {
-                  setState(() => _workOrderRefreshKey++);
+                  setState(() {
+                    _workOrderRefreshKey++;
+                    _screenCache.remove(AppRoute.maintenance);
+                  });
                 }
               },
               backgroundColor: const Color(0xFF990000),

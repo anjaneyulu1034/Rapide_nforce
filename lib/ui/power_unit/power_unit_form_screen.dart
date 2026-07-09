@@ -302,6 +302,27 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   String? _req(String? v, String field) =>
       (v == null || v.trim().isEmpty) ? '$field is required' : null;
 
+  static final _alphanumericOnly = RegExp(r'^[A-Za-z0-9]*$');
+
+  /// Mirrors the web app's VIN validation exactly (`AddTruckPage.tsx`):
+  /// required, alphanumeric only, and exactly 17 characters.
+  String? _vinValidator(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return 'VIN is required';
+    if (!_alphanumericOnly.hasMatch(value)) {
+      return 'VIN must contain only letters and numbers.';
+    }
+    if (value.length < 17) {
+      final remaining = 17 - value.length;
+      return 'VIN must be exactly 17 characters. $remaining more '
+          'character${remaining == 1 ? '' : 's'} required.';
+    }
+    if (value.length > 17) {
+      return 'VIN must be exactly 17 characters. Please remove extra characters.';
+    }
+    return null;
+  }
+
   bool _validateStep(int step) {
     if (!_formKey.currentState!.validate()) return false;
     if (step == 1) {
@@ -781,7 +802,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         WebTextFormField(
           controller: _vin,
           label: 'VIN *',
-          validator: (v) => _req(v, 'VIN'),
+          validator: _vinValidator,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
         ),
         WebTextFormField(
           controller: _make,

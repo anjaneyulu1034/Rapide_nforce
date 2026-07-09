@@ -9,6 +9,7 @@ import 'package:rapide_nforce/services/maintenance_service.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_form_screen.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_pdf_export.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_upload_attachment_sheet.dart';
+import 'package:rapide_nforce/ui/work_orders/widgets/source_events_widgets.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/work_order_section_header.dart';
 import 'package:rapide_nforce/ui/widgets/api_error_banner.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
@@ -33,6 +34,8 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
 
   List<TechnicianSummary> _technicians = [];
   List<MaintenanceIssueSummary> _events = [];
+  Map<int, List<MaintenanceIssueUpload>> _eventUploads = {};
+  bool _eventUploadsLoading = false;
   String? _vin;
   String _eventsFilter = 'ALL';
 
@@ -104,6 +107,22 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
     setState(() {
       _vin = vin;
       _events = eventsResult.data ?? [];
+    });
+    _loadEventUploads();
+  }
+
+  Future<void> _loadEventUploads() async {
+    final ids = _events.map((e) => e.id).toList();
+    if (ids.isEmpty) {
+      setState(() => _eventUploads = {});
+      return;
+    }
+    setState(() => _eventUploadsLoading = true);
+    final result = await MaintenanceService.instance.getMaintenanceIssueUploads(ids);
+    if (!mounted) return;
+    setState(() {
+      _eventUploadsLoading = false;
+      _eventUploads = result.data ?? {};
     });
   }
 
@@ -387,6 +406,10 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
             events: _events,
             filter: _eventsFilter,
             onFilterChanged: (f) => setState(() => _eventsFilter = f),
+            uploads: _eventUploads,
+            uploadsLoading: _eventUploadsLoading,
+            vin: _vin,
+            unitNumber: order.unitNumber,
           ),
         ),
         numbered(
@@ -818,62 +841,157 @@ class _ReadOnlyField extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Source events (read-only) — same DVIR/Fault Code filter chips as the web,
-// no selection/linking since this is view-only.
+// Source events (read-only) — mirrors the web's "Source Events for This
+// Vehicle" table (Defect/Category/Type/Reference/Reported Date/Status/
+// Severity/Images), just as cards instead of a table since this is view-only.
 // ---------------------------------------------------------------------------
 
-class _EventsReadOnly extends StatelessWidget {
+String _formatSourceEventLabel(String source) {
+  switch (source.toUpperCase()) {
+    case 'FAULT_CODE':
+      return 'Fault Code';
+    case 'DVIR':
+      return 'DVIR';
+    case 'GENERAL':
+      return 'General';
+    case 'MANUAL':
+      return 'Manual';
+    default:
+      return source;
+  }
+}
+
+String _formatSourceEventType(MaintenanceIssueSummary issue) {
+  if (issue.issueSource.toUpperCase() == 'FAULT_CODE') return 'Telematics';
+  return _formatSourceEventLabel(issue.issueSource);
+}
+
+String _formatSourceEventReportedDate(String? value) {
+  if (value == null || value.isEmpty) return '—';
+  final parsed = DateTime.tryParse(value);
+  if (parsed == null) return value;
+  return DateFormat('MM-dd-yyyy hh:mm a').format(parsed.toLocal());
+}
+
+class _EventsReadOnly extends StatefulWidget {
   const _EventsReadOnly({
     required this.events,
     required this.filter,
     required this.onFilterChanged,
+    required this.uploads,
+    required this.uploadsLoading,
+    this.vin,
+    this.unitNumber,
   });
 
   final List<MaintenanceIssueSummary> events;
   final String filter;
   final ValueChanged<String> onFilterChanged;
+  final Map<int, List<MaintenanceIssueUpload>> uploads;
+  final bool uploadsLoading;
+  final String? vin;
+  final String? unitNumber;
+
+  @override
+  State<_EventsReadOnly> createState() => _EventsReadOnlyState();
+}
+
+class _EventsReadOnlyState extends State<_EventsReadOnly> {
+  int _page = 1;
+
+  bool _isDvir(MaintenanceIssueSummary e) =>
+      e.issueSource.toUpperCase().contains('DVIR');
+
+  bool _isFaultCode(MaintenanceIssueSummary e) =>
+      e.issueSource.toUpperCase().contains('FAULT');
 
   List<MaintenanceIssueSummary> get _filtered {
-    if (filter == 'ALL') return events;
-    return events
-        .where((e) => e.issueSource.toUpperCase().contains(filter))
-        .toList();
+    switch (widget.filter) {
+      case 'DVIR':
+      case 'DEFECT_TYPES':
+        return widget.events.where(_isDvir).toList();
+      case 'FAULT':
+        return widget.events.where(_isFaultCode).toList();
+      default:
+        return widget.events;
+    }
   }
 
   int _count(String key) {
-    if (key == 'ALL') return events.length;
-    return events
-        .where((e) => e.issueSource.toUpperCase().contains(key))
-        .length;
+    switch (key) {
+      case 'DVIR':
+      case 'DEFECT_TYPES':
+        return widget.events.where(_isDvir).length;
+      case 'FAULT':
+        return widget.events.where(_isFaultCode).length;
+      default:
+        return widget.events.length;
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _EventsReadOnly oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.filter != widget.filter ||
+        oldWidget.events.length != widget.events.length) {
+      _page = 1;
+    }
+  }
+
+  void _selectFilter(String f) {
+    setState(() => _page = 1);
+    widget.onFilterChanged(f);
   }
 
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
+    final rawTotalPages = (filtered.length / sourceEventsPageSize).ceil();
+    final totalPages = rawTotalPages < 1 ? 1 : rawTotalPages;
+    final page = _page < 1 ? 1 : (_page > totalPages ? totalPages : _page);
+    final start = (page - 1) * sourceEventsPageSize;
+    final end = (start + sourceEventsPageSize) > filtered.length
+        ? filtered.length
+        : start + sourceEventsPageSize;
+    final pageItems = filtered.sublist(start, end);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
             _FilterPill(
               label: 'All Events (${_count('ALL')})',
-              selected: filter == 'ALL',
-              onTap: () => onFilterChanged('ALL'),
+              selected: widget.filter == 'ALL',
+              onTap: () => _selectFilter('ALL'),
             ),
-            const SizedBox(width: 8),
             _FilterPill(
               label: 'DVIR Defects (${_count('DVIR')})',
-              selected: filter == 'DVIR',
-              onTap: () => onFilterChanged('DVIR'),
+              selected: widget.filter == 'DVIR',
+              onTap: () => _selectFilter('DVIR'),
             ),
-            const SizedBox(width: 8),
             _FilterPill(
               label: 'Fault Codes (${_count('FAULT')})',
-              selected: filter == 'FAULT',
-              onTap: () => onFilterChanged('FAULT'),
+              selected: widget.filter == 'FAULT',
+              onTap: () => _selectFilter('FAULT'),
+            ),
+            _FilterPill(
+              label: 'Defect Types (${_count('DEFECT_TYPES')})',
+              selected: widget.filter == 'DEFECT_TYPES',
+              onTap: () => _selectFilter('DEFECT_TYPES'),
             ),
           ],
         ),
+        if (widget.events.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          SourceEventsDetailsLink(
+            events: filtered,
+            vin: widget.vin,
+            unitNumber: widget.unitNumber,
+          ),
+        ],
         const SizedBox(height: 10),
         if (filtered.isEmpty)
           Container(
@@ -890,46 +1008,319 @@ class _EventsReadOnly extends StatelessWidget {
             ),
           )
         else
-          for (final e in filtered)
-            Container(
-              margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.surfaceTertiary,
-                borderRadius: BorderRadius.circular(10),
+          for (final e in pageItems)
+            _SourceEventCard(
+              issue: e,
+              uploads: widget.uploads[e.id] ?? const [],
+              uploadsLoading: widget.uploadsLoading,
+            ),
+        SourceEventsPager(
+          page: page,
+          totalPages: totalPages,
+          onPageChanged: (p) => setState(() => _page = p),
+        ),
+      ],
+    );
+  }
+}
+
+class _SourceEventCard extends StatelessWidget {
+  const _SourceEventCard({
+    required this.issue,
+    required this.uploads,
+    required this.uploadsLoading,
+  });
+
+  final MaintenanceIssueSummary issue;
+  final List<MaintenanceIssueUpload> uploads;
+  final bool uploadsLoading;
+
+  void _openImagePreview(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _SourceEventImagePreviewSheet(
+        uploads: uploads,
+        loading: uploadsLoading,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final defectText = issue.defect?.trim().isNotEmpty == true
+        ? issue.defect!.trim()
+        : (issue.issueName ?? issue.issueDescription ?? 'Issue #${issue.id}');
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceTertiary,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  defectText,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
               ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          e.issueName ?? e.issueDescription ?? 'Issue #${e.id}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          e.issueSource,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
+              IconButton(
+                tooltip: 'Preview images',
+                visualDensity: VisualDensity.compact,
+                icon: Icon(
+                  Icons.image_outlined,
+                  size: 18,
+                  color: AppColors.textSecondary,
+                ),
+                onPressed: () => _openImagePreview(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              if ((issue.category ?? '').isNotEmpty)
+                _SourceEventChip(label: 'Category', value: issue.category!),
+              _SourceEventChip(label: 'Type', value: _formatSourceEventType(issue)),
+              if ((issue.status ?? '').isNotEmpty)
+                _SourceEventStatusBadge(status: issue.status!),
+              if ((issue.severity ?? '').isNotEmpty)
+                _SourceEventSeverityBadge(severity: issue.severity!),
+            ],
+          ),
+          if ((issue.externalReference ?? '').isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Reference: ${issue.externalReference}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            'Reported: ${_formatSourceEventReportedDate(issue.reportedDate)}',
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SourceEventChip extends StatelessWidget {
+  const _SourceEventChip({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.border.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceEventStatusBadge extends StatelessWidget {
+  const _SourceEventStatusBadge({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = status.toLowerCase();
+    Color bg;
+    Color fg;
+    if (normalized.contains('progress')) {
+      bg = const Color(0xFFDBEAFE);
+      fg = const Color(0xFF1D4ED8);
+    } else if (normalized.contains('complete') || normalized.contains('resolved')) {
+      bg = const Color(0xFFDCFCE7);
+      fg = const Color(0xFF15803D);
+    } else if (normalized.contains('not started') || normalized.contains('open')) {
+      bg = const Color(0xFFFEF3C7);
+      fg = const Color(0xFF92400E);
+    } else {
+      bg = const Color(0xFFF1F5F9);
+      fg = const Color(0xFF475569);
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(
+        status,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg),
+      ),
+    );
+  }
+}
+
+class _SourceEventSeverityBadge extends StatelessWidget {
+  const _SourceEventSeverityBadge({required this.severity});
+
+  final String severity;
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = severity.toUpperCase();
+    Color bg;
+    Color fg;
+    if (normalized.contains('HIGH')) {
+      bg = const Color(0xFFFEE2E2);
+      fg = const Color(0xFFB91C1C);
+    } else if (normalized.contains('MEDIUM')) {
+      bg = const Color(0xFFFEF3C7);
+      fg = const Color(0xFF92400E);
+    } else {
+      bg = const Color(0xFFF1F5F9);
+      fg = const Color(0xFF475569);
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(
+        severity,
+        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg),
+      ),
+    );
+  }
+}
+
+class _SourceEventImagePreviewSheet extends StatefulWidget {
+  const _SourceEventImagePreviewSheet({required this.uploads, required this.loading});
+
+  final List<MaintenanceIssueUpload> uploads;
+  final bool loading;
+
+  @override
+  State<_SourceEventImagePreviewSheet> createState() =>
+      _SourceEventImagePreviewSheetState();
+}
+
+class _SourceEventImagePreviewSheetState
+    extends State<_SourceEventImagePreviewSheet> {
+  int _selectedIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final images = widget.uploads
+        .where((u) => u.isImage && (u.signedUrl ?? '').isNotEmpty)
+        .toList();
+    final selected =
+        images.isNotEmpty ? images[_selectedIndex.clamp(0, images.length - 1)] : null;
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Image preview',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                      color: AppColors.textPrimary,
                     ),
                   ),
-                  if (e.severity != null)
-                    Text(
-                      e.severity!,
-                      style: TextStyle(fontSize: 11, color: AppColors.danger),
-                    ),
-                ],
-              ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.close, color: AppColors.textSecondary),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
             ),
-      ],
+            Container(
+              height: 260,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.border, style: BorderStyle.solid),
+              ),
+              child: widget.loading
+                  ? const CircularProgressIndicator()
+                  : selected == null
+                      ? Text(
+                          'No image found',
+                          style: TextStyle(color: AppColors.textSecondary),
+                        )
+                      : ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.network(
+                            selected.signedUrl!,
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, _, _) => Text(
+                              'No image found',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
+                          ),
+                        ),
+            ),
+            if (images.length > 1) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 64,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: images.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, i) {
+                    final isSelected = i == _selectedIndex;
+                    return InkWell(
+                      onTap: () => setState(() => _selectedIndex = i),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isSelected ? AppColors.primary : Colors.transparent,
+                            width: 2,
+                          ),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Image.network(images[i].signedUrl!, fit: BoxFit.cover),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -947,26 +1338,22 @@ class _FilterPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: selected
-                ? const Color(0xFF1A1A1A)
-                : AppColors.surfaceTertiary,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: selected ? Colors.white : AppColors.textSecondary,
-            ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFF1A1A1A) : AppColors.surfaceTertiary,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : AppColors.textSecondary,
           ),
         ),
       ),

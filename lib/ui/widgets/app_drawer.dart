@@ -53,9 +53,14 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   List<NavMenuItem> _menuSource() {
-    return widget.menuItems.isNotEmpty
+    final items = widget.menuItems.isNotEmpty
         ? widget.menuItems
         : _staticMenus();
+    // Carrier Compliance hidden for now — not needed yet. Remove this
+    // filter to bring it back in the drawer.
+    return items
+        .where((item) => MenuRouteMapper.routeFromPath(item.path) != AppRoute.carriers)
+        .toList();
   }
 
   bool _isGroupActive(NavMenuItem item) {

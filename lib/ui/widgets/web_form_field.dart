@@ -169,7 +169,7 @@ class _WebFormSectionState extends State<WebFormSection>
               top: 0,
               bottom: 0,
               width: 4,
-              child: const ColoredBox(color: Color(0xFF1A1A1A)),
+              child: ColoredBox(color: AppColors.gold),
             ),
           Padding(
             padding: EdgeInsets.only(left: isLight ? 4 : 0),
@@ -195,6 +195,7 @@ class WebTextFormField extends StatelessWidget {
     this.onTap,
     this.onChanged,
     this.suffix,
+    this.autovalidateMode,
   });
 
   final TextEditingController controller;
@@ -208,6 +209,7 @@ class WebTextFormField extends StatelessWidget {
   final VoidCallback? onTap;
   final ValueChanged<String>? onChanged;
   final Widget? suffix;
+  final AutovalidateMode? autovalidateMode;
 
   @override
   Widget build(BuildContext context) {
@@ -225,6 +227,7 @@ class WebTextFormField extends StatelessWidget {
         readOnly: readOnly,
         onTap: onTap,
         onChanged: onChanged,
+        autovalidateMode: autovalidateMode,
         style: TextStyle(color: AppColors.textPrimary, fontSize: fontSize),
         decoration: InputDecoration(
           label: buildFieldLabel(label, fontSize),

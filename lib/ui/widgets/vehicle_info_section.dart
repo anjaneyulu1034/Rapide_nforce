@@ -148,72 +148,92 @@ class _VehicleInfoSectionState extends State<VehicleInfoSection>
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        // Stack lets the left accent bar stretch to the full card height
+        // without IntrinsicHeight.
+        child: Stack(
           children: [
-            // ── Tappable header ──
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _toggle,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 15,
-                  ),
-                  child: Row(
-                    children: [
-                      if (widget.titleIcon != null) ...[
-                        widget.titleIcon!,
-                        const SizedBox(width: 6),
-                      ],
-                      Expanded(
-                        child: Text(
-                          widget.title,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 15,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                      RotationTransition(
-                        turns: _rotation,
-                        child: Icon(
-                          Icons.keyboard_arrow_down_rounded,
-                          color: AppColors.textSecondary,
-                          size: 22,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 4,
+              child: ColoredBox(color: widget.accentBorder ?? AppColors.gold),
             ),
-            // ── Collapsible content ──
-            AnimatedSize(
-              duration: const Duration(milliseconds: 250),
-              curve: Curves.easeInOut,
-              child: _expanded
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: AppColors.border,
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                          child: Column(children: rowWidgets),
-                        ),
-                      ],
-                    )
-                  : const SizedBox.shrink(),
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: _content(rowWidgets),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _content(List<Widget> rowWidgets) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // ── Tappable header ──
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _toggle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 15,
+              ),
+              child: Row(
+                children: [
+                  if (widget.titleIcon != null) ...[
+                    widget.titleIcon!,
+                    const SizedBox(width: 6),
+                  ],
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  RotationTransition(
+                    turns: _rotation,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: AppColors.textSecondary,
+                      size: 22,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        // ── Collapsible content ──
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeInOut,
+          child: _expanded
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: AppColors.border,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                      child: Column(children: rowWidgets),
+                    ),
+                  ],
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
     );
   }
 }

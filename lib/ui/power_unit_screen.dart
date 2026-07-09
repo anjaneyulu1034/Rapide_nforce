@@ -429,14 +429,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
           decoration: BoxDecoration(
             color: AppColors.card,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.cardShadow.withValues(alpha: 0.35),
-                blurRadius: 16,
-                spreadRadius: 1,
-                offset: const Offset(0, 3),
-              ),
-            ],
           ),
           child: Padding(
             padding: const EdgeInsets.all(14),
