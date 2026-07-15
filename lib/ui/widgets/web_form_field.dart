@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_gradients.dart';
+import 'package:rapide_nforce/core/utils/compact_date_picker.dart';
 import 'package:rapide_nforce/core/utils/responsive.dart';
 import 'package:intl/intl.dart';
 
@@ -273,7 +274,11 @@ class WebTextFormField extends StatelessWidget {
         onTap: onTap,
         onChanged: onChanged,
         autovalidateMode: autovalidateMode,
-        style: TextStyle(color: AppColors.textPrimary, fontSize: fontSize),
+        style: TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: fontSize,
+          fontWeight: FontWeight.w600,
+        ),
         decoration: InputDecoration(
           label: buildFieldLabel(label, fontSize),
           hintText: hint,
@@ -286,15 +291,15 @@ class WebTextFormField extends StatelessWidget {
           fillColor: isLight ? Colors.white : AppColors.inputFill,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.border),
+            borderSide: BorderSide(color: AppColors.borderLight),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.border),
+            borderSide: BorderSide(color: AppColors.borderLight),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF1A1A1A), width: 1.5),
+            borderSide: BorderSide(color: AppColors.primary, width: 1.5),
           ),
         ),
         validator: validator,
@@ -333,22 +338,25 @@ class WebDropdownField<T> extends StatelessWidget {
         initialValue: value,
         isExpanded: true,
         dropdownColor: AppColors.card,
-        style: TextStyle(color: AppColors.textPrimary),
+        style: TextStyle(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w600,
+        ),
         decoration: InputDecoration(
           label: buildFieldLabel(label, 15),
           filled: true,
           fillColor: isLight ? Colors.white : AppColors.inputFill,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.border),
+            borderSide: BorderSide(color: AppColors.borderLight),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.border),
+            borderSide: BorderSide(color: AppColors.borderLight),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFF1A1A1A), width: 1.5),
+            borderSide: BorderSide(color: AppColors.primary, width: 1.5),
           ),
         ),
         hint: Text(hint, style: TextStyle(color: AppColors.textSecondary)),
@@ -427,11 +435,11 @@ class WebSearchableDropdownField<T> extends StatelessWidget {
             fillColor: isLight ? Colors.white : AppColors.inputFill,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: AppColors.borderLight),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: AppColors.borderLight),
             ),
             suffixIcon: Icon(
               Icons.keyboard_arrow_down_rounded,
@@ -445,6 +453,7 @@ class WebSearchableDropdownField<T> extends StatelessWidget {
               color: selectedLabel != null
                   ? AppColors.textPrimary
                   : AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
@@ -579,7 +588,7 @@ class WebDateField extends StatelessWidget {
   Future<void> _pick(BuildContext context) async {
     final now = DateTime.now();
     final initial = DateTime.tryParse(controller.text) ?? now;
-    final picked = await showDatePicker(
+    final picked = await showCompactDatePicker(
       context: context,
       initialDate: initial,
       firstDate: DateTime(1980),
@@ -637,7 +646,10 @@ class WebFileUploadZone extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border, width: 1.5),
+        border: Border.all(
+          color: AppColors.textSecondary.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
         color: isLight
             ? const Color(0xFFF9FAFB)
             : AppColors.inputFill.withValues(alpha: 0.35),
@@ -728,7 +740,7 @@ class WebFileUploadZone extends StatelessWidget {
                 Expanded(
                   child: _PickerActionButton(
                     icon: Icons.folder_open_outlined,
-                    label: 'Browse',
+                    label: 'File',
                     color: const Color(0xFF0284C7),
                     bg: const Color(0xFFE0F2FE),
                     onTap: onBrowse,

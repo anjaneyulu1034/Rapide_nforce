@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
+import 'package:rapide_nforce/core/utils/compact_date_picker.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/power_unit_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
@@ -38,8 +39,52 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
   int _totalPages = 1;
   String _search = '';
 
+  // Filters — the backend's /trucks list endpoint has no status/date query
+  // params, so these are applied client-side over a larger fetched batch.
+  String _statusFilter = 'all'; // all | active | inactive
+  DateTime? _startDateFrom;
+  DateTime? _startDateTo;
+
   bool get _isSuperAdmin =>
       isSuperAdminRole(AuthService.instance.currentUser?.role);
+
+  bool get _hasActiveFilters =>
+      _statusFilter != 'all' || _startDateFrom != null || _startDateTo != null;
+
+  int get _effectiveLimit => _hasActiveFilters ? 500 : _limit;
+
+  DateTime? _parseDate(String? s) {
+    if (s == null || s.isEmpty) return null;
+    final parsed = DateTime.tryParse(s);
+    if (parsed != null) return parsed;
+    final parts = s.split('-');
+    if (parts.length == 3) {
+      final m = int.tryParse(parts[0]);
+      final d = int.tryParse(parts[1]);
+      final y = int.tryParse(parts[2]);
+      if (m != null && d != null && y != null) return DateTime(y, m, d);
+    }
+    return null;
+  }
+
+  List<PowerUnitModel> get _visibleItems {
+    if (!_hasActiveFilters) return _items;
+    return _items.where((u) {
+      if (_statusFilter == 'active' && !u.isActive) return false;
+      if (_statusFilter == 'inactive' && u.isActive) return false;
+      final start = _parseDate(u.startDate);
+      if (_startDateFrom != null &&
+          (start == null || start.isBefore(_startDateFrom!))) {
+        return false;
+      }
+      if (_startDateTo != null &&
+          (start == null ||
+              start.isAfter(_startDateTo!.add(const Duration(days: 1))))) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -79,6 +124,228 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     });
   }
 
+  Future<void> _openFilterSheet() async {
+    String tempStatus = _statusFilter;
+    DateTime? tempFrom = _startDateFrom;
+    DateTime? tempTo = _startDateTo;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            Future<void> pickDate({required bool isFrom}) async {
+              final now = DateTime.now();
+              final picked = await showCompactDatePicker(
+                context: sheetContext,
+                initialDate: (isFrom ? tempFrom : tempTo) ?? now,
+                firstDate: DateTime(2015),
+                lastDate: DateTime(now.year + 5),
+              );
+              if (picked == null) return;
+              setSheetState(() {
+                if (isFrom) {
+                  tempFrom = picked;
+                } else {
+                  tempTo = picked;
+                }
+              });
+            }
+
+            Widget dateField(String label, DateTime? value, bool isFrom) {
+              return Expanded(
+                child: InkWell(
+                  onTap: () => pickDate(isFrom: isFrom),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.inputFill,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_month_outlined,
+                          size: 16,
+                          color: AppColors.textSecondary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            value != null
+                                ? '${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}-${value.year}'
+                                : label,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: value != null
+                                  ? AppColors.textPrimary
+                                  : AppColors.textSecondary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (value != null)
+                          InkWell(
+                            onTap: () => setSheetState(() {
+                              if (isFrom) {
+                                tempFrom = null;
+                              } else {
+                                tempTo = null;
+                              }
+                            }),
+                            child: Icon(
+                              Icons.close,
+                              size: 16,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            Widget statusChip(String value, String label) {
+              final selected = tempStatus == value;
+              return ChoiceChip(
+                label: Text(label),
+                selected: selected,
+                onSelected: (_) => setSheetState(() => tempStatus = value),
+                selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                labelStyle: TextStyle(
+                  color: selected ? AppColors.primary : AppColors.textPrimary,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 13,
+                ),
+                side: BorderSide(
+                  color: selected ? AppColors.primary : AppColors.border,
+                ),
+                backgroundColor: AppColors.inputFill,
+              );
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 20,
+                  bottom: 20 + MediaQuery.of(sheetContext).viewInsets.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Filter Power Units',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'STATUS',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        statusChip('all', 'All'),
+                        statusChip('active', 'Active'),
+                        statusChip('inactive', 'Inactive'),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'START DATE RANGE',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        dateField('From', tempFrom, true),
+                        const SizedBox(width: 12),
+                        dateField('To', tempTo, false),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              setSheetState(() {
+                                tempStatus = 'all';
+                                tempFrom = null;
+                                tempTo = null;
+                              });
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.textPrimary,
+                              side: BorderSide(color: AppColors.border),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text('Clear'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: WebPrimaryButton(
+                            label: 'Apply Filters',
+                            expand: false,
+                            onPressed: () {
+                              setState(() {
+                                _statusFilter = tempStatus;
+                                _startDateFrom = tempFrom;
+                                _startDateTo = tempTo;
+                              });
+                              Navigator.pop(sheetContext);
+                              _load();
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -89,7 +356,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
 
     final result = await PowerUnitService.instance.fetchPowerUnits(
       page: 1,
-      limit: _limit,
+      limit: _effectiveLimit,
       search: _search.isEmpty ? null : _search,
       sortBy: 'id',
       sortOrder: 'desc',
@@ -119,7 +386,12 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
   }
 
   Future<void> _loadMore() async {
-    if (_loading || _loadingMore || _page >= _totalPages) return;
+    if (_loading ||
+        _loadingMore ||
+        _page >= _totalPages ||
+        _hasActiveFilters) {
+      return;
+    }
 
     setState(() {
       _loadingMore = true;
@@ -128,7 +400,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     final nextPage = _page + 1;
     final result = await PowerUnitService.instance.fetchPowerUnits(
       page: nextPage,
-      limit: _limit,
+      limit: _effectiveLimit,
       search: _search.isEmpty ? null : _search,
       sortBy: 'id',
       sortOrder: 'desc',
@@ -655,24 +927,77 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
           controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
-            WebSearchField(
-              controller: _searchController,
-              hintText: 'Search by Unit',
-              showClear: _search.isNotEmpty,
-              onClear: () {
-                _searchController.clear();
-                setState(() {
-                  _search = '';
-                  _page = 1;
-                });
-                _load();
-              },
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: WebSearchField(
+                    controller: _searchController,
+                    hintText: 'Search by Unit',
+                    showClear: _search.isNotEmpty,
+                    onClear: () {
+                      _searchController.clear();
+                      setState(() {
+                        _search = '';
+                        _page = 1;
+                      });
+                      _load();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Material(
+                      color: AppColors.inputFill,
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _openFilterSheet,
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Icon(
+                            Icons.tune_rounded,
+                            color: _hasActiveFilters
+                                ? AppColors.primary
+                                : AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_hasActiveFilters)
+                      Positioned(
+                        top: -2,
+                        right: -2,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: AppColors.card,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Row(
               children: [
                 Text(
-                  'Total Units',
+                  _hasActiveFilters ? 'Filtered Results' : 'Total Units',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -681,13 +1006,35 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  '$_total',
+                  _hasActiveFilters ? '${_visibleItems.length}' : '$_total',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary,
                   ),
                 ),
+                if (_hasActiveFilters) ...[
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _statusFilter = 'all';
+                        _startDateFrom = null;
+                        _startDateTo = null;
+                      });
+                      _load();
+                    },
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text(
+                      'Clear filters',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 16),
@@ -698,21 +1045,23 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
               )
             else if (_error != null)
               ApiErrorBanner(message: _error!, onRetry: _load)
-            else if (_items.isEmpty)
+            else if (_visibleItems.isEmpty)
               ListEmptyState(
-                message: _search.isNotEmpty
+                message: _hasActiveFilters
+                    ? 'No power units match these filters'
+                    : _search.isNotEmpty
                     ? 'No power units match your search'
                     : 'No power units yet',
                 icon: Icons.local_shipping_outlined,
-                actionLabel: 'Add Power Unit',
-                onAction: _openAdd,
+                actionLabel: _hasActiveFilters ? null : 'Add Power Unit',
+                onAction: _hasActiveFilters ? null : _openAdd,
               )
             else ...[
               LayoutBuilder(
                 builder: (context, constraints) {
                   if (constraints.maxWidth < 600) {
                     return Column(
-                      children: _items.map((u) {
+                      children: _visibleItems.map((u) {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 16),
                           child: _buildCard(u),
@@ -723,7 +1072,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                     return GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _items.length,
+                      itemCount: _visibleItems.length,
                       gridDelegate:
                           const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 500,
@@ -732,7 +1081,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                             mainAxisSpacing: 16,
                           ),
                       itemBuilder: (context, i) {
-                        return _buildCard(_items[i]);
+                        return _buildCard(_visibleItems[i]);
                       },
                     );
                   }
@@ -744,12 +1093,14 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: Center(child: CircularProgressIndicator()),
                 )
-              else if (_page >= _totalPages && _items.isNotEmpty)
+              else if (_page >= _totalPages && _visibleItems.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
                   child: Center(
                     child: Text(
-                      'All $_total power units loaded',
+                      _hasActiveFilters
+                          ? '${_visibleItems.length} power units match these filters'
+                          : 'All $_total power units loaded',
                       style: TextStyle(
                         fontSize: 13,
                         color: AppColors.textSecondary,

@@ -43,7 +43,7 @@ class PowerUnitSummaryCards extends StatelessWidget {
         : null;
 
     // Format Odometer with commas
-    String odometerStr = '—';
+    String odometerStr = 'N/A';
     if (unit.odometer != null) {
       odometerStr = '${_withCommas(unit.odometer!)} km';
     }
@@ -70,7 +70,7 @@ class PowerUnitSummaryCards extends StatelessWidget {
                 Expanded(
                   child: _SummaryCard(
                     label: 'REGISTRATION EXPIRY',
-                    value: unit.registrationExpiry ?? '—',
+                    value: unit.registrationExpiry ?? 'N/A',
                     icon: Icons.circle,
                     iconColor: const Color(0xFFE22D2D),
                     cardBg: const Color(0xFFFFF1F2),
@@ -96,7 +96,7 @@ class PowerUnitSummaryCards extends StatelessWidget {
                 Expanded(
                   child: _SummaryCard(
                     label: 'NEXT INSPECTION',
-                    value: unit.annualInspectionDue ?? unit.nextInspectionDue ?? '—',
+                    value: unit.annualInspectionDue ?? unit.nextInspectionDue ?? 'N/A',
                     icon: Icons.assignment_turned_in_outlined,
                     iconColor: const Color(0xFF374151),
                     cardBg: const Color(0xFFF1F5F9),
@@ -115,7 +115,7 @@ class PowerUnitSummaryCards extends StatelessWidget {
                 Expanded(
                   child: _SummaryCard(
                     label: 'NEXT PM DUE',
-                    value: unit.nextPmDue ?? '—',
+                    value: unit.nextPmDue ?? 'N/A',
                     icon: Icons.build_circle_outlined,
                     iconColor: const Color(0xFF374151),
                     cardBg: const Color(0xFFF1F5F9),

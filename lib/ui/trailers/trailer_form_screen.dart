@@ -8,82 +8,84 @@ import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/power_unit_model.dart';
+import 'package:rapide_nforce/models/trailer_model.dart';
 import 'package:rapide_nforce/models/truck_permit_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/fleet_lookup_service.dart';
 import 'package:rapide_nforce/services/ocr_service.dart';
 import 'package:rapide_nforce/services/power_unit_service.dart';
+import 'package:rapide_nforce/services/trailer_service.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
-class PowerUnitFormScreen extends StatefulWidget {
-  const PowerUnitFormScreen({super.key, this.powerUnitId});
+const _kTrailerTypes = <String, String>{
+  'dry-van': "Dry Van",
+  'flatbed': 'Flatbed',
+  'lowboy': 'Lowboy',
+  'refrigerated': 'Refrigerated',
+  'tanker': 'Tanker',
+};
 
-  final int? powerUnitId;
-  bool get isEdit => powerUnitId != null;
+class TrailerFormScreen extends StatefulWidget {
+  const TrailerFormScreen({super.key, this.trailerId});
+
+  final int? trailerId;
+  bool get isEdit => trailerId != null;
 
   @override
-  State<PowerUnitFormScreen> createState() => _PowerUnitFormScreenState();
+  State<TrailerFormScreen> createState() => _TrailerFormScreenState();
 }
 
-class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
+class _TrailerFormScreenState extends State<TrailerFormScreen> {
   final _formKey = GlobalKey<FormState>();
   int _step = 1;
   bool _loading = true;
   bool _saving = false;
+  bool _checkingVin = false;
   String? _browseFileName;
   String? _browseFilePath;
 
-  // Step 1
+  // Step 1 — Trailer Details / Technical Specs / Registration / Ownership
   final _unitNumber = TextEditingController();
   final _vin = TextEditingController();
   final _make = TextEditingController();
   final _model = TextEditingController();
   final _year = TextEditingController();
   final _color = TextEditingController();
+  final _currentOdometer = TextEditingController();
   final _purchaseDate = TextEditingController();
   final _purchasePrice = TextEditingController();
   final _startDate = TextEditingController();
+  String _status = 'active';
+  String? _trailerType;
+  int? _assignedTruckId;
+
+  final _specType = TextEditingController();
+  final _specLength = TextEditingController();
+  final _specWidth = TextEditingController();
+  final _specHeight = TextEditingController();
+  final _specCapacity = TextEditingController();
+  final _specGvwr = TextEditingController();
+
   final _plate = TextEditingController();
   final _registrationNumber = TextEditingController();
-  final _registrationExpiry = TextEditingController();
-  final _imsNumber = TextEditingController();
-  final _gvwr = TextEditingController();
-  final _transmission = TextEditingController();
-  final _engineMake = TextEditingController();
-  final _engineModel = TextEditingController();
+  int? _countryId;
+  int? _stateId;
+  int? _cityId;
+
+  String _ownershipType = '';
   final _ownerName = TextEditingController();
   final _ownerEmail = TextEditingController();
   final _ownerPhone = TextEditingController();
   final _ownerAddress = TextEditingController();
-  String _status = 'active';
-  final _assignedDriver = TextEditingController();
-  String? _fuelType;
-  int? _countryId;
-  int? _stateId;
-  int? _cityId;
-  String _ownershipType = '';
 
-  // Step 2
-  final _maintenancePolicy = TextEditingController();
-  final _cviExpiry = TextEditingController();
-  final _currentOdometer = TextEditingController();
-  final _annualInspectionDue = TextEditingController();
-  final _lastInspection = TextEditingController();
-  final _pmInterval = TextEditingController();
-  final _nextPmDue = TextEditingController();
-  final _nextPmOdometer = TextEditingController();
-  final _telematicsProvider = TextEditingController();
-  final _eldProvider = TextEditingController();
-  String _telematicsEnabled = 'active';
+  // Step 2 — Maintenance Policy & Schedule
   String? _selectedPolicy;
-  final List<TruckPermitModel> _permits = [];
-  String? _selectedPermitType;
-  final _permitNumber = TextEditingController();
-  final _permitIssue = TextEditingController();
-  final _permitExpiry = TextEditingController();
+  final _cviExpiry = TextEditingController();
+  final _pmDueDate = TextEditingController();
+  final _pmDueOdometer = TextEditingController();
 
-  // Step 3
+  // Step 3 — Annual Safety / CVIP
   final _certificateNumber = TextEditingController();
   final _inspectionDate = TextEditingController();
   final _expiryDate = TextEditingController();
@@ -92,9 +94,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   final _inspectorLicense = TextEditingController();
   final _inspectionFacility = TextEditingController();
   final _facilityNumber = TextEditingController();
-  final _safetyPlate = TextEditingController();
-  final _safetyVehicle = TextEditingController();
-  final _safetyVehicleType = TextEditingController();
   final _criticalDefects = TextEditingController(text: '0');
   final _majorDefects = TextEditingController(text: '0');
   final _advisoryItems = TextEditingController(text: '0');
@@ -103,9 +102,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   List<LookupOption> _countries = [];
   List<LookupOption> _states = [];
   List<LookupOption> _cities = [];
-  List<LookupOption> _fuelTypes = [];
   List<LookupOption> _policies = [];
-  List<LookupOption> _permitTypes = [];
+  List<PowerUnitModel> _trucks = [];
 
   bool get _isSuperAdmin =>
       isSuperAdminRole(AuthService.instance.currentUser?.role);
@@ -120,37 +118,35 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   Future<void> _bootstrap() async {
     final lookups = await Future.wait([
       FleetLookupService.instance.fetchCountries(),
-      FleetLookupService.instance.fetchFuelTypes(),
       FleetLookupService.instance.fetchMaintenancePolicies(),
-      FleetLookupService.instance.fetchPermitTypes(),
     ]);
+    final trucks = await PowerUnitService.instance.fetchPowerUnits(limit: 500);
+
     if (widget.isEdit) {
-      final unit = await PowerUnitService.instance.fetchPowerUnitById(
-        widget.powerUnitId!,
+      final trailer = await TrailerService.instance.fetchTrailerById(
+        widget.trailerId!,
       );
-      if (unit.isSuccess && unit.data != null) {
-        _unitForStateMatch = unit.data;
-        _populate(unit.data!);
+      if (trailer.isSuccess && trailer.data != null) {
+        _trailerForStateMatch = trailer.data;
+        _populate(trailer.data!);
       }
     }
     if (!mounted) return;
     setState(() {
       _loading = false;
       _countries = lookups[0].data ?? [];
-      _fuelTypes = lookups[1].data ?? [];
-      _policies = lookups[2].data ?? [];
-      _permitTypes = lookups[3].data ?? [];
+      _policies = lookups[1].data ?? [];
+      _trucks = trucks.data?.items ?? [];
     });
     if (_countryId != null) await _loadStates(_countryId!);
     if (_stateId != null) await _loadCities(_stateId!);
-    // Match province name to state id after states load (edit mode).
-    final unit = _unitForStateMatch;
-    if (unit != null &&
+    final trailer = _trailerForStateMatch;
+    if (trailer != null &&
         _stateId == null &&
-        unit.state != null &&
+        trailer.state != null &&
         _states.isNotEmpty) {
       final match = _states.where(
-        (s) => s.name.toLowerCase() == unit.state!.toLowerCase(),
+        (s) => s.name.toLowerCase() == trailer.state!.toLowerCase(),
       );
       if (match.isNotEmpty) {
         setState(() => _stateId = match.first.id);
@@ -159,78 +155,65 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     }
   }
 
-  PowerUnitModel? _unitForStateMatch;
+  TrailerModel? _trailerForStateMatch;
 
-  void _populate(PowerUnitModel u) {
-    _unitNumber.text = u.unitNumber;
-    _vin.text = u.vinNumber ?? '';
-    _make.text = u.make ?? '';
-    _model.text = u.model ?? '';
-    _year.text = u.year?.toString() ?? '';
-    _color.text = u.color ?? '';
-    _purchaseDate.text = u.purchaseDate ?? '';
-    _purchasePrice.text = u.purchasePrice?.toString() ?? '';
-    _startDate.text = u.startDate ?? '';
-    _status = u.isActive ? 'active' : 'inactive';
-    _assignedDriver.text = u.assignedDriver ?? '';
-    _plate.text = u.licensePlate ?? '';
-    _countryId = u.countryId;
+  void _populate(TrailerModel t) {
+    _unitNumber.text = t.trailerNumber;
+    _vin.text = t.vinNumber ?? '';
+    _make.text = t.make ?? '';
+    _model.text = t.model ?? '';
+    _year.text = t.year?.toString() ?? '';
+    _color.text = t.color ?? '';
+    _currentOdometer.text = t.odometer?.toString() ?? '';
+    _purchaseDate.text = t.purchaseDate ?? '';
+    _purchasePrice.text = t.purchasePrice?.toString() ?? '';
+    _startDate.text = t.startDate ?? _startDate.text;
+    _status = t.isActive ? 'active' : 'inactive';
+    _trailerType = _kTrailerTypes.containsKey(t.type) ? t.type : null;
+    _assignedTruckId = int.tryParse(t.assignedTruck ?? '');
+
+    _specType.text = t.specType ?? '';
+    _specLength.text = t.specLength ?? '';
+    _specWidth.text = t.specWidth ?? '';
+    _specHeight.text = t.specHeight ?? '';
+    _specCapacity.text = t.specCapacity ?? '';
+    _specGvwr.text = t.specGvwr ?? '';
+
+    _plate.text = t.licensePlate ?? '';
+    _registrationNumber.text = t.registrationNumber ?? '';
+    _countryId = t.countryId;
     _stateId = null;
-    _cityId = u.cityId;
-    _registrationNumber.text = u.registrationNumber ?? '';
-    _registrationExpiry.text = u.registrationExpiry ?? '';
-    _imsNumber.text = u.imsNumber ?? '';
-    final ownershipType = (u.ownershipType ?? '').toLowerCase().trim();
+    _cityId = t.cityId;
+
+    final ownershipType = (t.ownership ?? '').toLowerCase().trim();
     _ownershipType =
-        ['owned', 'owner-operator'].contains(ownershipType)
-            ? ownershipType
-            : '';
-    _ownerName.text = u.ownerName ?? '';
-    _ownerEmail.text = u.ownerEmail ?? '';
-    _ownerPhone.text = u.ownerPhone ?? '';
-    _ownerAddress.text = u.ownerAddress ?? '';
-    _gvwr.text = u.gvwr ?? '';
-    _fuelType = u.fuelType;
-    _transmission.text = u.transmission ?? '';
-    _engineMake.text = u.engineMake ?? '';
-    _engineModel.text = u.engineModel ?? '';
-    _maintenancePolicy.text = u.maintenancePolicy ?? '';
-    _selectedPolicy = u.maintenancePolicy;
-    _cviExpiry.text = u.cviExpiry ?? '';
-    _currentOdometer.text = u.odometer?.toString() ?? '';
-    _annualInspectionDue.text = u.annualInspectionDue ?? '';
-    _lastInspection.text = u.lastInspection ?? '';
-    _pmInterval.text = u.pmInterval ?? '';
-    _nextPmDue.text = u.nextPmDue ?? '';
-    _nextPmOdometer.text = u.nextPmOdometer ?? '';
-    _telematicsProvider.text = u.telematicsProvider ?? '';
-    _telematicsEnabled =
-        (u.telematicsEnabled ?? 'active').toLowerCase().contains('inact')
-        ? 'inactive'
-        : 'active';
-    _eldProvider.text = u.eldProvider ?? '';
-    _permits.addAll(u.permits);
-    _certificateNumber.text = u.certificateNumber ?? '';
-    _inspectionDate.text = u.inspectionDate ?? '';
-    _expiryDate.text = u.expiryDate ?? '';
-    _nextInspectionDue.text = u.nextInspectionDue ?? '';
-    _inspectorName.text = u.inspectorName ?? '';
-    _inspectorLicense.text = u.inspectorLicense ?? '';
-    _inspectionFacility.text = u.inspectionFacility ?? '';
-    _facilityNumber.text = u.facilityNumber ?? '';
-    _safetyPlate.text = u.safetyLicensePlate ?? u.licensePlate ?? '';
-    _safetyVehicle.text = u.safetyVehicle ?? '';
-    _safetyVehicleType.text = u.vehicleType ?? '';
-    _criticalDefects.text = '${u.criticalDefects ?? 0}';
-    _majorDefects.text = '${u.majorDefects ?? 0}';
-    _advisoryItems.text = '${u.advisoryItems ?? 0}';
-    _inspectionSummary.text = u.inspectionSummary ?? '';
+        ['owned', 'owner-operator'].contains(ownershipType) ? ownershipType : '';
+    _ownerName.text = t.ownerName ?? '';
+    _ownerEmail.text = t.ownerEmail ?? '';
+    _ownerPhone.text = t.ownerPhone ?? '';
+    _ownerAddress.text = t.ownerAddress ?? '';
+
+    _selectedPolicy = t.maintenancePolicy;
+    _cviExpiry.text = t.cviExpiry ?? '';
+    _pmDueDate.text = t.pmDueDate ?? '';
+    _pmDueOdometer.text = t.pmDueOdometer?.toString() ?? '';
+
+    _certificateNumber.text = t.certificateNumber ?? '';
+    _inspectionDate.text = t.inspectionDate ?? '';
+    _expiryDate.text = t.expiryDate ?? '';
+    _nextInspectionDue.text = t.nextInspectionDue ?? '';
+    _inspectorName.text = t.inspectorName ?? '';
+    _inspectorLicense.text = t.inspectorLicense ?? '';
+    _inspectionFacility.text = t.inspectionFacility ?? '';
+    _facilityNumber.text = t.facilityNumber ?? '';
+    _criticalDefects.text = '${t.criticalDefects ?? 0}';
+    _majorDefects.text = '${t.majorDefects ?? 0}';
+    _advisoryItems.text = '${t.advisoryItems ?? 0}';
+    _inspectionSummary.text = t.inspectionSummary ?? '';
   }
 
   Future<void> _loadStates(int countryId) async {
-    final r = await FleetLookupService.instance.fetchStates(
-      countryId: countryId,
-    );
+    final r = await FleetLookupService.instance.fetchStates(countryId: countryId);
     if (!mounted) return;
     setState(() => _states = r.data ?? []);
   }
@@ -250,35 +233,25 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       _model,
       _year,
       _color,
+      _currentOdometer,
       _purchaseDate,
       _purchasePrice,
       _startDate,
+      _specType,
+      _specLength,
+      _specWidth,
+      _specHeight,
+      _specCapacity,
+      _specGvwr,
       _plate,
       _registrationNumber,
-      _registrationExpiry,
-      _imsNumber,
-      _gvwr,
-      _transmission,
-      _engineMake,
-      _engineModel,
       _ownerName,
       _ownerEmail,
       _ownerPhone,
       _ownerAddress,
-      _assignedDriver,
-      _maintenancePolicy,
       _cviExpiry,
-      _currentOdometer,
-      _annualInspectionDue,
-      _lastInspection,
-      _pmInterval,
-      _nextPmDue,
-      _nextPmOdometer,
-      _telematicsProvider,
-      _eldProvider,
-      _permitNumber,
-      _permitIssue,
-      _permitExpiry,
+      _pmDueDate,
+      _pmDueOdometer,
       _certificateNumber,
       _inspectionDate,
       _expiryDate,
@@ -287,9 +260,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       _inspectorLicense,
       _inspectionFacility,
       _facilityNumber,
-      _safetyPlate,
-      _safetyVehicle,
-      _safetyVehicleType,
       _criticalDefects,
       _majorDefects,
       _advisoryItems,
@@ -305,8 +275,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
 
   static final _alphanumericOnly = RegExp(r'^[A-Za-z0-9]*$');
 
-  /// Mirrors the web app's VIN validation exactly (`AddTruckPage.tsx`):
-  /// required, alphanumeric only, and exactly 17 characters.
+  /// Mirrors the web app's VIN validation exactly: required, alphanumeric
+  /// only, and exactly 17 characters.
   String? _vinValidator(String? v) {
     final value = (v ?? '').trim();
     if (value.isEmpty) return 'VIN is required';
@@ -332,15 +302,19 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           _req(_make.text, 'Make') != null ||
           _req(_model.text, 'Model') != null ||
           _req(_year.text, 'Year') != null ||
-          _req(_color.text, 'Color') != null ||
+          _req(_currentOdometer.text, 'Current Odometer') != null ||
           _req(_purchaseDate.text, 'Purchase Date') != null ||
           _req(_purchasePrice.text, 'Purchase Price') != null ||
           _req(_startDate.text, 'Start Date') != null ||
           _req(_plate.text, 'Plate Number') != null ||
-          _req(_registrationExpiry.text, 'Registration Expiry') != null ||
-          _req(_transmission.text, 'Transmission') != null ||
+          _trailerType == null ||
           _ownershipType.isEmpty) {
-        AppToast.showError('Complete all required Step 1 fields');
+        AppToast.showError('Complete all required Trailer Details fields');
+        return false;
+      }
+      final year = int.tryParse(_year.text.trim());
+      if (year == null || year < 1900 || year > 2099) {
+        AppToast.showError('Enter a valid year between 1900 and 2099');
         return false;
       }
       if (_countryId == null) {
@@ -354,24 +328,15 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       if (_ownershipType == 'owner-operator') {
         if (_req(_ownerName.text, 'Owner Name') != null ||
             _req(_ownerEmail.text, 'Owner Email') != null ||
-            _req(_ownerPhone.text, 'Owner Phone') != null ||
-            _req(_ownerAddress.text, 'Owner Address') != null) {
+            _req(_ownerPhone.text, 'Owner Phone') != null) {
           AppToast.showError('Complete owner operator details');
           return false;
         }
       }
     }
     if (step == 2) {
-      if (_req(_maintenancePolicy.text, 'Maintenance Policy') != null ||
-          _req(_cviExpiry.text, 'CVIP Due') != null ||
-          _req(_currentOdometer.text, 'Current Odometer') != null ||
-          _req(_lastInspection.text, 'Last Inspection') != null ||
-          _req(_pmInterval.text, 'PM Interval') != null ||
-          _req(_nextPmDue.text, 'Next PM Due') != null ||
-          _req(_nextPmOdometer.text, 'Next PM Odometer') != null ||
-          _req(_telematicsProvider.text, 'Telematics Provider') != null ||
-          _req(_eldProvider.text, 'ELD Provider') != null) {
-        AppToast.showError('Complete all required Step 2 fields');
+      if (_selectedPolicy == null || _selectedPolicy!.isEmpty) {
+        AppToast.showError('Select a Maintenance Policy');
         return false;
       }
     }
@@ -383,9 +348,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           _req(_inspectorName.text, 'Inspector Name') != null ||
           _req(_inspectorLicense.text, 'Inspector License') != null ||
           _req(_inspectionFacility.text, 'Inspection Facility') != null ||
-          _req(_facilityNumber.text, 'Facility Number') != null ||
-          _req(_safetyPlate.text, 'License Plate') != null) {
-        AppToast.showError('Complete all required Step 3 fields');
+          _req(_facilityNumber.text, 'Facility Number') != null) {
+        AppToast.showError('Complete all required Annual Safety / CVIP fields');
         return false;
       }
     }
@@ -397,56 +361,57 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         ? AuthService.instance.selectedCompanyIdInt
         : AuthService.instance.currentUser?.companyId;
     int? toInt(String v) => int.tryParse(v.trim());
+    final nextYearJan1 = DateTime(DateTime.now().year + 1, 1, 1)
+        .toIso8601String()
+        .split('T')
+        .first;
 
     return {
-      'unitNumber': _unitNumber.text.trim(),
-      'vin': _vin.text.trim(),
+      'trailerUnit': _unitNumber.text.trim(),
+      'vehicleType': _trailerType,
+      'vinNumber': _vin.text.trim(),
+      'licensePlateNumber': _plate.text.trim(),
+      'state':
+          _states.where((s) => s.id == _stateId).map((s) => s.name).firstOrNull ??
+              '',
+      if (_countryId != null) 'countryId': _countryId,
+      if (_cityId != null) 'cityId': _cityId,
+      // Not surfaced in the web UI either — the backend still requires a
+      // value, so we send the same placeholder the web app defaults to.
+      'rin': 'DEFAULT-RIN',
+      'nextYearDate': nextYearJan1,
+      'assignedTruck': ?_assignedTruckId,
+      'active': _status == 'inactive' ? 0 : 1,
+      'alertFrequency': '1',
+      'lastEdit': 'company',
       'make': _make.text.trim(),
       'model': _model.text.trim(),
       'year': toInt(_year.text),
       'color': _color.text.trim(),
       'purchaseDate': _purchaseDate.text.trim(),
       'purchasePrice': double.tryParse(_purchasePrice.text.trim()),
-      'startDate': _startDate.text.trim(),
-      'status': _status,
-      if (_assignedDriver.text.trim().isNotEmpty)
-        'assignedDriver': _assignedDriver.text.trim(),
-      'plateNumber': _plate.text.trim(),
-      'plateProvince':
-          _states
-              .where((s) => s.id == _stateId)
-              .map((s) => s.name)
-              .firstOrNull ??
-          '',
-      if (_countryId != null) 'countryId': _countryId,
-      if (_cityId != null) 'cityId': _cityId,
       'registrationNumber': _registrationNumber.text.trim(),
-      'registrationExpiry': _registrationExpiry.text.trim(),
-      'imsNumber': _imsNumber.text.trim(),
-      'ownershipType': _ownershipType,
+      'ownership': _ownershipType,
+      'fuelType': 'Diesel',
+      'odometer': toInt(_currentOdometer.text),
+      if (_pmDueOdometer.text.trim().isNotEmpty)
+        'pmDueOdometer': toInt(_pmDueOdometer.text),
       if (_ownershipType == 'owner-operator') ...{
         'ownerName': _ownerName.text.trim(),
         'ownerEmail': _ownerEmail.text.trim(),
         'ownerPhone': _ownerPhone.text.trim(),
         'ownerAddress': _ownerAddress.text.trim(),
       },
-      'gvwr': toInt(_gvwr.text),
-      if (_fuelType != null) 'fuelType': _fuelType,
-      'transmission': _transmission.text.trim(),
-      'engineMake': _engineMake.text.trim(),
-      'engineModel': _engineModel.text.trim(),
-      'maintenancePolicy': _maintenancePolicy.text.trim(),
-      'cviExpiry': _cviExpiry.text.trim(),
-      'currentOdometer': toInt(_currentOdometer.text),
-      'odometer': toInt(_currentOdometer.text),
-      'annualInspectionDue': _annualInspectionDue.text.trim(),
-      'lastInspection': _lastInspection.text.trim(),
-      'pmInterval': toInt(_pmInterval.text),
-      'nextPmDue': _nextPmDue.text.trim(),
-      'nextPmOdometer': toInt(_nextPmOdometer.text),
-      'telematicsProvider': _telematicsProvider.text.trim(),
-      'telematicsEnabled': _telematicsEnabled,
-      'eldProvider': _eldProvider.text.trim(),
+      'maintenancePolicy': _selectedPolicy ?? '',
+      if (_cviExpiry.text.trim().isNotEmpty) 'cviExpiry': _cviExpiry.text.trim(),
+      'startDate': _startDate.text.trim(),
+      if (_pmDueDate.text.trim().isNotEmpty) 'pmDueDate': _pmDueDate.text.trim(),
+      'specType': _specType.text.trim(),
+      'specLength': _specLength.text.trim(),
+      'specWidth': _specWidth.text.trim(),
+      'specHeight': _specHeight.text.trim(),
+      'specCapacity': _specCapacity.text.trim(),
+      'specGvwr': _specGvwr.text.trim(),
       'certificateNumber': _certificateNumber.text.trim(),
       'inspectionDate': _inspectionDate.text.trim(),
       'expiryDate': _expiryDate.text.trim(),
@@ -455,15 +420,11 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       'inspectorLicense': _inspectorLicense.text.trim(),
       'inspectionFacility': _inspectionFacility.text.trim(),
       'facilityNumber': _facilityNumber.text.trim(),
-      'licenseplate': _safetyPlate.text.trim(),
-      'vehicle': _safetyVehicle.text.trim(),
-      'vehicleType': _safetyVehicleType.text.trim(),
       'criticalDefects': toInt(_criticalDefects.text) ?? 0,
       'majorDefects': toInt(_majorDefects.text) ?? 0,
       'advisoryItems': toInt(_advisoryItems.text) ?? 0,
       'inspectionSummary': _inspectionSummary.text.trim(),
-      'permits': _permits.map((p) => p.toPayload()).toList(),
-      if (companyId != null) 'companyId': companyId,
+      'companyId': ?companyId,
     };
   }
 
@@ -476,24 +437,38 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     setState(() => _saving = true);
     final payload = _buildPayload();
     final result = widget.isEdit
-        ? await PowerUnitService.instance.updatePowerUnit(
-            widget.powerUnitId!,
+        ? await TrailerService.instance.updateTrailer(
+            widget.trailerId!,
             payload,
           )
-        : await PowerUnitService.instance.createPowerUnit(
+        : await TrailerService.instance.createTrailer(
             payload,
             companyId: AuthService.instance.selectedCompanyId,
           );
     if (!mounted) return;
-    setState(() => _saving = false);
-    if (result.isSuccess) {
-      AppToast.showSuccess(
-        widget.isEdit ? 'Power unit updated' : 'Power unit created',
-      );
-      Navigator.pop(context, true);
-    } else {
-      ApiFeedback.showError(result, fallback: 'Failed to save power unit');
+
+    if (!result.isSuccess) {
+      setState(() => _saving = false);
+      ApiFeedback.showError(result, fallback: 'Failed to save trailer');
+      return;
     }
+
+    // Add-mode only — matches the web app, which skips re-attaching the
+    // scanned document to the trailer record when editing.
+    if (!widget.isEdit && _browseFilePath != null && result.data != null) {
+      await TrailerService.instance.uploadDocumentFull(
+        trailerId: result.data!.id,
+        filePath: _browseFilePath!,
+        fileName: _browseFileName ?? 'document',
+        vinNumber: _vin.text.trim(),
+        companyId: AuthService.instance.selectedCompanyId,
+      );
+    }
+
+    if (!mounted) return;
+    setState(() => _saving = false);
+    AppToast.showSuccess(widget.isEdit ? 'Trailer updated' : 'Trailer created');
+    Navigator.pop(context, true);
   }
 
   Future<void> _pickFromCamera() async {
@@ -515,8 +490,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     if (picked == null || picked.files.isEmpty) return;
     final file = picked.files.first;
     if (file.path == null) {
-      // No filesystem path available (e.g. some web/desktop pickers) — keep
-      // the file attached but skip OCR, which needs a real path to upload.
       setState(() {
         _browseFileName = file.name;
         _browseFilePath = null;
@@ -540,9 +513,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     }
   }
 
-  /// Uploads the picked/captured file, runs it through the real OCR
-  /// pipeline (same `/documents` + `/ocr/ocr-results` flow the web app
-  /// uses), and auto-fills blank form fields from whatever gets extracted.
   Future<void> _runOcrScan(String filePath, String fileName) async {
     setState(() {
       _browseFileName = fileName;
@@ -603,6 +573,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     }
 
     setState(() {
+      fill(_unitNumber, prefill['unitNumber']);
       fill(_vin, prefill['vin']);
       fill(_make, prefill['make']);
       fill(_model, prefill['model']);
@@ -610,12 +581,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       fill(_color, prefill['color']);
       fill(_plate, prefill['plateNumber']);
       fill(_registrationNumber, prefill['registrationNumber']);
-      fillDate(_registrationExpiry, prefill['registrationExpiry']);
-      fill(_gvwr, prefill['gvwr']);
-      fill(_transmission, prefill['transmission']);
-      fill(_engineMake, prefill['engineMake']);
-      fill(_engineModel, prefill['engineModel']);
+      fill(_specGvwr, prefill['gvwr']);
       fillDate(_purchaseDate, prefill['purchaseDate']);
+      fill(_currentOdometer, prefill['odometer']);
       fill(_certificateNumber, prefill['certificateNumber']);
       fillDate(_inspectionDate, prefill['inspectionDate']);
       fillDate(_expiryDate, prefill['expiryDate']);
@@ -627,17 +595,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       fill(_ownerEmail, prefill['ownerEmail']);
       fill(_ownerPhone, prefill['ownerPhone']);
       fill(_ownerAddress, prefill['ownerAddress']);
-      fill(_imsNumber, prefill['imsNumber']);
-      fill(_currentOdometer, prefill['odometer']);
-      fill(_safetyVehicleType, prefill['vehicleType']);
-
-      final extractedFuelType = prefill['fuelType'];
-      if ((_fuelType == null || _fuelType!.isEmpty) && extractedFuelType != null) {
-        final match = _fuelTypes.where(
-          (f) => f.name.toLowerCase() == extractedFuelType.toLowerCase(),
-        );
-        if (match.isNotEmpty) _fuelType = match.first.name;
-      }
     });
 
     // Plate province → match against the already-loaded states list, same
@@ -654,32 +611,21 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     }
   }
 
-  void _addPermit() {
-    if ((_selectedPermitType ?? '').isEmpty ||
-        _permitNumber.text.trim().isEmpty ||
-        _permitIssue.text.trim().isEmpty ||
-        _permitExpiry.text.trim().isEmpty) {
-      AppToast.showError('Fill all permit fields');
-      return;
-    }
-    setState(() {
-      _permits.add(
-        TruckPermitModel(
-          permitType: _selectedPermitType!,
-          permitNumber: _permitNumber.text.trim(),
-          issueDate: _permitIssue.text.trim(),
-          expiryDate: _permitExpiry.text.trim(),
-        ),
-      );
-      _permitNumber.clear();
-      _permitIssue.clear();
-      _permitExpiry.clear();
-      _selectedPermitType = null;
-    });
-  }
-
-  void _next() {
+  Future<void> _next() async {
     if (!_validateStep(_step)) return;
+    if (_step == 1) {
+      setState(() => _checkingVin = true);
+      final check = await TrailerService.instance.checkVinExists(
+        vin: _vin.text.trim(),
+        excludeTrailerId: widget.trailerId,
+      );
+      if (!mounted) return;
+      setState(() => _checkingVin = false);
+      if (check.isSuccess && check.data == true) {
+        AppToast.showError('A trailer with this VIN already exists');
+        return;
+      }
+    }
     setState(() => _step++);
   }
 
@@ -690,7 +636,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         backgroundColor: Colors.transparent,
         appBar: AppBar(
           title: Text(
-            widget.isEdit ? 'Edit Power Unit' : 'Add Power Unit',
+            widget.isEdit ? 'Edit Trailer' : 'Add Trailer',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
@@ -714,7 +660,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                   ),
                   _BottomBar(
                     step: _step,
-                    saving: _saving,
+                    saving: _saving || _checkingVin,
                     onCancel: () => Navigator.pop(context),
                     onContinue: _step < 3 ? _next : null,
                     onSave: _step == 3 ? _save : null,
@@ -735,7 +681,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     ),
     const SizedBox(height: 12),
     WebFormSection(
-      title: 'Vehicle Details',
+      title: 'Trailer Details',
+      initiallyExpanded: true,
       children: [
         WebTextFormField(
           controller: _unitNumber,
@@ -747,6 +694,15 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           label: 'VIN *',
           validator: _vinValidator,
           autovalidateMode: AutovalidateMode.onUserInteraction,
+        ),
+        WebDropdownField<String>(
+          label: 'Trailer Type *',
+          value: _trailerType,
+          items: (_kTrailerTypes.keys.toList()..sort(
+            (a, b) => _kTrailerTypes[a]!.compareTo(_kTrailerTypes[b]!),
+          )),
+          itemLabel: (v) => _kTrailerTypes[v] ?? v,
+          onChanged: (v) => setState(() => _trailerType = v),
         ),
         WebTextFormField(
           controller: _make,
@@ -764,37 +720,51 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           keyboardType: TextInputType.number,
           validator: (v) => _req(v, 'Year'),
         ),
+        WebTextFormField(controller: _color, label: 'Color'),
         WebTextFormField(
-          controller: _color,
-          label: 'Color *',
-          validator: (v) => _req(v, 'Color'),
+          controller: _currentOdometer,
+          label: 'Current Odometer (km) *',
+          keyboardType: TextInputType.number,
+          validator: (v) => _req(v, 'Current Odometer'),
         ),
-        WebDateField(
-          controller: _purchaseDate,
-          label: 'Purchase Date',
-          required: true,
-        ),
+        WebDateField(controller: _purchaseDate, label: 'Purchase Date', required: true),
         WebTextFormField(
           controller: _purchasePrice,
           label: 'Purchase Price *',
           keyboardType: TextInputType.number,
           validator: (v) => _req(v, 'Purchase Price'),
         ),
-        WebDateField(
-          controller: _startDate,
-          label: 'Start Date',
-          required: true,
-        ),
+        WebDateField(controller: _startDate, label: 'Start Date', required: true),
         WebDropdownField<String>(
-          label: 'Status *',
+          label: 'Status',
           value: _status,
           items: const ['active', 'inactive'],
           itemLabel: (v) => v == 'active' ? 'Active' : 'Inactive',
           onChanged: (v) => setState(() => _status = v ?? 'active'),
         ),
+        WebSearchableDropdownField<int>(
+          label: 'Assigned Truck',
+          value: _assignedTruckId,
+          items: _trucks.map((t) => t.id).toList(),
+          itemLabel: (id) =>
+              _trucks.firstWhere((t) => t.id == id).unitNumber,
+          onChanged: (v) => setState(() => _assignedTruckId = v),
+          hint: 'Not assigned',
+        ),
+      ],
+    ),
+    WebFormSection(
+      title: 'Technical Specifications',
+      children: [
+        WebTextFormField(controller: _specType, label: 'Type'),
+        WebTextFormField(controller: _specLength, label: 'Length'),
+        WebTextFormField(controller: _specWidth, label: 'Width'),
+        WebTextFormField(controller: _specHeight, label: 'Height'),
+        WebTextFormField(controller: _specCapacity, label: 'Capacity'),
         WebTextFormField(
-          controller: _assignedDriver,
-          label: 'Assigned Driver',
+          controller: _specGvwr,
+          label: 'GVWR (Gross Vehicle Weight Rating)',
+          keyboardType: TextInputType.number,
         ),
       ],
     ),
@@ -847,12 +817,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _registrationNumber,
           label: 'Registration Number',
         ),
-        WebDateField(
-          controller: _registrationExpiry,
-          label: 'Registration Expiry',
-          required: true,
-        ),
-        WebTextFormField(controller: _imsNumber, label: 'IMS Number'),
       ],
     ),
     WebFormSection(
@@ -866,141 +830,39 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           onChanged: (v) => setState(() => _ownershipType = v ?? ''),
         ),
         if (_ownershipType == 'owner-operator') ...[
-          WebTextFormField(controller: _ownerName, label: 'Owner Name *'),
-          WebTextFormField(controller: _ownerEmail, label: 'Owner Email *'),
-          WebTextFormField(controller: _ownerPhone, label: 'Owner Phone *'),
-          WebTextFormField(controller: _ownerAddress, label: 'Owner Address *'),
+          WebFormSection(
+            title: 'Owner Operator Details',
+            initiallyExpanded: true,
+            children: [
+              WebTextFormField(controller: _ownerName, label: 'Owner Operator *'),
+              WebTextFormField(controller: _ownerEmail, label: 'Owner Operator Email *'),
+              WebTextFormField(controller: _ownerPhone, label: 'Owner Operator Phone *'),
+              WebTextFormField(controller: _ownerAddress, label: 'Owner Operator Address'),
+            ],
+          ),
         ],
-      ],
-    ),
-    WebFormSection(
-      title: 'Technical Specifications',
-      children: [
-        WebTextFormField(
-          controller: _gvwr,
-          label: 'GVWR',
-          keyboardType: TextInputType.number,
-        ),
-        WebDropdownField<String>(
-          label: 'Fuel Type',
-          value: _fuelType,
-          items: _fuelTypes.map((f) => f.name).toList(),
-          itemLabel: (v) => v,
-          onChanged: (v) => setState(() => _fuelType = v),
-        ),
-        WebTextFormField(
-          controller: _transmission,
-          label: 'Transmission *',
-          validator: (v) => _req(v, 'Transmission'),
-        ),
-        WebTextFormField(controller: _engineMake, label: 'Engine Make'),
-        WebTextFormField(controller: _engineModel, label: 'Engine Model'),
       ],
     ),
   ];
 
   List<Widget> _buildStep2() => [
     WebFormSection(
-      title: 'Maintenance Policy',
+      title: 'Maintenance Policy & Schedule',
+      initiallyExpanded: true,
       children: [
         WebDropdownField<String>(
           label: 'Maintenance Policy *',
           value: _selectedPolicy,
           items: _policies.map((p) => p.name).toList(),
           itemLabel: (v) => v,
-          onChanged: (v) => setState(() {
-            _selectedPolicy = v;
-            _maintenancePolicy.text = v ?? '';
-          }),
+          onChanged: (v) => setState(() => _selectedPolicy = v),
         ),
-        WebDateField(
-          controller: _cviExpiry,
-          label: 'CVIP/Annual Inspection Due',
-          required: true,
-        ),
-        WebDateField(
-          controller: _lastInspection,
-          label: 'Last Inspection',
-          required: true,
-        ),
+        WebDateField(controller: _cviExpiry, label: 'CVI Expiry'),
+        WebDateField(controller: _pmDueDate, label: 'PM Due Date'),
         WebTextFormField(
-          controller: _currentOdometer,
-          label: 'Current Odometer *',
+          controller: _pmDueOdometer,
+          label: 'PM Due Odometer (km)',
           keyboardType: TextInputType.number,
-        ),
-        WebTextFormField(
-          controller: _annualInspectionDue,
-          label: 'Annual Inspection Due',
-        ),
-        WebTextFormField(
-          controller: _pmInterval,
-          label: 'PM Interval *',
-          keyboardType: TextInputType.number,
-        ),
-        WebDateField(
-          controller: _nextPmDue,
-          label: 'Next PM Due',
-          required: true,
-        ),
-        WebTextFormField(
-          controller: _nextPmOdometer,
-          label: 'Next PM Odometer *',
-          keyboardType: TextInputType.number,
-        ),
-      ],
-    ),
-    WebFormSection(
-      title: 'Telematics & ELD',
-      children: [
-        WebDropdownField<String>(
-          label: 'Telematics Status *',
-          value: _telematicsEnabled,
-          items: const ['active', 'inactive'],
-          itemLabel: (v) => v == 'active' ? 'Active' : 'Inactive',
-          onChanged: (v) => setState(() => _telematicsEnabled = v ?? 'active'),
-        ),
-        WebTextFormField(
-          controller: _telematicsProvider,
-          label: 'Telematics Provider *',
-        ),
-        WebTextFormField(controller: _eldProvider, label: 'ELD Provider *'),
-      ],
-    ),
-    WebFormSection(
-      title: 'Unit-Specific Permits',
-      children: [
-        WebDropdownField<String>(
-          label: 'Permit Type *',
-          value: _selectedPermitType,
-          items: _permitTypes.map((p) => p.name).toList(),
-          itemLabel: (v) => v,
-          onChanged: (v) => setState(() => _selectedPermitType = v),
-        ),
-        WebTextFormField(controller: _permitNumber, label: 'Permit Number *'),
-        WebDateField(
-          controller: _permitIssue,
-          label: 'Issue Date',
-          required: true,
-        ),
-        WebDateField(
-          controller: _permitExpiry,
-          label: 'Expiry Date',
-          required: true,
-        ),
-        OutlinedButton.icon(
-          onPressed: _addPermit,
-          icon: const Icon(Icons.add),
-          label: const Text('Add Permit'),
-        ),
-        ..._permits.map(
-          (p) => ListTile(
-            title: Text('${p.permitType} — ${p.permitNumber}'),
-            subtitle: Text('${p.issueDate} → ${p.expiryDate}'),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: () => setState(() => _permits.remove(p)),
-            ),
-          ),
         ),
       ],
     ),
@@ -1009,42 +871,23 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   List<Widget> _buildStep3() => [
     WebFormSection(
       title: 'Annual Safety / CVIP',
+      initiallyExpanded: true,
       children: [
         WebTextFormField(
           controller: _certificateNumber,
           label: 'Certificate Number *',
         ),
-        WebDateField(
-          controller: _inspectionDate,
-          label: 'Inspection Date',
-          required: true,
-        ),
-        WebDateField(
-          controller: _expiryDate,
-          label: 'Expiry Date',
-          required: true,
-        ),
+        WebDateField(controller: _inspectionDate, label: 'Inspection Date', required: true),
+        WebDateField(controller: _expiryDate, label: 'Expiry Date', required: true),
         WebDateField(
           controller: _nextInspectionDue,
           label: 'Next Inspection Due',
           required: true,
         ),
         WebTextFormField(controller: _inspectorName, label: 'Inspector Name *'),
-        WebTextFormField(
-          controller: _inspectorLicense,
-          label: 'Inspector License *',
-        ),
-        WebTextFormField(
-          controller: _inspectionFacility,
-          label: 'Inspection Facility *',
-        ),
-        WebTextFormField(
-          controller: _facilityNumber,
-          label: 'Facility Number *',
-        ),
-        WebTextFormField(controller: _safetyPlate, label: 'License Plate *'),
-        WebTextFormField(controller: _safetyVehicle, label: 'Vehicle'),
-        WebTextFormField(controller: _safetyVehicleType, label: 'Vehicle Type'),
+        WebTextFormField(controller: _inspectorLicense, label: 'Inspector License *'),
+        WebTextFormField(controller: _inspectionFacility, label: 'Inspection Facility *'),
+        WebTextFormField(controller: _facilityNumber, label: 'Facility Number *'),
         WebTextFormField(
           controller: _criticalDefects,
           label: 'Critical Defects',
@@ -1107,9 +950,7 @@ class _StepNode extends StatelessWidget {
     final active = number == currentStep;
     return CircleAvatar(
       radius: 14,
-      backgroundColor: done || active
-          ? AppColors.primary
-          : AppColors.surfaceTertiary,
+      backgroundColor: done || active ? AppColors.primary : AppColors.surfaceTertiary,
       child: Text(
         done ? '✓' : '$number',
         style: TextStyle(
@@ -1160,12 +1001,13 @@ class _BottomBar extends StatelessWidget {
             child: onContinue != null
                 ? WebPrimaryButton(
                     label: 'Continue',
-                    onPressed: onContinue,
+                    loading: saving,
+                    onPressed: saving ? null : onContinue,
                     expand: false,
                     dense: true,
                   )
                 : WebPrimaryButton(
-                    label: 'Save Power Unit',
+                    label: 'Save Trailer',
                     loading: saving,
                     onPressed: saving ? null : onSave,
                     expand: false,

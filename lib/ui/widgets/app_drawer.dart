@@ -103,10 +103,20 @@ class _AppDrawerState extends State<AppDrawer> {
         );
     final items = _menuSource();
 
+    final isLight = Theme.of(context).brightness == Brightness.light;
+
     return Drawer(
-      backgroundColor: AppColors.drawerBg,
+      backgroundColor: isLight ? Colors.transparent : AppColors.drawerBg,
       child: Container(
         decoration: BoxDecoration(
+          color: isLight ? null : AppColors.drawerBg,
+          gradient: isLight
+              ? const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFFFF3EC), Color(0xFFFFFFFF)],
+                )
+              : null,
           border: Border(
             left: BorderSide(color: AppColors.gold, width: 3),
             top: BorderSide(color: AppColors.gold, width: 3),
@@ -167,9 +177,12 @@ class _AppDrawerState extends State<AppDrawer> {
                 child: Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    gradient: AppGradients.card,
+                    color: isLight ? const Color(0xFFFDE9E0) : null,
+                    gradient: isLight ? null : AppGradients.card,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border),
+                    border: isLight
+                        ? null
+                        : Border.all(color: AppColors.border),
                   ),
                   child: Row(
                     children: [

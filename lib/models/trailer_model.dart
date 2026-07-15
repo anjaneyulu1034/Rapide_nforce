@@ -49,6 +49,11 @@ class TrailerModel {
     this.fuelCard,
     this.bridgeTransponder,
     this.assignedTruck,
+    this.maintenancePolicy,
+    this.pmDueOdometer,
+    this.countryId,
+    this.cityId,
+    this.startDate,
   });
 
   final int id;
@@ -98,6 +103,11 @@ class TrailerModel {
   final String? fuelCard;
   final String? bridgeTransponder;
   final String? assignedTruck;
+  final String? maintenancePolicy;
+  final int? pmDueOdometer;
+  final int? countryId;
+  final int? cityId;
+  final String? startDate;
 
   bool get isActive =>
       status.toLowerCase() == 'active' || status == '1';
@@ -182,6 +192,11 @@ class TrailerModel {
       fuelCard: _str(json['fuelCard']),
       bridgeTransponder: _str(json['bridgeTransponder']),
       assignedTruck: json['assignedTruck']?.toString(),
+      maintenancePolicy: _str(json['maintenancePolicy']),
+      pmDueOdometer: _toInt(json['pmDueOdometer']),
+      countryId: _toInt(json['countryId']) ?? _toInt(json['country_id']),
+      cityId: _toInt(json['cityId']) ?? _toInt(json['city_id']),
+      startDate: _str(json['startDate']) ?? _str(json['start_date']),
     );
   }
 

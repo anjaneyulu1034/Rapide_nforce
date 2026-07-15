@@ -323,6 +323,7 @@ class WebPrimaryButton extends StatelessWidget {
     this.icon,
     this.loading = false,
     this.expand = true,
+    this.dense = false,
   });
 
   final String label;
@@ -330,6 +331,9 @@ class WebPrimaryButton extends StatelessWidget {
   final IconData? icon;
   final bool loading;
   final bool expand;
+  /// Smaller padding/type size — for compact contexts like bottom bars,
+  /// where the default size reads as oversized.
+  final bool dense;
 
   @override
   Widget build(BuildContext context) {
@@ -337,10 +341,10 @@ class WebPrimaryButton extends StatelessWidget {
     final shadowColor = isLight ? const Color(0x1F000000) : const Color(0x66FF4500);
 
     final child = loading
-        ? const SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(
+        ? SizedBox(
+            width: dense ? 18 : 22,
+            height: dense ? 18 : 22,
+            child: const CircularProgressIndicator(
               strokeWidth: 2,
               color: AppColors.white,
             ),
@@ -350,10 +354,16 @@ class WebPrimaryButton extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 20),
+                Icon(icon, size: dense ? 16 : 20),
                 const SizedBox(width: 8),
               ],
-              Text(label),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ),
             ],
           );
 
@@ -380,18 +390,22 @@ class WebPrimaryButton extends StatelessWidget {
                   ],
           ),
           padding: EdgeInsets.symmetric(
-            horizontal: expand ? 20 : 20,
-            vertical: expand ? 14 : 12,
+            horizontal: dense ? 10 : 20,
+            vertical: dense ? 9 : (expand ? 14 : 12),
           ),
           child: DefaultTextStyle(
-            style: const TextStyle(
+            style: TextStyle(
               color: AppColors.white,
               fontWeight: FontWeight.w700,
-              fontSize: 15,
+              fontSize: dense ? 13 : 15,
             ),
             child: IconTheme(
-              data: const IconThemeData(color: AppColors.white, size: 20),
-              child: Center(child: child),
+              data: IconThemeData(color: AppColors.white, size: dense ? 16 : 20),
+              // Center forces the button to greedily fill all space it's
+              // offered (e.g. by a Flexible), which defeats "shrink to
+              // content" for expand:false — only center when the button
+              // is actually being stretched full-width by the caller.
+              child: expand ? Center(child: child) : child,
             ),
           ),
         ),

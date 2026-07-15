@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "rapide_nforce",
+			"path": "../../.."
+		},
+		{
+			"name": "rapidenforce-backend",
+			"path": "../../../../../rapidenforce-backend"
+		},
+		{
+			"name": "rapidenforce-ui",
+			"path": "../../../../../rapidenforce-ui"
+		}
+	],
+	"settings": {}
+}

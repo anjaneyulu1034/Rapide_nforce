@@ -44,6 +44,12 @@ class ApiConstants {
   // OCR (Browse/Scan auto-fill on Add/Edit forms)
   static const String ocrResults = '/ocr/ocr-results';
 
+  // Vehicle lookups
+  static const String vehiclesVinExists = '/vehicles/vin-exists';
+
+  // Bulk import (Excel/CSV)
+  static const String importsExcel = '/imports/excel';
+
   // Notifications
   static const String notifications = '/notifications';
 

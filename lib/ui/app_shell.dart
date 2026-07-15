@@ -40,6 +40,7 @@ import 'package:rapide_nforce/ui/reports_screen.dart';
 
 import 'package:rapide_nforce/ui/requests_screen.dart';
 
+import 'package:rapide_nforce/ui/trailers/trailer_form_screen.dart';
 import 'package:rapide_nforce/ui/trailers_screen.dart';
 
 import 'package:rapide_nforce/ui/widgets/app_bottom_nav.dart';
@@ -61,6 +62,7 @@ class _AppShellState extends State<AppShell> {
   AppRoute _currentRoute = AppRoute.dashboard;
   int _powerUnitRefreshKey = 0;
   int _workOrderRefreshKey = 0;
+  int _trailersRefreshKey = 0;
 
   List<CompanyModel> _companies = [];
   List<NavMenuItem> _menuItems = [];
@@ -243,7 +245,7 @@ class _AppShellState extends State<AppShell> {
         return PowerUnitScreen(key: ValueKey(_powerUnitRefreshKey));
 
       case AppRoute.myTrailers:
-        return const TrailersScreen();
+        return TrailersScreen(key: ValueKey(_trailersRefreshKey));
 
       case AppRoute.maintenance:
         return WorkOrdersScreen(
@@ -394,6 +396,26 @@ class _AppShellState extends State<AppShell> {
                   setState(() {
                     _workOrderRefreshKey++;
                     _screenCache.remove(AppRoute.maintenance);
+                  });
+                }
+              },
+              backgroundColor: const Color(0xFF990000),
+              foregroundColor: Colors.white,
+              elevation: 4,
+              child: const Icon(Icons.add, size: 28),
+            )
+          : _currentRoute == AppRoute.myTrailers
+          ? FloatingActionButton(
+              onPressed: () async {
+                final changed = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => const TrailerFormScreen(),
+                  ),
+                );
+                if (changed == true) {
+                  setState(() {
+                    _trailersRefreshKey++;
+                    _screenCache.remove(AppRoute.myTrailers);
                   });
                 }
               },

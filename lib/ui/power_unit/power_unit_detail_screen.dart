@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
+import 'package:rapide_nforce/core/constants/app_strings.dart';
 import 'package:rapide_nforce/models/power_unit_model.dart';
 import 'package:rapide_nforce/models/truck_document_model.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
@@ -484,6 +485,7 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
           unit: unit,
           documents: _documents,
           loading: _docsLoading,
+          onUpload: _uploadDocumentSimple,
           onDelete: _deleteDocument,
           onRefresh: _loadDocuments,
         );
@@ -554,7 +556,10 @@ class _OverviewTab extends StatelessWidget {
               label: 'Model',
               value: PowerUnitModel.displayOrDash(unit.model),
             ),
-            VehicleInfoRow(label: 'Year', value: unit.year?.toString() ?? '—'),
+            VehicleInfoRow(
+              label: 'Year',
+              value: unit.year?.toString() ?? AppStrings.noData,
+            ),
             VehicleInfoRow(
               label: 'Color',
               value: PowerUnitModel.displayOrDash(unit.color),
@@ -567,7 +572,7 @@ class _OverviewTab extends StatelessWidget {
               label: 'Purchase Price',
               value: unit.purchasePrice != null
                   ? '\$${unit.purchasePrice}'
-                  : '—',
+                  : AppStrings.noData,
             ),
             VehicleInfoRow(
               label: 'Status',
@@ -593,7 +598,9 @@ class _OverviewTab extends StatelessWidget {
           rows: [
             VehicleInfoRow(
               label: 'Current Odometer',
-              value: unit.odometer != null ? '${unit.odometer} km' : '—',
+              value: unit.odometer != null
+                  ? '${unit.odometer} km'
+                  : AppStrings.noData,
             ),
             VehicleInfoRow(
               label: 'Last Sync (24 Hours)',
@@ -612,7 +619,7 @@ class _OverviewTab extends StatelessWidget {
               label: 'PM Interval',
               value: unit.pmInterval != null
                   ? 'Every ${unit.pmInterval} km'
-                  : '—',
+                  : AppStrings.noData,
             ),
             VehicleInfoRow(
               label: 'Next PM Due',
@@ -939,7 +946,7 @@ class _ComplianceTabState extends State<_ComplianceTab> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _BlackButton(
+                _PrimaryActionButton(
                   label: 'Download Roadside Packet',
                   icon: Icons.download_outlined,
                   onPressed: () =>
@@ -1157,7 +1164,7 @@ class _ComplianceTabState extends State<_ComplianceTab> {
                     hasDocuments: widget.documents.isNotEmpty,
                   ),
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFBA1A1A),
+                backgroundColor: const Color(0xFF4B633D),
                 foregroundColor: Colors.white,
                 minimumSize: const Size(double.infinity, 46),
                 elevation: 2,
@@ -1590,7 +1597,7 @@ class _QrCodeSheet extends StatelessWidget {
               child: FilledButton.icon(
                 onPressed: onDownloadPacket,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF1A1A1A),
+                  backgroundColor: const Color(0xFF4B633D),
                   minimumSize: const Size(double.infinity, 46),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -1630,6 +1637,7 @@ class _DocumentsTab extends StatefulWidget {
     required this.unit,
     required this.documents,
     required this.loading,
+    required this.onUpload,
     required this.onDelete,
     required this.onRefresh,
   });
@@ -1637,6 +1645,7 @@ class _DocumentsTab extends StatefulWidget {
   final PowerUnitModel unit;
   final List<TruckDocumentModel> documents;
   final bool loading;
+  final VoidCallback onUpload;
   final ValueChanged<TruckDocumentModel> onDelete;
   final VoidCallback onRefresh;
 
@@ -1648,6 +1657,7 @@ class _DocumentsTabState extends State<_DocumentsTab> {
   final _searchCtrl = TextEditingController();
   String _search = '';
   String? _filterStatus;
+  bool _canUpload = false;
   bool _canReplace = false;
   bool _canDelete = false;
 
@@ -1665,6 +1675,7 @@ class _DocumentsTabState extends State<_DocumentsTab> {
     if (!mounted) return;
     final perms = result.isSuccess ? result.data : null;
     setState(() {
+      _canUpload = perms?.canCreate ?? false;
       _canReplace = perms?.canUpdate ?? false;
       _canDelete = perms?.canDelete ?? false;
     });
@@ -1777,6 +1788,31 @@ class _DocumentsTabState extends State<_DocumentsTab> {
                 ),
               ],
             ),
+            if (_canUpload) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                children: [
+                  FilledButton.icon(
+                    onPressed: widget.onUpload,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF4B633D),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                    label: const Text(
+                      'Upload New',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 12),
@@ -2194,8 +2230,8 @@ class _SpecificationsTab extends StatelessWidget {
 // Shared button widget
 // ---------------------------------------------------------------------------
 
-class _BlackButton extends StatelessWidget {
-  const _BlackButton({
+class _PrimaryActionButton extends StatelessWidget {
+  const _PrimaryActionButton({
     required this.label,
     required this.onPressed,
     required this.icon,
@@ -2214,7 +2250,7 @@ class _BlackButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: Ink(
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: const Color(0xFF4B633D),
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
@@ -2442,7 +2478,7 @@ class _DocCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '#${doc.documentNumber ?? '—'}',
+                        '#${doc.documentNumber ?? 'N/A'}',
                         style: TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
@@ -2461,7 +2497,7 @@ class _DocCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            doc.issueDate ?? '—',
+                            doc.issueDate ?? 'N/A',
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
@@ -2478,7 +2514,7 @@ class _DocCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            doc.expiryDate ?? '—',
+                            doc.expiryDate ?? 'N/A',
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w600,
@@ -2730,12 +2766,15 @@ class _DocumentDetailsSheet extends StatelessWidget {
                           Expanded(
                             child: _SheetRow(
                               label: 'DOCUMENT NUMBER',
-                              value: doc.documentNumber ?? '—',
+                              value: doc.documentNumber ?? AppStrings.noData,
                             ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
-                            child: _SheetRow(label: 'UPLOADED BY', value: '—'),
+                            child: _SheetRow(
+                              label: 'UPLOADED BY',
+                              value: AppStrings.noData,
+                            ),
                           ),
                         ],
                       ),
@@ -2745,14 +2784,14 @@ class _DocumentDetailsSheet extends StatelessWidget {
                           Expanded(
                             child: _SheetRow(
                               label: 'ISSUE DATE',
-                              value: doc.issueDate ?? '—',
+                              value: doc.issueDate ?? AppStrings.noData,
                             ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             child: _SheetRow(
                               label: 'EXPIRY DATE',
-                              value: doc.expiryDate ?? '—',
+                              value: doc.expiryDate ?? AppStrings.noData,
                             ),
                           ),
                         ],
@@ -2760,7 +2799,7 @@ class _DocumentDetailsSheet extends StatelessWidget {
                       const SizedBox(height: 12),
                       _SheetRow(
                         label: 'UPLOADED DATE',
-                        value: doc.updatedOn ?? '—',
+                        value: doc.updatedOn ?? AppStrings.noData,
                       ),
                     ],
                   ),
@@ -3072,7 +3111,7 @@ class _VersionHistorySheet extends StatelessWidget {
                                   Expanded(
                                     child: _SheetRow(
                                       label: 'DOCUMENT NUMBER',
-                                      value: doc.documentNumber ?? '—',
+                                      value: doc.documentNumber ?? AppStrings.noData,
                                     ),
                                   ),
                                   const SizedBox(width: 16),
@@ -3118,14 +3157,14 @@ class _VersionHistorySheet extends StatelessWidget {
                                   Expanded(
                                     child: _SheetRow(
                                       label: 'ISSUE DATE',
-                                      value: doc.issueDate ?? '—',
+                                      value: doc.issueDate ?? AppStrings.noData,
                                     ),
                                   ),
                                   const SizedBox(width: 16),
                                   Expanded(
                                     child: _SheetRow(
                                       label: 'EXPIRY DATE',
-                                      value: doc.expiryDate ?? '—',
+                                      value: doc.expiryDate ?? AppStrings.noData,
                                     ),
                                   ),
                                 ],
@@ -3142,7 +3181,7 @@ class _VersionHistorySheet extends StatelessWidget {
                                   Expanded(
                                     child: _SheetRow(
                                       label: 'UPLOADED BY',
-                                      value: '—',
+                                      value: AppStrings.noData,
                                     ),
                                   ),
                                   const SizedBox(width: 16),
@@ -3155,7 +3194,7 @@ class _VersionHistorySheet extends StatelessWidget {
                                   Expanded(
                                     child: _SheetRow(
                                       label: 'UPLOADED DATE',
-                                      value: doc.updatedOn ?? '—',
+                                      value: doc.updatedOn ?? AppStrings.noData,
                                     ),
                                   ),
                                 ],
@@ -3207,7 +3246,7 @@ class _VersionHistorySheet extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    'Updated: ${doc.updatedOn ?? '—'}',
+                    'Updated: ${doc.updatedOn ?? 'N/A'}',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,
@@ -3350,14 +3389,14 @@ class _WoCard extends StatelessWidget {
   }
 
   static String _fmtDate(String? s) {
-    if (s == null || s.isEmpty) return '—';
+    if (s == null || s.isEmpty) return AppStrings.noData;
     final d = DateTime.tryParse(s);
     if (d == null) return s;
     return '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}-${d.year}';
   }
 
   static String _fmtCost(double? v) =>
-      v == null ? '—' : '\$${v.toStringAsFixed(2)}';
+      v == null ? AppStrings.noData : '\$${v.toStringAsFixed(2)}';
 
   @override
   Widget build(BuildContext context) {

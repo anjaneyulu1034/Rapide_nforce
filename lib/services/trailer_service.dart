@@ -3,6 +3,7 @@ import 'package:rapide_nforce/core/constants/api_constants.dart';
 import 'package:rapide_nforce/core/models/api_result.dart';
 import 'package:rapide_nforce/core/models/paginated_result.dart';
 import 'package:rapide_nforce/core/utils/api_parse.dart';
+import 'package:rapide_nforce/models/import_result_model.dart';
 import 'package:rapide_nforce/models/trailer_model.dart';
 import 'package:rapide_nforce/models/truck_document_model.dart';
 import 'package:rapide_nforce/services/api_client.dart';
@@ -65,6 +66,115 @@ class TrailerService {
       return ApiResult.fail(e.message, statusCode: e.statusCode);
     } catch (_) {
       return ApiResult.fail('Failed to load trailer.');
+    }
+  }
+
+  Future<ApiResult<TrailerModel>> createTrailer(
+    Map<String, dynamic> payload, {
+    String? companyId,
+  }) async {
+    try {
+      final body = await _api.parseJson(
+        () => _api.post(
+          ApiConstants.trailers,
+          body: payload,
+          companyId: companyId,
+        ),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.asMap(ApiParse.unwrapData(body)) ?? {};
+      return ApiResult.ok(TrailerModel.fromJson(data));
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to create trailer.');
+    }
+  }
+
+  Future<ApiResult<TrailerModel>> updateTrailer(
+    int id,
+    Map<String, dynamic> payload,
+  ) async {
+    try {
+      final body = await _api.parseJson(
+        () => _api.put('${ApiConstants.trailers}/$id', body: payload),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.asMap(ApiParse.unwrapData(body)) ?? {};
+      return ApiResult.ok(TrailerModel.fromJson(data));
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to update trailer.');
+    }
+  }
+
+  Future<ApiResult<void>> deleteTrailer(int id) async {
+    try {
+      await _api.parseJson(
+        () => _api.delete('${ApiConstants.trailers}/$id'),
+        onSuccess: (b) => b,
+      );
+      return ApiResult.ok(null);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to delete trailer.');
+    }
+  }
+
+  Future<ApiResult<bool>> checkVinExists({
+    required String vin,
+    int? excludeTrailerId,
+  }) async {
+    try {
+      final body = await _api.parseJson(
+        () => _api.get(
+          ApiConstants.vehiclesVinExists,
+          params: {'vin': vin, 'excludeTrailerId': ?excludeTrailerId},
+        ),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.asMap(ApiParse.unwrapData(body)) ?? {};
+      final exists = data['exists'] == true || body == true;
+      return ApiResult.ok(exists);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      // Fail open — matches web behavior of proceeding if the check errors.
+      return ApiResult.ok(false);
+    }
+  }
+
+  Future<ApiResult<ImportResult>> importExcel({
+    required String filePath,
+    required String fileName,
+    String? companyId,
+  }) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('dummy'))
+        ..fields['importType'] = 'trailer';
+      if (companyId != null && companyId.isNotEmpty) {
+        request.fields['companyId'] = companyId;
+      }
+      request.files.add(
+        await http.MultipartFile.fromPath('file', filePath, filename: fileName),
+      );
+
+      final body = await _api.parseJson(
+        () => _api.postMultipart(
+          ApiConstants.importsExcel,
+          request,
+          companyId: companyId,
+        ),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.asMap(ApiParse.unwrapData(body)) ?? {};
+      return ApiResult.ok(ImportResult.fromJson(data));
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to import file.');
     }
   }
 

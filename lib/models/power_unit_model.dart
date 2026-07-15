@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'package:rapide_nforce/core/constants/app_strings.dart';
 import 'package:rapide_nforce/models/truck_permit_model.dart';
 
 class PowerUnitModel {
@@ -316,5 +317,5 @@ class PowerUnitModel {
   }
 
   static String displayOrDash(String? value) =>
-      value == null || value.trim().isEmpty ? '—' : value;
+      value == null || value.trim().isEmpty ? AppStrings.noData : value;
 }

@@ -73,6 +73,13 @@ class PermissionService {
           break;
         }
       }
+      // ignore: avoid_print
+      print(
+        '[PermissionService] menuUrl=$menuUrl menuName=$menuName '
+        'companyId=$companyId rowCount=${rows.length} '
+        'menus=${rows.map((r) => (r['menu'] as Map?)?['menuUrl'] ?? (r['menu'] as Map?)?['menuName']).toList()} '
+        'match=$match',
+      );
       if (match == null) return ApiResult.ok(const MenuPermissions());
 
       bool flag(String camel, String snake) {

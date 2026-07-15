@@ -7,8 +7,10 @@ import 'package:rapide_nforce/core/utils/api_parse.dart';
 import 'package:rapide_nforce/services/api_client.dart';
 
 /// Flat, camelCase OCR-extracted vehicle fields — a Dart port of the web
-/// app's `TruckOcrPrefill` (`ocrPrefillMapper.ts`), used to auto-fill the
-/// Add/Edit Power Unit form after a Browse/Scan/Camera pick.
+/// app's `TruckOcrPrefill`/`TrailerOcrPrefill` (`ocrPrefillMapper.ts`), used
+/// to auto-fill the Add/Edit Power Unit and Add/Edit Trailer forms after a
+/// Browse/Scan/Camera pick. The extracted key set (VIN, plate, registration,
+/// ownership, CVIP/annual-safety) is shared by both vehicle types.
 class TruckOcrPrefill {
   const TruckOcrPrefill(this.values, {this.documentType});
 
@@ -196,6 +198,17 @@ class OcrService {
       if (value != null && value.isNotEmpty) values[key] = value;
     }
 
+    put(
+      'unitNumber',
+      _pickFirst(entity, [
+        'unit_number',
+        'unitNumber',
+        'trailer_unit',
+        'trailerUnit',
+        'truck_unit',
+        'truckUnit',
+      ]),
+    );
     put('vin', _pickFirst(entity, ['vin', 'vin_number']));
     put('make', _pickFirst(entity, ['make']));
     put('model', _pickFirst(entity, ['model']));
