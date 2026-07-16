@@ -7,7 +7,6 @@ import 'package:rapide_nforce/models/fault_code_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/fault_codes_service.dart';
 import 'package:rapide_nforce/ui/widgets/api_error_banner.dart';
-import 'package:rapide_nforce/ui/widgets/web_pagination.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class FaultCodesScreen extends StatefulWidget {
@@ -21,15 +20,17 @@ class FaultCodesScreen extends StatefulWidget {
 
 class _FaultCodesScreenState extends State<FaultCodesScreen> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
   Timer? _debounce;
 
   bool _loading = true;
+  bool _loadingMore = false;
   String? _error;
   List<FaultCodeModel> _items = [];
   int _page = 1;
+  final int _pageSize = 10;
   int _totalPages = 1;
   int _totalItems = 0;
-  int _pageSize = 10;
   String _searchTerm = '';
   String _statusFilter = 'all';
   String _severityFilter = 'all';
@@ -43,6 +44,7 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
       _searchController.text = initialSearch;
     }
     _searchController.addListener(_onSearchChanged);
+    _scrollController.addListener(_onScroll);
     _load();
   }
 
@@ -50,7 +52,17 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (maxScroll - currentScroll <= 200) {
+      _loadMore();
+    }
   }
 
   void _onSearchChanged() {
@@ -58,10 +70,7 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
     _debounce = Timer(const Duration(milliseconds: 350), () {
       final next = _searchController.text.trim();
       if (next == _searchTerm) return;
-      setState(() {
-        _searchTerm = next;
-        _page = 1;
-      });
+      setState(() => _searchTerm = next);
       _load();
     });
   }
@@ -70,10 +79,12 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _page = 1;
+      _items = [];
     });
 
     final result = await FaultCodesService.instance.fetchFaultCodes(
-      page: _page,
+      page: 1,
       limit: _pageSize,
       search: _searchTerm.isEmpty ? null : _searchTerm,
       faultStatus: _statusFilter == 'all' ? null : _statusFilter,
@@ -101,6 +112,38 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
     setState(() {
       _loading = false;
       _items = data.items;
+      _totalItems = data.total;
+      _totalPages = data.totalPages;
+      _page = data.page;
+    });
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || _loadingMore || _page >= _totalPages) return;
+
+    setState(() => _loadingMore = true);
+
+    final nextPage = _page + 1;
+    final result = await FaultCodesService.instance.fetchFaultCodes(
+      page: nextPage,
+      limit: _pageSize,
+      search: _searchTerm.isEmpty ? null : _searchTerm,
+      faultStatus: _statusFilter == 'all' ? null : _statusFilter,
+      severity: _severityFilter == 'all' ? null : _severityFilter,
+      companyId: AuthService.instance.selectedCompanyIdInt,
+    );
+
+    if (!mounted) return;
+
+    if (!result.isSuccess) {
+      setState(() => _loadingMore = false);
+      return;
+    }
+
+    final data = result.data!;
+    setState(() {
+      _loadingMore = false;
+      _items.addAll(data.items);
       _totalItems = data.total;
       _totalPages = data.totalPages;
       _page = data.page;
@@ -146,6 +189,7 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
       subtitle:
           'Synced vehicle diagnostic trouble codes from connected fleet integrations.',
       onRefresh: _load,
+      controller: _scrollController,
       sliver: SliverList(
         delegate: SliverChildListDelegate([
           _StatsRow(
@@ -160,17 +204,11 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
             statusFilter: _statusFilter,
             severityFilter: _severityFilter,
             onStatusChanged: (v) {
-              setState(() {
-                _statusFilter = v;
-                _page = 1;
-              });
+              setState(() => _statusFilter = v);
               _load();
             },
             onSeverityChanged: (v) {
-              setState(() {
-                _severityFilter = v;
-                _page = 1;
-              });
+              setState(() => _severityFilter = v);
               _load();
             },
           ),
@@ -235,26 +273,29 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
                         child: Column(
                           children: [
                             for (final item in _items) _FaultCodeRow(item: item),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              child: WebPaginationBar(
-                                page: _page,
-                                totalPages: _totalPages,
-                                total: _totalItems,
-                                limit: _pageSize,
-                                onPageChanged: (p) {
-                                  setState(() => _page = p);
-                                  _load();
-                                },
-                                onLimitChanged: (size) {
-                                  setState(() {
-                                    _pageSize = size;
-                                    _page = 1;
-                                  });
-                                  _load();
-                                },
+                            if (_loadingMore)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                child: Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              )
+                            else if (_page >= _totalPages)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    'All $_totalItems fault codes loaded',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.textSecondary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
                           ],
                         ),
                       ),

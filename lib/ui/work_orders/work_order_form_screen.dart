@@ -1408,14 +1408,6 @@ class _EventsSection extends StatefulWidget {
 }
 
 class _EventsSectionState extends State<_EventsSection> {
-  int _page = 1;
-
-  @override
-  void didUpdateWidget(covariant _EventsSection oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.events.length != widget.events.length) _page = 1;
-  }
-
   @override
   Widget build(BuildContext context) {
     if (widget.loading) {
@@ -1427,14 +1419,6 @@ class _EventsSectionState extends State<_EventsSection> {
         style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
       );
     }
-    final rawTotalPages = (widget.events.length / sourceEventsPageSize).ceil();
-    final totalPages = rawTotalPages < 1 ? 1 : rawTotalPages;
-    final page = _page < 1 ? 1 : (_page > totalPages ? totalPages : _page);
-    final start = (page - 1) * sourceEventsPageSize;
-    final end = (start + sourceEventsPageSize) > widget.events.length
-        ? widget.events.length
-        : start + sourceEventsPageSize;
-    final pageItems = widget.events.sublist(start, end);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1449,17 +1433,12 @@ class _EventsSectionState extends State<_EventsSection> {
           unitNumber: widget.unitNumber,
         ),
         const SizedBox(height: 8),
-        for (final e in pageItems) _EventCard(
+        for (final e in widget.events) _EventCard(
           issue: e,
           linked: widget.linkedIds.contains(e.id),
           uploads: widget.uploads[e.id] ?? const [],
           uploadsLoading: widget.uploadsLoading,
           onTap: () => widget.onTap(e),
-        ),
-        SourceEventsPager(
-          page: page,
-          totalPages: totalPages,
-          onPageChanged: (p) => setState(() => _page = p),
         ),
       ],
     );

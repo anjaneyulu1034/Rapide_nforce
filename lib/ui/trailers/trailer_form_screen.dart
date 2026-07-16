@@ -294,6 +294,61 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
     return null;
   }
 
+  static final _emailFormat = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+  static final _alphabeticOnly = RegExp(r'^[A-Za-z\s]+$');
+  static final _hasLetter = RegExp(r'[A-Za-z]');
+
+  /// Mirrors the web app's `AddTrailerPage.tsx` field rules.
+  String? _nonNegativeNumberValidator(
+    String? v,
+    String field, {
+    bool required = false,
+  }) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return required ? '$field is required' : null;
+    final n = double.tryParse(value);
+    if (n == null || n < 0) return '$field must be a non-negative number';
+    return null;
+  }
+
+  String? _ownerEmailValidator(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return 'Owner Operator Email is required';
+    if (!_emailFormat.hasMatch(value)) return 'Enter a valid email address';
+    return null;
+  }
+
+  String? _ownerPhoneValidator(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return 'Owner Operator Phone is required';
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 10 || digits.length > 15) {
+      return 'Enter a valid phone number';
+    }
+    return null;
+  }
+
+  /// Letters and spaces only — matches web's `isValidInspectorName`, which
+  /// (unlike the Power Unit form's version) does not allow digits.
+  String? _inspectorNameValidator(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return 'Inspector Name is required';
+    if (!_alphabeticOnly.hasMatch(value) || !_hasLetter.hasMatch(value)) {
+      return 'Inspector Name must contain only letters and spaces';
+    }
+    return null;
+  }
+
+  /// Matches web's `isValidAlphabeticText` used for Inspection Facility.
+  String? _alphabeticTextValidator(String? v, String field) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return '$field is required';
+    if (!_alphabeticOnly.hasMatch(value) || !_hasLetter.hasMatch(value)) {
+      return '$field must contain only letters and spaces';
+    }
+    return null;
+  }
+
   bool _validateStep(int step) {
     if (!_formKey.currentState!.validate()) return false;
     if (step == 1) {
@@ -732,7 +787,11 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           controller: _currentOdometer,
           label: 'Current Odometer (km) *',
           keyboardType: TextInputType.number,
-          validator: (v) => _req(v, 'Current Odometer'),
+          validator: (v) => _nonNegativeNumberValidator(
+            v,
+            'Current Odometer',
+            required: true,
+          ),
         ),
         WebDateField(
           controller: _purchaseDate,
@@ -751,7 +810,8 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           controller: _purchasePrice,
           label: 'Purchase Price *',
           keyboardType: TextInputType.number,
-          validator: (v) => _req(v, 'Purchase Price'),
+          validator: (v) =>
+              _nonNegativeNumberValidator(v, 'Purchase Price', required: true),
         ),
         WebDateField(controller: _startDate, label: 'Start Date', required: true),
         WebDropdownField<String>(
@@ -853,10 +913,25 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
             title: 'Owner Operator Details',
             initiallyExpanded: true,
             children: [
-              WebTextFormField(controller: _ownerName, label: 'Owner Operator *'),
-              WebTextFormField(controller: _ownerEmail, label: 'Owner Operator Email *'),
-              WebTextFormField(controller: _ownerPhone, label: 'Owner Operator Phone *'),
-              WebTextFormField(controller: _ownerAddress, label: 'Owner Operator Address'),
+              WebTextFormField(
+                controller: _ownerName,
+                label: 'Owner Operator *',
+                validator: (v) => _req(v, 'Owner Operator'),
+              ),
+              WebTextFormField(
+                controller: _ownerEmail,
+                label: 'Owner Operator Email *',
+                validator: _ownerEmailValidator,
+              ),
+              WebTextFormField(
+                controller: _ownerPhone,
+                label: 'Owner Operator Phone *',
+                validator: _ownerPhoneValidator,
+              ),
+              WebTextFormField(
+                controller: _ownerAddress,
+                label: 'Owner Operator Address',
+              ),
             ],
           ),
         ],
@@ -882,6 +957,7 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           controller: _pmDueOdometer,
           label: 'PM Due Odometer (km)',
           keyboardType: TextInputType.number,
+          validator: (v) => _nonNegativeNumberValidator(v, 'PM Due Odometer'),
         ),
       ],
     ),
@@ -903,10 +979,26 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           label: 'Next Inspection Due',
           required: true,
         ),
-        WebTextFormField(controller: _inspectorName, label: 'Inspector Name *'),
-        WebTextFormField(controller: _inspectorLicense, label: 'Inspector License *'),
-        WebTextFormField(controller: _inspectionFacility, label: 'Inspection Facility *'),
-        WebTextFormField(controller: _facilityNumber, label: 'Facility Number *'),
+        WebTextFormField(
+          controller: _inspectorName,
+          label: 'Inspector Name *',
+          validator: _inspectorNameValidator,
+        ),
+        WebTextFormField(
+          controller: _inspectorLicense,
+          label: 'Inspector License *',
+          validator: (v) => _req(v, 'Inspector License'),
+        ),
+        WebTextFormField(
+          controller: _inspectionFacility,
+          label: 'Inspection Facility *',
+          validator: (v) => _alphabeticTextValidator(v, 'Inspection Facility'),
+        ),
+        WebTextFormField(
+          controller: _facilityNumber,
+          label: 'Facility Number *',
+          validator: (v) => _req(v, 'Facility Number'),
+        ),
         WebTextFormField(
           controller: _criticalDefects,
           label: 'Critical Defects',

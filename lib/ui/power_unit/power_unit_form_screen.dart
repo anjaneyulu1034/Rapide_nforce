@@ -359,6 +359,84 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     return null;
   }
 
+  static final _emailFormat = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
+
+  /// Mirrors the web app's `truckFormValidation.ts` field rules.
+  String? _yearValidator(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return 'Year is required';
+    if (!RegExp(r'^\d{4}$').hasMatch(value)) {
+      return 'Year must be a 4-digit number';
+    }
+    return null;
+  }
+
+  String? _nonNegativeNumberValidator(
+    String? v,
+    String field, {
+    bool required = false,
+  }) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return required ? '$field is required' : null;
+    final n = double.tryParse(value);
+    if (n == null || n < 0) return '$field must be a non-negative number';
+    return null;
+  }
+
+  String? _nonNegativeIntValidator(
+    String? v,
+    String field, {
+    bool required = false,
+  }) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return required ? '$field is required' : null;
+    final n = int.tryParse(value);
+    if (n == null || n < 0) {
+      return '$field must be a non-negative whole number';
+    }
+    return null;
+  }
+
+  String? _alphanumericValidator(
+    String? v,
+    String field, {
+    bool required = false,
+  }) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return required ? '$field is required' : null;
+    if (!_alphanumericOnly.hasMatch(value)) {
+      return '$field must contain only letters and numbers';
+    }
+    return null;
+  }
+
+  String? _ownerEmailValidator(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return 'Owner Email is required';
+    if (!_emailFormat.hasMatch(value)) return 'Enter a valid email address';
+    return null;
+  }
+
+  String? _ownerPhoneValidator(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return 'Owner Phone is required';
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 10 || digits.length > 15) {
+      return 'Enter a valid phone number';
+    }
+    return null;
+  }
+
+  String? _inspectorNameValidator(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return 'Inspector Name is required';
+    if (!RegExp(r'^[A-Za-z0-9\s]+$').hasMatch(value) ||
+        !RegExp(r'[A-Za-z0-9]').hasMatch(value)) {
+      return 'Inspector Name must contain only letters, numbers and spaces';
+    }
+    return null;
+  }
+
   bool _validateStep(int step) {
     if (!_formKey.currentState!.validate()) return false;
     if (step == 1) {
@@ -819,7 +897,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _year,
           label: 'Year *',
           keyboardType: TextInputType.number,
-          validator: (v) => _req(v, 'Year'),
+          validator: _yearValidator,
         ),
         WebTextFormField(
           controller: _color,
@@ -843,7 +921,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _purchasePrice,
           label: 'Purchase Price *',
           keyboardType: TextInputType.number,
-          validator: (v) => _req(v, 'Purchase Price'),
+          validator: (v) =>
+              _nonNegativeNumberValidator(v, 'Purchase Price', required: true),
         ),
         WebDateField(
           controller: _startDate,
@@ -912,13 +991,18 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         WebTextFormField(
           controller: _registrationNumber,
           label: 'Registration Number',
+          validator: (v) => _alphanumericValidator(v, 'Registration Number'),
         ),
         WebDateField(
           controller: _registrationExpiry,
           label: 'Registration Expiry',
           required: true,
         ),
-        WebTextFormField(controller: _imsNumber, label: 'IMS Number'),
+        WebTextFormField(
+          controller: _imsNumber,
+          label: 'IMS Number',
+          validator: (v) => _alphanumericValidator(v, 'IMS Number'),
+        ),
       ],
     ),
     WebFormSection(
@@ -932,10 +1016,26 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           onChanged: (v) => setState(() => _ownershipType = v ?? ''),
         ),
         if (_ownershipType == 'owner-operator') ...[
-          WebTextFormField(controller: _ownerName, label: 'Owner Name *'),
-          WebTextFormField(controller: _ownerEmail, label: 'Owner Email *'),
-          WebTextFormField(controller: _ownerPhone, label: 'Owner Phone *'),
-          WebTextFormField(controller: _ownerAddress, label: 'Owner Address *'),
+          WebTextFormField(
+            controller: _ownerName,
+            label: 'Owner Name *',
+            validator: (v) => _req(v, 'Owner Name'),
+          ),
+          WebTextFormField(
+            controller: _ownerEmail,
+            label: 'Owner Email *',
+            validator: _ownerEmailValidator,
+          ),
+          WebTextFormField(
+            controller: _ownerPhone,
+            label: 'Owner Phone *',
+            validator: _ownerPhoneValidator,
+          ),
+          WebTextFormField(
+            controller: _ownerAddress,
+            label: 'Owner Address *',
+            validator: (v) => _req(v, 'Owner Address'),
+          ),
         ],
       ],
     ),
@@ -946,6 +1046,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _gvwr,
           label: 'GVWR',
           keyboardType: TextInputType.number,
+          validator: (v) => _nonNegativeIntValidator(v, 'GVWR'),
         ),
         WebDropdownField<String>(
           label: 'Fuel Type',
@@ -1079,6 +1180,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         WebTextFormField(
           controller: _certificateNumber,
           label: 'Certificate Number *',
+          validator: (v) =>
+              _alphanumericValidator(v, 'Certificate Number', required: true),
         ),
         WebDateField(
           controller: _inspectionDate,
@@ -1097,36 +1200,61 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           label: 'Next Inspection Due',
           required: true,
         ),
-        WebTextFormField(controller: _inspectorName, label: 'Inspector Name *'),
+        WebTextFormField(
+          controller: _inspectorName,
+          label: 'Inspector Name *',
+          validator: _inspectorNameValidator,
+        ),
         WebTextFormField(
           controller: _inspectorLicense,
           label: 'Inspector License *',
+          validator: (v) =>
+              _alphanumericValidator(v, 'Inspector License', required: true),
         ),
         WebTextFormField(
           controller: _inspectionFacility,
           label: 'Inspection Facility *',
+          validator: (v) => _req(v, 'Inspection Facility'),
         ),
         WebTextFormField(
           controller: _facilityNumber,
           label: 'Facility Number *',
+          validator: (v) =>
+              _alphanumericValidator(v, 'Facility Number', required: true),
         ),
-        WebTextFormField(controller: _safetyPlate, label: 'License Plate *'),
-        WebTextFormField(controller: _safetyVehicle, label: 'Vehicle'),
-        WebTextFormField(controller: _safetyVehicleType, label: 'Vehicle Type'),
+        WebTextFormField(
+          controller: _safetyPlate,
+          label: 'License Plate *',
+          validator: (v) =>
+              _alphanumericValidator(v, 'License Plate', required: true),
+        ),
+        WebTextFormField(
+          controller: _safetyVehicle,
+          label: 'Vehicle',
+          validator: (v) => _alphanumericValidator(v, 'Vehicle'),
+        ),
+        WebTextFormField(
+          controller: _safetyVehicleType,
+          label: 'Vehicle Type',
+          validator: (v) => _alphanumericValidator(v, 'Vehicle Type'),
+        ),
         WebTextFormField(
           controller: _criticalDefects,
           label: 'Critical Defects',
           keyboardType: TextInputType.number,
+          validator: (v) => _nonNegativeIntValidator(v, 'Critical Defects'),
         ),
         WebTextFormField(
           controller: _majorDefects,
           label: 'Major Defects',
           keyboardType: TextInputType.number,
+          validator: (v) => _nonNegativeIntValidator(v, 'Major Defects'),
         ),
         WebTextFormField(
           controller: _advisoryItems,
           label: 'Advisory Items',
           keyboardType: TextInputType.number,
+          validator: (v) => _nonNegativeIntValidator(v, 'Advisory Items'),
         ),
         WebTextFormField(
           controller: _inspectionSummary,

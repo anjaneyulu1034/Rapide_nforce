@@ -69,7 +69,13 @@ class UserModel {
         json['company'] is Map ? json['company'] as Map<String, dynamic> : null;
 
     return UserModel(
-      id: json['id'] as int? ?? json['userId'] as int? ?? 0,
+      // Login response nests the id as lowercase `userid` (not `id`/`userId`)
+      // alongside an unrelated `user` field that's actually the username —
+      // mirrors the web app's `user?.userid ?? user?.userId ?? user?.id`.
+      id: json['id'] as int? ??
+          json['userId'] as int? ??
+          json['userid'] as int? ??
+          0,
       employeeId: json['employee_id'] as String? ??
           json['employeeId'] as String? ??
           json['username'] as String? ??

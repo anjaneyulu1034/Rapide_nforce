@@ -43,19 +43,28 @@ class PermissionService {
     String? menuName,
   }) async {
     final role = AuthService.instance.currentUser?.role;
-    if (isSuperAdminRole(role)) return ApiResult.ok(MenuPermissions.all);
+    if (isSuperAdminRole(role)) {
+      return ApiResult.ok(MenuPermissions.all);
+    }
 
     final userId = AuthService.instance.currentUser?.id;
-    if (userId == null) return ApiResult.ok(const MenuPermissions());
+    if (userId == null) {
+      return ApiResult.ok(const MenuPermissions());
+    }
 
     try {
-      final companyId = AuthService.instance.selectedCompanyIdInt;
+      // Only super-admins ever have a meaningful "viewing as company X"
+      // scope (picked via the web header carrier-selector) — and they
+      // already returned above. For everyone else, matching the web app's
+      // own behavior means omitting companyId entirely here, not sending
+      // the user's own company (which scopes the query differently on the
+      // backend and can return a different permission set than the
+      // unscoped role-default lookup web relies on).
       final body = await _api.parseJson(
         () => _api.get(
           '${ApiConstants.managePermissionsByUser}/$userId',
           params: {
             'all': true,
-            'companyId': ?companyId,
           },
         ),
         onSuccess: (b) => b,
@@ -73,14 +82,10 @@ class PermissionService {
           break;
         }
       }
-      // ignore: avoid_print
-      print(
-        '[PermissionService] menuUrl=$menuUrl menuName=$menuName '
-        'companyId=$companyId rowCount=${rows.length} '
-        'menus=${rows.map((r) => (r['menu'] as Map?)?['menuUrl'] ?? (r['menu'] as Map?)?['menuName']).toList()} '
-        'match=$match',
-      );
-      if (match == null) return ApiResult.ok(const MenuPermissions());
+
+      if (match == null) {
+        return ApiResult.ok(const MenuPermissions());
+      }
 
       bool flag(String camel, String snake) {
         final crud = match!['crudPermissions'] ?? match['crud_permissions'];
@@ -90,14 +95,13 @@ class PermissionService {
         return raw == true || raw == 1 || raw == 'true';
       }
 
-      return ApiResult.ok(
-        MenuPermissions(
-          canCreate: flag('canCreate', 'can_create'),
-          canView: flag('canView', 'can_view'),
-          canUpdate: flag('canUpdate', 'can_update'),
-          canDelete: flag('canDelete', 'can_delete'),
-        ),
+      final result = MenuPermissions(
+        canCreate: flag('canCreate', 'can_create'),
+        canView: flag('canView', 'can_view'),
+        canUpdate: flag('canUpdate', 'can_update'),
+        canDelete: flag('canDelete', 'can_delete'),
       );
+      return ApiResult.ok(result);
     } on ApiClientException catch (e) {
       return ApiResult.fail(e.message, statusCode: e.statusCode);
     } catch (_) {

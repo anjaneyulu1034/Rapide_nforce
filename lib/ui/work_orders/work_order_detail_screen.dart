@@ -897,8 +897,6 @@ class _EventsReadOnly extends StatefulWidget {
 }
 
 class _EventsReadOnlyState extends State<_EventsReadOnly> {
-  int _page = 1;
-
   bool _isDvir(MaintenanceIssueSummary e) =>
       e.issueSource.toUpperCase().contains('DVIR');
 
@@ -929,31 +927,11 @@ class _EventsReadOnlyState extends State<_EventsReadOnly> {
     }
   }
 
-  @override
-  void didUpdateWidget(covariant _EventsReadOnly oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.filter != widget.filter ||
-        oldWidget.events.length != widget.events.length) {
-      _page = 1;
-    }
-  }
-
-  void _selectFilter(String f) {
-    setState(() => _page = 1);
-    widget.onFilterChanged(f);
-  }
+  void _selectFilter(String f) => widget.onFilterChanged(f);
 
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
-    final rawTotalPages = (filtered.length / sourceEventsPageSize).ceil();
-    final totalPages = rawTotalPages < 1 ? 1 : rawTotalPages;
-    final page = _page < 1 ? 1 : (_page > totalPages ? totalPages : _page);
-    final start = (page - 1) * sourceEventsPageSize;
-    final end = (start + sourceEventsPageSize) > filtered.length
-        ? filtered.length
-        : start + sourceEventsPageSize;
-    final pageItems = filtered.sublist(start, end);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1008,17 +986,12 @@ class _EventsReadOnlyState extends State<_EventsReadOnly> {
             ),
           )
         else
-          for (final e in pageItems)
+          for (final e in filtered)
             _SourceEventCard(
               issue: e,
               uploads: widget.uploads[e.id] ?? const [],
               uploadsLoading: widget.uploadsLoading,
             ),
-        SourceEventsPager(
-          page: page,
-          totalPages: totalPages,
-          onPageChanged: (p) => setState(() => _page = p),
-        ),
       ],
     );
   }

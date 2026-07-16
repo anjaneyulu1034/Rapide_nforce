@@ -7,6 +7,7 @@ import 'package:rapide_nforce/core/utils/api_parse.dart';
 import 'package:rapide_nforce/models/power_unit_model.dart';
 import 'package:rapide_nforce/models/truck_document_model.dart';
 import 'package:rapide_nforce/models/truck_permit_model.dart';
+import 'package:rapide_nforce/models/vehicle_qr_code.dart';
 import 'package:rapide_nforce/services/api_client.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 
@@ -126,7 +127,7 @@ class PowerUnitService {
   /// Generates a QR code (base64 PNG data URL) that links to a signed,
   /// time-limited download of the truck's roadside compliance PDF packet.
   /// Mirrors the web's `generateTruckQrCode` (`GET /trucks/:id/documents/qrcode`).
-  Future<ApiResult<TruckQrCode>> generateQrCode(int truckId) async {
+  Future<ApiResult<VehicleQrCode>> generateQrCode(int truckId) async {
     try {
       final body = await _api.parseJson(
         () => _api.get('${ApiConstants.trucks}/$truckId/documents/qrcode'),
@@ -139,7 +140,7 @@ class PowerUnitService {
         return ApiResult.fail('QR code was not returned by the server.');
       }
       return ApiResult.ok(
-        TruckQrCode(qrCodeDataUrl: qrCode, downloadUrl: downloadUrl ?? ''),
+        VehicleQrCode(qrCodeDataUrl: qrCode, downloadUrl: downloadUrl ?? ''),
       );
     } on ApiClientException catch (e) {
       return ApiResult.fail(e.message, statusCode: e.statusCode);
@@ -419,13 +420,4 @@ class PowerUnitService {
       return ApiResult.fail('Failed to update document.');
     }
   }
-}
-
-/// A generated compliance QR code — a base64 PNG data URL plus the signed
-/// download link it points to.
-class TruckQrCode {
-  const TruckQrCode({required this.qrCodeDataUrl, required this.downloadUrl});
-
-  final String qrCodeDataUrl;
-  final String downloadUrl;
 }

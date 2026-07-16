@@ -1,16 +1,24 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:rapide_nforce/core/constants/api_constants.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
+import 'package:rapide_nforce/core/utils/document_download_service.dart';
 import 'package:rapide_nforce/models/trailer_model.dart';
 import 'package:rapide_nforce/models/truck_document_model.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/maintenance_service.dart';
+import 'package:rapide_nforce/services/permission_service.dart';
 import 'package:rapide_nforce/services/trailer_service.dart';
 import 'package:rapide_nforce/ui/trailers/trailer_upload_document_sheet.dart';
+import 'package:rapide_nforce/ui/widgets/document_card.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
+import 'package:rapide_nforce/ui/widgets/qr_code_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
 import 'package:rapide_nforce/ui/widgets/status_chip.dart';
 import 'package:rapide_nforce/ui/widgets/vehicle_info_section.dart';
@@ -47,8 +55,9 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
       _loading = true;
       _error = null;
     });
-    final result =
-        await TrailerService.instance.fetchTrailerById(widget.trailerId);
+    final result = await TrailerService.instance.fetchTrailerById(
+      widget.trailerId,
+    );
     if (!mounted) return;
     if (!result.isSuccess) {
       setState(() {
@@ -66,8 +75,9 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
 
   Future<void> _loadDocuments() async {
     setState(() => _docsLoading = true);
-    final result =
-        await TrailerService.instance.fetchDocuments(widget.trailerId);
+    final result = await TrailerService.instance.fetchDocuments(
+      widget.trailerId,
+    );
     if (!mounted) return;
     setState(() {
       _docsLoading = false;
@@ -79,10 +89,11 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
     final t = _trailer;
     if (t == null) return;
     setState(() => _woLoading = true);
-    final result = await MaintenanceService.instance.getMaintenanceHistoryByUnit(
-      unitNumber: t.trailerNumber,
-      companyId: AuthService.instance.selectedCompanyIdInt,
-    );
+    final result = await MaintenanceService.instance
+        .getMaintenanceHistoryByUnit(
+          unitNumber: t.trailerNumber,
+          companyId: AuthService.instance.selectedCompanyIdInt,
+        );
     if (!mounted) return;
     setState(() {
       _woLoading = false;
@@ -97,6 +108,29 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
       context: context,
       trailerId: widget.trailerId,
       trailer: t,
+    );
+    if (changed == true) _loadDocuments();
+  }
+
+  Future<void> _uploadDocumentSimple() async {
+    final t = _trailer;
+    if (t == null) return;
+    final changed = await showTrailerDocsTabUploadSheet(
+      context: context,
+      trailerId: widget.trailerId,
+      trailer: t,
+    );
+    if (changed == true) _loadDocuments();
+  }
+
+  Future<void> _replaceDocument(TruckDocumentModel doc) async {
+    final t = _trailer;
+    if (t == null) return;
+    final changed = await showTrailerDocsTabUploadSheet(
+      context: context,
+      trailerId: widget.trailerId,
+      trailer: t,
+      doc: doc,
     );
     if (changed == true) _loadDocuments();
   }
@@ -131,23 +165,32 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
                   color: AppColors.danger.withValues(alpha: 0.10),
                   shape: BoxShape.circle,
                 ),
-                child:
-                    Icon(Icons.delete_outline_rounded, color: AppColors.danger, size: 34),
+                child: Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppColors.danger,
+                  size: 34,
+                ),
               ),
               const SizedBox(height: 20),
-              Text('Delete Document',
-                  style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                      letterSpacing: -0.3)),
+              Text(
+                'Delete Document',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.3,
+                ),
+              ),
               const SizedBox(height: 10),
-              Text('Delete "${doc.fileName}"?\nThis cannot be undone.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                      height: 1.55)),
+              Text(
+                'Delete "${doc.fileName}"?\nThis cannot be undone.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textSecondary,
+                  height: 1.55,
+                ),
+              ),
               const SizedBox(height: 28),
               Row(
                 children: [
@@ -159,10 +202,13 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
                         side: BorderSide(color: AppColors.border, width: 1.5),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      child: const Text('Cancel',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -174,10 +220,13 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      child: const Text('Delete',
-                          style: TextStyle(fontWeight: FontWeight.w600)),
+                      child: const Text(
+                        'Delete',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
                     ),
                   ),
                 ],
@@ -202,9 +251,9 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
   }
 
   Future<void> _onCreateWorkOrder() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const WorkOrderFormScreen()),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const WorkOrderFormScreen()));
     _loadMaintenance();
   }
 
@@ -228,9 +277,10 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
                   children: [
                     Row(
                       children: [
-                        Text(trailer.trailerNumber,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
+                        Text(
+                          trailer.trailerNumber,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
                         const SizedBox(width: 8),
                         trailer.isActive
                             ? StatusChip.active('Active')
@@ -240,7 +290,9 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
                     Text(
                       _displayTitle(trailer),
                       style: TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary),
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -262,10 +314,12 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
               : CustomScrollView(
                   slivers: [
                     SliverToBoxAdapter(
-                      child: Column(children: [
-                        _TrailerSummaryCards(trailer: trailer),
-                        const SizedBox(height: 12),
-                      ]),
+                      child: Column(
+                        children: [
+                          _TrailerSummaryCards(trailer: trailer),
+                          const SizedBox(height: 12),
+                        ],
+                      ),
                     ),
                     SliverAppBar(
                       pinned: true,
@@ -274,8 +328,9 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
                       automaticallyImplyLeading: false,
                       elevation: 0,
                       scrolledUnderElevation: 0,
-                      backgroundColor:
-                          Theme.of(context).scaffoldBackgroundColor,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).scaffoldBackgroundColor,
                       surfaceTintColor: Colors.transparent,
                       toolbarHeight: 0,
                       bottom: PreferredSize(
@@ -341,25 +396,27 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
               color: AppColors.card,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color:
-                    isSelected ? const Color(0xFF1A1A1A) : AppColors.border,
+                color: isSelected ? const Color(0xFF1A1A1A) : AppColors.border,
                 width: isSelected ? 1.8 : 1.0,
               ),
               boxShadow: [
                 BoxShadow(
-                    color: AppColors.cardShadow,
-                    blurRadius: 4,
-                    offset: const Offset(0, 2)),
+                  color: AppColors.cardShadow,
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
               ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(icon,
-                    size: 20,
-                    color: isSelected
-                        ? AppColors.textPrimary
-                        : AppColors.textSecondary),
+                Icon(
+                  icon,
+                  size: 20,
+                  color: isSelected
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary,
+                ),
                 const SizedBox(height: 5),
                 Text(
                   label,
@@ -395,16 +452,16 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
         );
       case _Tab.documents:
         return _DocumentsTab(
+          trailer: trailer,
           documents: _documents,
           loading: _docsLoading,
-          onUpload: _uploadDocument,
+          onUpload: _uploadDocumentSimple,
+          onReplace: _replaceDocument,
           onDelete: _deleteDocument,
+          onRefresh: _loadDocuments,
         );
       case _Tab.maintenance:
-        return _MaintenanceTab(
-          loading: _woLoading,
-          workOrders: _workOrders,
-        );
+        return _MaintenanceTab(loading: _woLoading, workOrders: _workOrders);
       case _Tab.specifications:
         return _SpecificationsTab(trailer: trailer);
     }
@@ -473,18 +530,18 @@ class _TrailerSummaryCards extends StatelessWidget {
                   : const Color(0xFFF1F5F9),
               sub: inspDays != null
                   ? (inspDays < 0
-                      ? '${inspDays.abs()} DAYS OVERDUE'
-                      : '$inspDays DAYS LEFT')
+                        ? '${inspDays.abs()} DAYS OVERDUE'
+                        : '$inspDays DAYS LEFT')
                   : null,
               subBg: inspDays != null
                   ? (inspDays < 0
-                      ? const Color(0xFFFFDAD6)
-                      : const Color(0xFFDCFCE7))
+                        ? const Color(0xFFFFDAD6)
+                        : const Color(0xFFDCFCE7))
                   : null,
               subColor: inspDays != null
                   ? (inspDays < 0
-                      ? const Color(0xFFBA1A1A)
-                      : const Color(0xFF15803D))
+                        ? const Color(0xFFBA1A1A)
+                        : const Color(0xFF15803D))
                   : null,
             ),
           ),
@@ -502,18 +559,18 @@ class _TrailerSummaryCards extends StatelessWidget {
                   : const Color(0xFFFFFBEB),
               sub: pmDays != null
                   ? (pmDays < 0
-                      ? '${pmDays.abs()} DAYS OVERDUE'
-                      : '$pmDays DAYS LEFT')
+                        ? '${pmDays.abs()} DAYS OVERDUE'
+                        : '$pmDays DAYS LEFT')
                   : null,
               subBg: pmDays != null
                   ? (pmDays < 0
-                      ? const Color(0xFFFFDAD6)
-                      : const Color(0xFFFEF3C7))
+                        ? const Color(0xFFFFDAD6)
+                        : const Color(0xFFFEF3C7))
                   : null,
               subColor: pmDays != null
                   ? (pmDays < 0
-                      ? const Color(0xFFBA1A1A)
-                      : const Color(0xFFD97706))
+                        ? const Color(0xFFBA1A1A)
+                        : const Color(0xFFD97706))
                   : null,
             ),
           ),
@@ -554,9 +611,10 @@ class _SCard extends StatelessWidget {
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-              color: AppColors.cardShadow,
-              blurRadius: 4,
-              offset: const Offset(0, 2)),
+            color: AppColors.cardShadow,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: Column(
@@ -565,35 +623,45 @@ class _SCard extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: iconColor),
           const SizedBox(height: 4),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 8,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                  letterSpacing: 0.4),
-              textAlign: TextAlign.center),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+              letterSpacing: 0.4,
+            ),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 2),
-          Text(value,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary),
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textPrimary,
+            ),
+            textAlign: TextAlign.center,
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
           if (sub != null) ...[
             const SizedBox(height: 4),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
-                  color: subBg, borderRadius: BorderRadius.circular(20)),
-              child: Text(sub!,
-                  style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w700,
-                      color: subColor),
-                  textAlign: TextAlign.center),
+                color: subBg,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                sub!,
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w700,
+                  color: subColor,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
           ],
         ],
@@ -624,8 +692,11 @@ class _OverviewTab extends StatelessWidget {
     }
     if (d == null) return false;
     final today = DateTime.now();
-    return DateTime(d.year, d.month, d.day)
-        .isBefore(DateTime(today.year, today.month, today.day));
+    return DateTime(
+      d.year,
+      d.month,
+      d.day,
+    ).isBefore(DateTime(today.year, today.month, today.day));
   }
 
   @override
@@ -642,20 +713,37 @@ class _OverviewTab extends StatelessWidget {
           initiallyExpanded: true,
           rows: [
             VehicleInfoRow(label: 'Unit Number', value: trailer.trailerNumber),
-            VehicleInfoRow(label: 'VIN', value: TrailerModel.displayOrDash(trailer.vinNumber)),
-            VehicleInfoRow(label: 'Make', value: TrailerModel.displayOrDash(trailer.make)),
-            VehicleInfoRow(label: 'Model', value: TrailerModel.displayOrDash(trailer.model)),
+            VehicleInfoRow(
+              label: 'VIN',
+              value: TrailerModel.displayOrDash(trailer.vinNumber),
+            ),
+            VehicleInfoRow(
+              label: 'Make',
+              value: TrailerModel.displayOrDash(trailer.make),
+            ),
+            VehicleInfoRow(
+              label: 'Model',
+              value: TrailerModel.displayOrDash(trailer.model),
+            ),
             VehicleInfoRow(label: 'Type', value: trailer.type),
-            VehicleInfoRow(label: 'Year', value: trailer.year?.toString() ?? '—'),
-            VehicleInfoRow(label: 'Color', value: TrailerModel.displayOrDash(trailer.color)),
             VehicleInfoRow(
-                label: 'Purchase Date',
-                value: TrailerModel.displayOrDash(trailer.purchaseDate)),
+              label: 'Year',
+              value: trailer.year?.toString() ?? '—',
+            ),
             VehicleInfoRow(
-                label: 'Purchase Price',
-                value: trailer.purchasePrice != null
-                    ? '\$${trailer.purchasePrice}'
-                    : '—'),
+              label: 'Color',
+              value: TrailerModel.displayOrDash(trailer.color),
+            ),
+            VehicleInfoRow(
+              label: 'Purchase Date',
+              value: TrailerModel.displayOrDash(trailer.purchaseDate),
+            ),
+            VehicleInfoRow(
+              label: 'Purchase Price',
+              value: trailer.purchasePrice != null
+                  ? '\$${trailer.purchasePrice}'
+                  : '—',
+            ),
             VehicleInfoRow(label: 'Status', value: trailer.status),
           ],
         ),
@@ -667,24 +755,30 @@ class _OverviewTab extends StatelessWidget {
               : null,
           rows: [
             VehicleInfoRow(
-                label: 'Plate Number',
-                value: TrailerModel.displayOrDash(trailer.licensePlate)),
+              label: 'Plate Number',
+              value: TrailerModel.displayOrDash(trailer.licensePlate),
+            ),
             VehicleInfoRow(
-                label: 'Plate Province',
-                value: TrailerModel.displayOrDash(trailer.state)),
+              label: 'Plate Province',
+              value: TrailerModel.displayOrDash(trailer.state),
+            ),
             VehicleInfoRow(
-                label: 'Registration Number',
-                value: TrailerModel.displayOrDash(trailer.registrationNumber)),
+              label: 'Registration Number',
+              value: TrailerModel.displayOrDash(trailer.registrationNumber),
+            ),
             VehicleInfoRow(
-                label: 'Registration Expiry',
-                value: TrailerModel.displayOrDash(trailer.registrationExpiry),
-                valueColor: regExp ? _red : null),
+              label: 'Registration Expiry',
+              value: TrailerModel.displayOrDash(trailer.registrationExpiry),
+              valueColor: regExp ? _red : null,
+            ),
             VehicleInfoRow(
-                label: 'IMS Number',
-                value: TrailerModel.displayOrDash(trailer.imsNumber)),
+              label: 'IMS Number',
+              value: TrailerModel.displayOrDash(trailer.imsNumber),
+            ),
             VehicleInfoRow(
-                label: 'Ownership',
-                value: TrailerModel.displayOrDash(trailer.ownership)),
+              label: 'Ownership',
+              value: TrailerModel.displayOrDash(trailer.ownership),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -695,20 +789,23 @@ class _OverviewTab extends StatelessWidget {
               : null,
           rows: [
             VehicleInfoRow(
-                label: 'Annual Inspection Due',
-                value: TrailerModel.displayOrDash(trailer.annualInspectionDue),
-                valueColor: inspExp ? _red : null),
+              label: 'Annual Inspection Due',
+              value: TrailerModel.displayOrDash(trailer.annualInspectionDue),
+              valueColor: inspExp ? _red : null,
+            ),
             VehicleInfoRow(
-                label: 'PM Due Date',
-                value: TrailerModel.displayOrDash(trailer.pmDueDate)),
+              label: 'PM Due Date',
+              value: TrailerModel.displayOrDash(trailer.pmDueDate),
+            ),
             VehicleInfoRow(
-                label: 'CVI Expiry',
-                value: TrailerModel.displayOrDash(trailer.cviExpiry),
-                valueColor:
-                    _isExpired(trailer.cviExpiry) ? _red : null),
+              label: 'CVI Expiry',
+              value: TrailerModel.displayOrDash(trailer.cviExpiry),
+              valueColor: _isExpired(trailer.cviExpiry) ? _red : null,
+            ),
             VehicleInfoRow(
-                label: 'Assigned Truck',
-                value: TrailerModel.displayOrDash(trailer.assignedTruck)),
+              label: 'Assigned Truck',
+              value: TrailerModel.displayOrDash(trailer.assignedTruck),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -719,40 +816,51 @@ class _OverviewTab extends StatelessWidget {
               : null,
           rows: [
             VehicleInfoRow(
-                label: 'Certificate Status',
-                value: cvipExp ? 'EXPIRED' : 'Valid',
-                valueColor: cvipExp ? _red : null),
+              label: 'Certificate Status',
+              value: cvipExp ? 'EXPIRED' : 'Valid',
+              valueColor: cvipExp ? _red : null,
+            ),
             VehicleInfoRow(
-                label: 'Certificate Number',
-                value: TrailerModel.displayOrDash(trailer.certificateNumber)),
+              label: 'Certificate Number',
+              value: TrailerModel.displayOrDash(trailer.certificateNumber),
+            ),
             VehicleInfoRow(
-                label: 'Expiry Date',
-                value: TrailerModel.displayOrDash(trailer.expiryDate),
-                valueColor: cvipExp ? _red : null),
+              label: 'Expiry Date',
+              value: TrailerModel.displayOrDash(trailer.expiryDate),
+              valueColor: cvipExp ? _red : null,
+            ),
             VehicleInfoRow(
-                label: 'Inspection Date',
-                value: TrailerModel.displayOrDash(trailer.inspectionDate)),
+              label: 'Inspection Date',
+              value: TrailerModel.displayOrDash(trailer.inspectionDate),
+            ),
             VehicleInfoRow(
-                label: 'Next Inspection Due',
-                value: TrailerModel.displayOrDash(trailer.nextInspectionDue)),
+              label: 'Next Inspection Due',
+              value: TrailerModel.displayOrDash(trailer.nextInspectionDue),
+            ),
             VehicleInfoRow(
-                label: 'Inspector Name',
-                value: TrailerModel.displayOrDash(trailer.inspectorName)),
+              label: 'Inspector Name',
+              value: TrailerModel.displayOrDash(trailer.inspectorName),
+            ),
             VehicleInfoRow(
-                label: 'Inspector License',
-                value: TrailerModel.displayOrDash(trailer.inspectorLicense)),
+              label: 'Inspector License',
+              value: TrailerModel.displayOrDash(trailer.inspectorLicense),
+            ),
             VehicleInfoRow(
-                label: 'Inspection Facility',
-                value: TrailerModel.displayOrDash(trailer.inspectionFacility)),
+              label: 'Inspection Facility',
+              value: TrailerModel.displayOrDash(trailer.inspectionFacility),
+            ),
             VehicleInfoRow(
-                label: 'Critical Defects',
-                value: '${trailer.criticalDefects ?? 0}'),
+              label: 'Critical Defects',
+              value: '${trailer.criticalDefects ?? 0}',
+            ),
             VehicleInfoRow(
-                label: 'Major Defects',
-                value: '${trailer.majorDefects ?? 0}'),
+              label: 'Major Defects',
+              value: '${trailer.majorDefects ?? 0}',
+            ),
             VehicleInfoRow(
-                label: 'Advisory Items',
-                value: '${trailer.advisoryItems ?? 0}'),
+              label: 'Advisory Items',
+              value: '${trailer.advisoryItems ?? 0}',
+            ),
           ],
         ),
         if (trailer.ownerName != null) ...[
@@ -761,17 +869,21 @@ class _OverviewTab extends StatelessWidget {
             title: 'Owner Information',
             rows: [
               VehicleInfoRow(
-                  label: 'Owner Name',
-                  value: TrailerModel.displayOrDash(trailer.ownerName)),
+                label: 'Owner Name',
+                value: TrailerModel.displayOrDash(trailer.ownerName),
+              ),
               VehicleInfoRow(
-                  label: 'Owner Email',
-                  value: TrailerModel.displayOrDash(trailer.ownerEmail)),
+                label: 'Owner Email',
+                value: TrailerModel.displayOrDash(trailer.ownerEmail),
+              ),
               VehicleInfoRow(
-                  label: 'Owner Phone',
-                  value: TrailerModel.displayOrDash(trailer.ownerPhone)),
+                label: 'Owner Phone',
+                value: TrailerModel.displayOrDash(trailer.ownerPhone),
+              ),
               VehicleInfoRow(
-                  label: 'Owner Address',
-                  value: TrailerModel.displayOrDash(trailer.ownerAddress)),
+                label: 'Owner Address',
+                value: TrailerModel.displayOrDash(trailer.ownerAddress),
+              ),
             ],
           ),
         ],
@@ -782,7 +894,7 @@ class _OverviewTab extends StatelessWidget {
 
 // ─── Compliance Tab ─────────────────────────────────────────────────────────────
 
-class _ComplianceTab extends StatelessWidget {
+class _ComplianceTab extends StatefulWidget {
   const _ComplianceTab({
     required this.trailer,
     required this.documents,
@@ -809,31 +921,111 @@ class _ComplianceTab extends StatelessWidget {
   ];
 
   @override
+  State<_ComplianceTab> createState() => _ComplianceTabState();
+}
+
+class _ComplianceTabState extends State<_ComplianceTab> {
+  bool _generatingQr = false;
+
+  void _showDocDetails(TruckDocumentModel doc) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DocumentDetailsSheet(
+        doc: doc,
+        unitNumber: widget.trailer.trailerNumber,
+        entityBasePath: ApiConstants.trailers,
+      ),
+    );
+  }
+
+  Future<void> _downloadPacket() =>
+      DocumentDownloadService.instance.downloadPdfPacket(
+        context: context,
+        truckId: widget.trailer.id,
+        scope: 'compliance',
+        hasDocuments: widget.documents.isNotEmpty,
+        entityBasePath: ApiConstants.trailers,
+      );
+
+  Future<void> _generateQrCode() async {
+    setState(() => _generatingQr = true);
+    final result = await TrailerService.instance.generateQrCode(
+      widget.trailer.id,
+    );
+    if (!mounted) return;
+    setState(() => _generatingQr = false);
+    if (!result.isSuccess || result.data == null) {
+      ApiFeedback.showError(result, fallback: 'Failed to generate QR code');
+      return;
+    }
+
+    Uint8List? bytes;
+    try {
+      final dataUrl = result.data!.qrCodeDataUrl;
+      final base64Part = dataUrl.contains(',')
+          ? dataUrl.split(',').last
+          : dataUrl;
+      bytes = base64Decode(base64Part);
+    } catch (_) {}
+
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => QrCodeSheet(
+        imageBytes: bytes,
+        unitNumber: widget.trailer.trailerNumber,
+        onDownloadPacket: _downloadPacket,
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final documents = widget.documents;
+    final loading = widget.loading;
     final expired = documents.where((d) {
       final s = (d.statusLabel ?? '').toLowerCase();
       return s.contains('expired');
     }).length;
-    final missing = _requiredDocs.length - documents.length;
+    final missing = _ComplianceTab._requiredDocs.length - documents.length;
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                'Vehicle Compliance Binder — ${trailer.trailerNumber}',
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    color: AppColors.textPrimary),
-              ),
+            // Expanded(
+            //   child: Text(
+            //     'Vehicle Compliance Binder — ${trailer.trailerNumber}',
+            //     style: TextStyle(
+            //         fontWeight: FontWeight.w700,
+            //         fontSize: 15,
+            //         color: AppColors.textPrimary),
+            //   ),
+            //  ),
+            const SizedBox(width: 8),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _BlackButton(
+                  label: 'Roadside Packet',
+                  onPressed: _downloadPacket,
+                  icon: Icons.download_outlined,
+                ),
+                _BlackButton(
+                  label: 'Upload',
+                  onPressed: widget.onUpload,
+                  icon: Icons.upload_file_outlined,
+                ),
+              ],
             ),
-            _BlackButton(
-                label: 'Upload',
-                onPressed: onUpload,
-                icon: Icons.upload_file_outlined),
           ],
         ),
         const SizedBox(height: 12),
@@ -850,15 +1042,20 @@ class _ComplianceTab extends StatelessWidget {
         else
           ..._groupDocuments(documents),
         const SizedBox(height: 16),
-        Text('Roadside Inspection Readiness',
-            style: TextStyle(
-                fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        Text(
+          'Roadside Inspection Readiness',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
         const SizedBox(height: 8),
-        ..._requiredDocs.map((name) {
-          final has = documents.any((d) =>
-              (d.documentType ?? d.fileName)
-                  .toLowerCase()
-                  .contains(name.split(' ').first.toLowerCase()));
+        ..._ComplianceTab._requiredDocs.map((name) {
+          final has = documents.any(
+            (d) => (d.documentType ?? d.fileName).toLowerCase().contains(
+              name.split(' ').first.toLowerCase(),
+            ),
+          );
           return ListTile(
             dense: true,
             leading: Icon(
@@ -870,34 +1067,112 @@ class _ComplianceTab extends StatelessWidget {
             trailing: Text(
               has ? 'Uploaded' : 'Missing',
               style: TextStyle(
-                  fontSize: 12,
-                  color: has ? AppColors.statusCompleted : AppColors.danger),
+                fontSize: 12,
+                color: has ? AppColors.statusCompleted : AppColors.danger,
+              ),
             ),
           );
         }),
+        const SizedBox(height: 20),
+        Text(
+          'Digital Roadside Packet',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Generate a complete digital packet with all required documents '
+          'for roadside inspections.',
+          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _downloadPacket,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF4B633D),
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 46),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            icon: const Icon(Icons.download_outlined, size: 18),
+            label: const Text('Download PDF Packet'),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _generatingQr ? null : _generateQrCode,
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF1D4ED8),
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: const Color(
+                0xFF1D4ED8,
+              ).withValues(alpha: 0.5),
+              minimumSize: const Size(double.infinity, 46),
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            icon: _generatingQr
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.qr_code_2_outlined, size: 18),
+            label: Text(
+              _generatingQr ? 'Generating…' : 'Generate QR Code',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'QR code provides inspectors instant access to digital copies '
+          'of all documents.',
+          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+        ),
       ],
     );
   }
 
   Widget _statBox(String label, String value) => Expanded(
-        child: Container(
-          margin: const EdgeInsets.only(right: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-              gradient: AppGradients.card,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppColors.border)),
-          child: Column(children: [
-            Text(value,
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11, color: AppColors.textSecondary)),
-          ]),
-        ),
-      );
+    child: Container(
+      margin: const EdgeInsets.only(right: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: AppGradients.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    ),
+  );
 
   List<Widget> _groupDocuments(List<TruckDocumentModel> docs) {
     final groups = <String, List<TruckDocumentModel>>{};
@@ -909,40 +1184,84 @@ class _ComplianceTab extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(e.key,
-              style: TextStyle(
-                  fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+          Text(
+            e.key,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
           const SizedBox(height: 6),
-          ...e.value.map((d) => Container(
-                margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                    gradient: AppGradients.card,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.border)),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(d.fileName,
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600)),
-                          Text(
-                            '${d.documentNumber ?? '—'} · ${d.issueDate ?? '—'} → ${d.expiryDate ?? '—'}',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary),
+          ...e.value.map((d) {
+            final status = documentStatus(d);
+            final (textColor, bgColor) = documentStatusColors(status);
+            return Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                gradient: AppGradients.card,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          d.documentType ?? d.fileName,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          '${d.documentNumber ?? '—'} · ${d.issueDate ?? '—'} → ${d.expiryDate ?? '—'}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: bgColor,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      documentStatusLabel(status),
+                      style: TextStyle(
+                        color: textColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (d.statusLabel != null)
-                      StatusChip.consent(d.statusLabel!),
-                  ],
-                ),
-              )),
+                  ),
+                  DocActionBtn(
+                    icon: Icons.visibility_outlined,
+                    tooltip: 'View',
+                    onTap: () => _showDocDetails(d),
+                  ),
+                  DocActionBtn(
+                    icon: Icons.download_outlined,
+                    tooltip: 'Download',
+                    onTap: () => DocumentDownloadService.instance
+                        .downloadAndOpen(
+                          context: context,
+                          truckId: d.truckId,
+                          documentId: d.id,
+                          displayFileName: d.fileName,
+                          entityBasePath: ApiConstants.trailers,
+                        ),
+                  ),
+                ],
+              ),
+            );
+          }),
           const SizedBox(height: 12),
         ],
       );
@@ -952,87 +1271,272 @@ class _ComplianceTab extends StatelessWidget {
 
 // ─── Documents Tab ──────────────────────────────────────────────────────────────
 
-class _DocumentsTab extends StatelessWidget {
+class _DocumentsTab extends StatefulWidget {
   const _DocumentsTab({
+    required this.trailer,
     required this.documents,
     required this.loading,
     required this.onUpload,
+    required this.onReplace,
     required this.onDelete,
+    required this.onRefresh,
   });
 
+  final TrailerModel trailer;
   final List<TruckDocumentModel> documents;
   final bool loading;
   final VoidCallback onUpload;
+  final ValueChanged<TruckDocumentModel> onReplace;
   final ValueChanged<TruckDocumentModel> onDelete;
+  final VoidCallback onRefresh;
+
+  @override
+  State<_DocumentsTab> createState() => _DocumentsTabState();
+}
+
+class _DocumentsTabState extends State<_DocumentsTab> {
+  final _searchCtrl = TextEditingController();
+  String _search = '';
+  String? _filterStatus;
+  bool _canUpload = false;
+  bool _canReplace = false;
+  bool _canDelete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPermissions();
+  }
+
+  Future<void> _loadPermissions() async {
+    final result = await PermissionService.instance.getMenuPermissions(
+      menuUrl: '/documents',
+      menuName: 'Documents',
+    );
+    if (!mounted) return;
+    final perms = result.isSuccess ? result.data : null;
+    setState(() {
+      _canUpload = perms?.canCreate ?? false;
+      _canReplace = perms?.canUpdate ?? false;
+      _canDelete = perms?.canDelete ?? false;
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  int _count(String status) =>
+      widget.documents.where((d) => documentStatus(d) == status).length;
+
+  List<TruckDocumentModel> get _filtered {
+    var list = widget.documents;
+    if (_filterStatus != null) {
+      list = list.where((d) => documentStatus(d) == _filterStatus).toList();
+    }
+    if (_search.isNotEmpty) {
+      final q = _search.toLowerCase();
+      list = list
+          .where(
+            (d) =>
+                (d.documentType ?? d.fileName).toLowerCase().contains(q) ||
+                (d.documentNumber ?? '').toLowerCase().contains(q),
+          )
+          .toList();
+    }
+    return list;
+  }
+
+  void _showDetails(TruckDocumentModel doc) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DocumentDetailsSheet(
+        doc: doc,
+        unitNumber: widget.trailer.trailerNumber,
+        entityBasePath: ApiConstants.trailers,
+      ),
+    );
+  }
+
+  void _showVersionHistory(TruckDocumentModel doc) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => VersionHistorySheet(
+        doc: doc,
+        unitNumber: widget.trailer.trailerNumber,
+        entityBasePath: ApiConstants.trailers,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final active = _count('active');
+    final expiring = _count('expiring');
+    final expired = _count('expired');
+    final filtered = _filtered;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Documents',
-                style: TextStyle(
+            Row(
+              children: [
+                Text(
+                  'Documents',
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    color: AppColors.textPrimary)),
-            _BlackButton(
-                label: 'Upload New',
-                onPressed: onUpload,
-                icon: Icons.upload_rounded),
+                    fontSize: 18,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '${widget.documents.length}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            if (_canUpload) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                children: [
+                  FilledButton.icon(
+                    onPressed: widget.onUpload,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF4B633D),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: const Icon(Icons.cloud_upload_outlined, size: 18),
+                    label: const Text(
+                      'Upload New',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 12),
-        if (loading)
+        Row(
+          children: [
+            StatusChipBox(
+              label: 'ACTIVE',
+              count: active,
+              textColor: const Color(0xFF1B7A3E),
+              bgColor: const Color(0xFFE6F4EC),
+              selected: _filterStatus == 'active',
+              onTap: () => setState(
+                () =>
+                    _filterStatus = _filterStatus == 'active' ? null : 'active',
+              ),
+            ),
+            const SizedBox(width: 8),
+            StatusChipBox(
+              label: 'EXPIRING',
+              count: expiring,
+              textColor: const Color(0xFF8B5E00),
+              bgColor: const Color(0xFFFFF3E0),
+              selected: _filterStatus == 'expiring',
+              onTap: () => setState(
+                () => _filterStatus = _filterStatus == 'expiring'
+                    ? null
+                    : 'expiring',
+              ),
+            ),
+            const SizedBox(width: 8),
+            StatusChipBox(
+              label: 'EXPIRED',
+              count: expired,
+              textColor: const Color(0xFFBA1A1A),
+              bgColor: const Color(0xFFFCE8E8),
+              selected: _filterStatus == 'expired',
+              onTap: () => setState(
+                () => _filterStatus = _filterStatus == 'expired'
+                    ? null
+                    : 'expired',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: TextField(
+            controller: _searchCtrl,
+            onChanged: (v) => setState(() => _search = v),
+            decoration: InputDecoration(
+              hintText: 'Search documents',
+              hintStyle: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+              ),
+              prefixIcon: Icon(
+                Icons.search,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (widget.loading)
           const Center(child: CircularProgressIndicator())
-        else if (documents.isEmpty)
+        else if (filtered.isEmpty)
           Padding(
             padding: const EdgeInsets.all(32),
             child: Center(
-              child: Text('No documents uploaded yet',
-                  style: TextStyle(color: AppColors.textSecondary)),
+              child: Text(
+                'No documents found',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
             ),
           )
         else
-          ...documents.map((d) => Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                    gradient: AppGradients.card,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppColors.border)),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(d.documentType ?? d.fileName,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w600)),
-                          Text(
-                            '${d.documentNumber ?? '—'} · Issue ${d.issueDate ?? '—'} · Exp ${d.expiryDate ?? '—'}',
-                            style: TextStyle(
-                                fontSize: 11, color: AppColors.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (d.statusLabel != null)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: StatusChip.consent(d.statusLabel!),
-                      ),
-                    IconButton(
-                      icon: Icon(Icons.delete_outline,
-                          color: AppColors.danger),
-                      onPressed: () => onDelete(d),
-                    ),
-                  ],
-                ),
-              )),
+          ...filtered.map(
+            (d) => DocCard(
+              doc: d,
+              canReplace: _canReplace,
+              canDelete: _canDelete,
+              onView: () => _showDetails(d),
+              onDelete: () => widget.onDelete(d),
+              onReplace: () => widget.onReplace(d),
+              onVersionHistory: () => _showVersionHistory(d),
+              onDownload: () =>
+                  DocumentDownloadService.instance.downloadAndOpen(
+                    context: context,
+                    truckId: d.truckId,
+                    documentId: d.id,
+                    displayFileName: d.fileName,
+                    entityBasePath: ApiConstants.trailers,
+                  ),
+            ),
+          ),
       ],
     );
   }
@@ -1041,10 +1545,7 @@ class _DocumentsTab extends StatelessWidget {
 // ─── Maintenance Tab ────────────────────────────────────────────────────────────
 
 class _MaintenanceTab extends StatefulWidget {
-  const _MaintenanceTab({
-    required this.loading,
-    required this.workOrders,
-  });
+  const _MaintenanceTab({required this.loading, required this.workOrders});
 
   final bool loading;
   final List<WorkOrderModel> workOrders;
@@ -1057,8 +1558,6 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
   final _searchCtrl = TextEditingController();
   String _search = '';
   WorkOrderStatus? _filterStatus;
-  int _page = 0;
-  static const _pageSize = 10;
 
   @override
   void dispose() {
@@ -1077,36 +1576,24 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
     if (_search.isNotEmpty) {
       final q = _search.toLowerCase();
       list = list
-          .where((wo) =>
-              wo.workOrderNumber.toLowerCase().contains(q) ||
-              (wo.companyName ?? '').toLowerCase().contains(q) ||
-              wo.issueDescription.toLowerCase().contains(q))
+          .where(
+            (wo) =>
+                wo.workOrderNumber.toLowerCase().contains(q) ||
+                (wo.companyName ?? '').toLowerCase().contains(q) ||
+                wo.issueDescription.toLowerCase().contains(q),
+          )
           .toList();
     }
     return list;
   }
 
-  List<WorkOrderModel> get _currentPage {
-    final list = _filtered;
-    final start = _page * _pageSize;
-    if (start >= list.length) return [];
-    return list.sublist(start, (start + _pageSize).clamp(0, list.length));
-  }
-
-  int get _totalPages =>
-      _filtered.isEmpty ? 1 : ((_filtered.length - 1) ~/ _pageSize) + 1;
-
   void _setFilter(WorkOrderStatus s) => setState(() {
-        _page = 0;
-        _filterStatus = _filterStatus == s ? null : s;
-      });
+    _filterStatus = _filterStatus == s ? null : s;
+  });
 
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
-    final page = _currentPage;
-    final start = filtered.isEmpty ? 0 : _page * _pageSize + 1;
-    final end = _page * _pageSize + page.length;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
@@ -1150,8 +1637,11 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
                   color: const Color(0xFFFFF9C4),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.bolt,
-                    color: Color(0xFFF9A825), size: 22),
+                child: const Icon(
+                  Icons.bolt,
+                  color: Color(0xFFF9A825),
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1169,7 +1659,9 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
                     Text(
                       'Sync from Fullbay, Shop-Ware',
                       style: TextStyle(
-                          fontSize: 11, color: AppColors.textSecondary),
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -1182,8 +1674,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
                   onTap: () => AppToast.showSuccess('Fetching work orders…'),
                   borderRadius: BorderRadius.circular(8),
                   child: const Padding(
-                    padding:
-                        EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                     child: Text(
                       'FETCH',
                       style: TextStyle(
@@ -1244,19 +1735,20 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
                 ),
                 child: TextField(
                   controller: _searchCtrl,
-                  onChanged: (v) => setState(() {
-                    _search = v;
-                    _page = 0;
-                  }),
+                  onChanged: (v) => setState(() => _search = v),
                   decoration: InputDecoration(
                     hintText: 'Search WO #, company',
                     hintStyle: TextStyle(
-                        color: AppColors.textSecondary, fontSize: 13),
-                    prefixIcon: Icon(Icons.search,
-                        size: 18, color: AppColors.textSecondary),
+                      color: AppColors.textSecondary,
+                      fontSize: 13,
+                    ),
+                    prefixIcon: Icon(
+                      Icons.search,
+                      size: 18,
+                      color: AppColors.textSecondary,
+                    ),
                     border: InputBorder.none,
-                    contentPadding:
-                        const EdgeInsets.symmetric(vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
               ),
@@ -1271,7 +1763,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
         // Cards
         if (widget.loading)
           const Center(child: CircularProgressIndicator())
-        else if (page.isEmpty)
+        else if (filtered.isEmpty)
           Container(
             padding: const EdgeInsets.all(32),
             alignment: Alignment.center,
@@ -1286,37 +1778,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
             ),
           )
         else
-          ...page.map((wo) => _TWoCard(wo: wo)),
-        // Pagination
-        if (!widget.loading && filtered.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '$start–$end of ${filtered.length}',
-                  style: TextStyle(
-                      fontSize: 12, color: AppColors.textSecondary),
-                ),
-                Row(
-                  children: [
-                    _TPagBtn(
-                      icon: Icons.chevron_left,
-                      enabled: _page > 0,
-                      onTap: () => setState(() => _page--),
-                    ),
-                    const SizedBox(width: 8),
-                    _TPagBtn(
-                      icon: Icons.chevron_right,
-                      enabled: _page < _totalPages - 1,
-                      onTap: () => setState(() => _page++),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          ...filtered.map((wo) => _TWoCard(wo: wo)),
       ],
     );
   }
@@ -1338,23 +1800,31 @@ class _SpecificationsTab extends StatelessWidget {
           initiallyExpanded: true,
           rows: [
             VehicleInfoRow(
-                label: 'Type',
-                value: TrailerModel.displayOrDash(trailer.specType ?? trailer.type)),
+              label: 'Type',
+              value: TrailerModel.displayOrDash(
+                trailer.specType ?? trailer.type,
+              ),
+            ),
             VehicleInfoRow(
-                label: 'Length',
-                value: TrailerModel.displayOrDash(trailer.specLength)),
+              label: 'Length',
+              value: TrailerModel.displayOrDash(trailer.specLength),
+            ),
             VehicleInfoRow(
-                label: 'Width',
-                value: TrailerModel.displayOrDash(trailer.specWidth)),
+              label: 'Width',
+              value: TrailerModel.displayOrDash(trailer.specWidth),
+            ),
             VehicleInfoRow(
-                label: 'Height',
-                value: TrailerModel.displayOrDash(trailer.specHeight)),
+              label: 'Height',
+              value: TrailerModel.displayOrDash(trailer.specHeight),
+            ),
             VehicleInfoRow(
-                label: 'Capacity',
-                value: TrailerModel.displayOrDash(trailer.specCapacity)),
+              label: 'Capacity',
+              value: TrailerModel.displayOrDash(trailer.specCapacity),
+            ),
             VehicleInfoRow(
-                label: 'GVWR',
-                value: TrailerModel.displayOrDash(trailer.specGvwr)),
+              label: 'GVWR',
+              value: TrailerModel.displayOrDash(trailer.specGvwr),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -1362,11 +1832,13 @@ class _SpecificationsTab extends StatelessWidget {
           title: 'Additional Info',
           rows: [
             VehicleInfoRow(
-                label: 'Fuel Card',
-                value: TrailerModel.displayOrDash(trailer.fuelCard)),
+              label: 'Fuel Card',
+              value: TrailerModel.displayOrDash(trailer.fuelCard),
+            ),
             VehicleInfoRow(
-                label: 'Bridge Transponder',
-                value: TrailerModel.displayOrDash(trailer.bridgeTransponder)),
+              label: 'Bridge Transponder',
+              value: TrailerModel.displayOrDash(trailer.bridgeTransponder),
+            ),
           ],
         ),
       ],
@@ -1400,9 +1872,10 @@ class _BlackButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2)),
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
             ],
           ),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -1411,11 +1884,14 @@ class _BlackButton extends StatelessWidget {
             children: [
               Icon(icon, color: Colors.white, size: 18),
               const SizedBox(width: 8),
-              Text(label,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13)),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
             ],
           ),
         ),
@@ -1457,7 +1933,9 @@ class _TStatBox extends StatelessWidget {
             color: selected ? bgColor : AppColors.card,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
-              color: selected ? textColor.withValues(alpha: 0.5) : AppColors.border,
+              color: selected
+                  ? textColor.withValues(alpha: 0.5)
+                  : AppColors.border,
               width: selected ? 1.5 : 1,
             ),
           ),
@@ -1508,38 +1986,6 @@ class _TIconBtn extends StatelessWidget {
           border: Border.all(color: AppColors.border),
         ),
         child: Icon(icon, size: 18, color: AppColors.textSecondary),
-      ),
-    );
-  }
-}
-
-class _TPagBtn extends StatelessWidget {
-  const _TPagBtn({
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-  });
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: enabled ? AppColors.card : AppColors.card.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Icon(
-          icon,
-          size: 18,
-          color: enabled ? AppColors.textPrimary : AppColors.textSecondary,
-        ),
       ),
     );
   }
@@ -1599,8 +2045,7 @@ class _TWoCard extends StatelessWidget {
   static String _fmtCost(double? v) =>
       v == null ? '—' : '\$${v.toStringAsFixed(2)}';
 
-  static String _fmtOdo(String? v) =>
-      (v == null || v.isEmpty) ? '—' : '$v km';
+  static String _fmtOdo(String? v) => (v == null || v.isEmpty) ? '—' : '$v km';
 
   @override
   Widget build(BuildContext context) {
@@ -1643,7 +2088,9 @@ class _TWoCard extends StatelessWidget {
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 4),
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: wo.status.backgroundColor,
                     borderRadius: BorderRadius.circular(20),
@@ -1661,13 +2108,11 @@ class _TWoCard extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              [wo.issueDescription, wo.companyName]
-                  .where((s) => s != null && s.isNotEmpty)
-                  .join(' · '),
-              style: TextStyle(
-                fontSize: 12,
-                color: AppColors.textSecondary,
-              ),
+              [
+                wo.issueDescription,
+                wo.companyName,
+              ].where((s) => s != null && s.isNotEmpty).join(' · '),
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 10),
             Divider(height: 1, color: AppColors.border),
@@ -1683,8 +2128,7 @@ class _TWoCard extends StatelessWidget {
                 Expanded(
                   child: _TInfoCell(
                     label: 'ODOMETER',
-                    value: _fmtOdo(
-                        details?.odometer ?? details?.startOdometer),
+                    value: _fmtOdo(details?.odometer ?? details?.startOdometer),
                   ),
                 ),
               ],
@@ -1741,8 +2185,11 @@ class _TWoCard extends StatelessWidget {
                   ),
                 ),
                 if (details?.dueDate != null) ...[
-                  Icon(Icons.access_time_outlined,
-                      size: 14, color: AppColors.textSecondary),
+                  Icon(
+                    Icons.access_time_outlined,
+                    size: 14,
+                    color: AppColors.textSecondary,
+                  ),
                   const SizedBox(width: 4),
                   Text(
                     'Due ${_fmtDate(details?.dueDate)}',

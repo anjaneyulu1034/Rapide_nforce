@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'package:rapide_nforce/core/constants/app_strings.dart';
 
 class TrailerModel {
   const TrailerModel({
@@ -113,7 +114,7 @@ class TrailerModel {
       status.toLowerCase() == 'active' || status == '1';
 
   static String displayOrDash(String? v) =>
-      (v == null || v.trim().isEmpty) ? '—' : v;
+      (v == null || v.trim().isEmpty) ? AppStrings.noData : v;
 
   factory TrailerModel.fromJson(Map<String, dynamic> json) {
     final active = json['active'];

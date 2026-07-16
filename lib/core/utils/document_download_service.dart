@@ -26,6 +26,7 @@ class DocumentDownloadService {
     required int documentId,
     required String displayFileName,
     String? companyId,
+    String entityBasePath = ApiConstants.trucks,
   }) async {
     late OverlayEntry overlay;
     overlay = OverlayEntry(
@@ -48,7 +49,7 @@ class DocumentDownloadService {
       final savePath = '${tempDir.path}/$safeName';
 
       final url =
-          '${ApiConstants.baseUrl}${ApiConstants.trucks}/$truckId/documents/$documentId/download';
+          '${ApiConstants.baseUrl}$entityBasePath/$truckId/documents/$documentId/download';
 
       final headers = <String, String>{..._authHeaders};
       if (companyId != null && companyId.isNotEmpty) {
@@ -115,7 +116,9 @@ class DocumentDownloadService {
     }
   }
 
-  /// Downloads the combined PDF packet for a truck (all non-expired documents).
+  /// Downloads the combined PDF packet for a vehicle (all non-expired
+  /// documents). [entityBasePath] defaults to trucks; pass
+  /// [ApiConstants.trailers] for the trailer equivalent.
   ///
   /// Pass [hasDocuments] = false when the unit has no documents at all, so we
   /// can show a clear message instead of a misleading 404 "file not found".
@@ -124,6 +127,7 @@ class DocumentDownloadService {
     required int truckId,
     String scope = 'compliance',
     bool hasDocuments = true,
+    String entityBasePath = ApiConstants.trucks,
   }) async {
     if (!hasDocuments) {
       _showError(context, 'No documents available to download');
@@ -137,11 +141,13 @@ class DocumentDownloadService {
 
     try {
       final tempDir = await getTemporaryDirectory();
+      final entityLabel =
+          entityBasePath == ApiConstants.trailers ? 'trailer' : 'truck';
       final savePath =
-          '${tempDir.path}/truck-$truckId-roadside-packet-${DateTime.now().millisecondsSinceEpoch}.pdf';
+          '${tempDir.path}/$entityLabel-$truckId-roadside-packet-${DateTime.now().millisecondsSinceEpoch}.pdf';
 
       final url =
-          '${ApiConstants.baseUrl}${ApiConstants.trucks}/$truckId/documents/packet?scope=$scope';
+          '${ApiConstants.baseUrl}$entityBasePath/$truckId/documents/packet?scope=$scope';
 
       await _dio.download(
         url,

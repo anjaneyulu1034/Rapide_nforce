@@ -5,12 +5,10 @@
 			"path": "../../.."
 		},
 		{
-			"name": "rapidenforce-backend",
-			"path": "../../../../../rapidenforce-backend"
+			"path": "../../../../../../Downloads/rapidenforce-ui (1)"
 		},
 		{
-			"name": "rapidenforce-ui",
-			"path": "../../../../../rapidenforce-ui"
+			"path": "../../../../../../Downloads/rapidenforce-backend"
 		}
 	],
 	"settings": {}

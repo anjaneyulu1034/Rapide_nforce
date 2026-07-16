@@ -12,7 +12,6 @@ import 'package:rapide_nforce/ui/widgets/api_error_banner.dart';
 import 'package:rapide_nforce/ui/widgets/list_empty_state.dart';
 import 'package:rapide_nforce/ui/widgets/status_chip.dart';
 import 'package:rapide_nforce/ui/widgets/web_data_table.dart';
-import 'package:rapide_nforce/ui/widgets/web_pagination.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class CarriersScreen extends StatefulWidget {
@@ -24,13 +23,15 @@ class CarriersScreen extends StatefulWidget {
 
 class _CarriersScreenState extends State<CarriersScreen> {
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
   Timer? _debounce;
 
   bool _loading = true;
+  bool _loadingMore = false;
   String? _error;
   List<CarrierModel> _items = [];
   int _page = 1;
-  int _limit = 10;
+  final int _limit = 10;
   int _total = 0;
   int _totalPages = 1;
   String _search = '';
@@ -39,6 +40,7 @@ class _CarriersScreenState extends State<CarriersScreen> {
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
+    _scrollController.addListener(_onScroll);
     _load();
   }
 
@@ -46,7 +48,17 @@ class _CarriersScreenState extends State<CarriersScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (maxScroll - currentScroll <= 200) {
+      _loadMore();
+    }
   }
 
   void _onSearchChanged() {
@@ -54,10 +66,7 @@ class _CarriersScreenState extends State<CarriersScreen> {
     _debounce = Timer(const Duration(milliseconds: 350), () {
       final next = _searchController.text.trim();
       if (next == _search) return;
-      setState(() {
-        _search = next;
-        _page = 1;
-      });
+      setState(() => _search = next);
       _load();
     });
   }
@@ -66,10 +75,12 @@ class _CarriersScreenState extends State<CarriersScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _page = 1;
+      _items = [];
     });
 
     final result = await CarrierService.instance.fetchCarriers(
-      page: _page,
+      page: 1,
       limit: _limit,
       search: _search.isEmpty ? null : _search,
       sortBy: 'id',
@@ -93,6 +104,37 @@ class _CarriersScreenState extends State<CarriersScreen> {
     setState(() {
       _loading = false;
       _items = data.items;
+      _total = data.total;
+      _totalPages = data.totalPages;
+      _page = data.page;
+    });
+  }
+
+  Future<void> _loadMore() async {
+    if (_loading || _loadingMore || _page >= _totalPages) return;
+
+    setState(() => _loadingMore = true);
+
+    final nextPage = _page + 1;
+    final result = await CarrierService.instance.fetchCarriers(
+      page: nextPage,
+      limit: _limit,
+      search: _search.isEmpty ? null : _search,
+      sortBy: 'id',
+      sortOrder: 'desc',
+    );
+
+    if (!mounted) return;
+
+    if (!result.isSuccess) {
+      setState(() => _loadingMore = false);
+      return;
+    }
+
+    final data = result.data!;
+    setState(() {
+      _loadingMore = false;
+      _items.addAll(data.items);
       _total = data.total;
       _totalPages = data.totalPages;
       _page = data.page;
@@ -277,6 +319,7 @@ class _CarriersScreenState extends State<CarriersScreen> {
       body: WebPageBody(
         onRefresh: _load,
         child: ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
           children: [
             WebPageHeader(
@@ -292,10 +335,7 @@ class _CarriersScreenState extends State<CarriersScreen> {
               showClear: _search.isNotEmpty,
               onClear: () {
                 _searchController.clear();
-                setState(() {
-                  _search = '';
-                  _page = 1;
-                });
+                setState(() => _search = '');
                 _load();
               },
             ),
@@ -357,24 +397,25 @@ class _CarriersScreenState extends State<CarriersScreen> {
                   ];
                 },
               ),
-              const SizedBox(height: 12),
-              WebPaginationBar(
-                page: _page,
-                totalPages: _totalPages,
-                total: _total,
-                limit: _limit,
-                onPageChanged: (p) {
-                  setState(() => _page = p);
-                  _load();
-                },
-                onLimitChanged: (l) {
-                  setState(() {
-                    _limit = l;
-                    _page = 1;
-                  });
-                  _load();
-                },
-              ),
+              if (_loadingMore)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (_page >= _totalPages)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: Text(
+                      'All $_total carriers loaded',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ],
         ),

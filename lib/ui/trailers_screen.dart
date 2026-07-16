@@ -330,41 +330,132 @@ class _TrailersScreenState extends State<TrailersScreen> {
     return DateFormat('MM-dd-yyyy').format(parsed.toLocal());
   }
 
+  int? _daysUntilExpiry(String? iso) {
+    if (iso == null || iso.isEmpty) return null;
+    final parsed = DateTime.tryParse(iso);
+    if (parsed == null) return null;
+    final today = DateTime.now();
+    return DateTime(
+      parsed.year,
+      parsed.month,
+      parsed.day,
+    ).difference(DateTime(today.year, today.month, today.day)).inDays;
+  }
+
   Widget _buildCard(TrailerModel t) {
     final bool isActive = t.isActive;
+    final subtitleStr = [
+      t.make,
+      t.model,
+    ].where((s) => s != null && s.isNotEmpty).join(' ');
 
-    Widget dataCell(IconData icon, String label, String? value) {
+    Widget infoTile({
+      required IconData icon,
+      required String label,
+      required String value,
+      required Color bgStart,
+      required Color bgEnd,
+      required Color border,
+      required Color fg,
+    }) {
       return Expanded(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Icon(icon, size: 12, color: AppColors.primary),
-                const SizedBox(width: 4),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                    letterSpacing: 0.5,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [bgStart, bgEnd],
+            ),
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 11, color: fg),
+                  const SizedBox(width: 4),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: fg,
+                      letterSpacing: 0.4,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              (value == null || value.isEmpty) ? '—' : value,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                ],
               ),
-              overflow: TextOverflow.ellipsis,
+              const SizedBox(height: 5),
+              Text(
+                value.isEmpty ? 'N/A' : value,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: fg,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // EXPIRY urgency drives the tile color — a real signal, not decoration.
+    final expiryDays = _daysUntilExpiry(t.registrationExpiry);
+    final Color expiryBgStart, expiryBgEnd, expiryBorder, expiryFg;
+    if (expiryDays == null) {
+      expiryBgStart = AppColors.surfaceTertiary;
+      expiryBgEnd = AppColors.surfaceTertiary;
+      expiryBorder = AppColors.border;
+      expiryFg = AppColors.textSecondary;
+    } else if (expiryDays < 0) {
+      expiryBgStart = AppColors.statRoseBgStart;
+      expiryBgEnd = AppColors.statRoseBgEnd;
+      expiryBorder = AppColors.statRoseBorder;
+      expiryFg = AppColors.statRoseText;
+    } else if (expiryDays <= 30) {
+      expiryBgStart = AppColors.statOrangeBgStart;
+      expiryBgEnd = AppColors.statOrangeBgEnd;
+      expiryBorder = AppColors.statOrangeBorder;
+      expiryFg = AppColors.statOrangeText;
+    } else {
+      expiryBgStart = AppColors.statEmeraldBgStart;
+      expiryBgEnd = AppColors.statEmeraldBgEnd;
+      expiryBorder = AppColors.statEmeraldBorder;
+      expiryFg = AppColors.statEmeraldText;
+    }
+
+    Widget actionButton({
+      required IconData icon,
+      required String label,
+      required VoidCallback onPressed,
+      required Color fg,
+      required Color border,
+      Color? bg,
+    }) {
+      return Expanded(
+        child: OutlinedButton.icon(
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: fg,
+            backgroundColor: bg,
+            side: BorderSide(color: border),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(9),
             ),
-          ],
+            minimumSize: const Size(0, 38),
+            padding: EdgeInsets.zero,
+          ),
+          icon: Icon(icon, size: 14),
+          label: Text(
+            label,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
         ),
       );
     }
@@ -372,160 +463,174 @@ class _TrailersScreenState extends State<TrailersScreen> {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
             color: AppColors.cardShadow,
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _openDetail(t),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 4,
+            child: ColoredBox(color: AppColors.primary),
+          ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _openDetail(t),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'TRAILER # ',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.primary,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    Expanded(
-                      child: Text(
-                        t.trailerNumber,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            Icons.rv_hookup_outlined,
+                            size: 20,
+                            color: AppColors.primary,
+                          ),
                         ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                t.trailerNumber,
+                                style: TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textPrimary,
+                                  letterSpacing: -0.2,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              if (subtitleStr.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  subtitleStr,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: AppColors.textSecondary,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        isActive
+                            ? StatusChip.active('Active')
+                            : StatusChip.inactive('Inactive'),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    isActive
-                        ? StatusChip.active('Active')
-                        : StatusChip.inactive('Inactive'),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        infoTile(
+                          icon: Icons.category_outlined,
+                          label: 'TYPE',
+                          value: t.type,
+                          bgStart: AppColors.statBlueBgStart,
+                          bgEnd: AppColors.statBlueBgEnd,
+                          border: AppColors.statBlueBorder,
+                          fg: AppColors.statBlueText,
+                        ),
+                        const SizedBox(width: 10),
+                        infoTile(
+                          icon: Icons.pin_outlined,
+                          label: 'PLATE',
+                          value: t.licensePlate ?? '',
+                          bgStart: AppColors.statOrangeBgStart,
+                          bgEnd: AppColors.statOrangeBgEnd,
+                          border: AppColors.statOrangeBorder,
+                          fg: AppColors.statOrangeText,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        infoTile(
+                          icon: Icons.fingerprint,
+                          label: 'VIN',
+                          value: t.vinNumber ?? '',
+                          bgStart: AppColors.surfaceTertiary,
+                          bgEnd: AppColors.surfaceTertiary,
+                          border: AppColors.border,
+                          fg: AppColors.textPrimary,
+                        ),
+                        const SizedBox(width: 10),
+                        infoTile(
+                          icon: expiryDays != null && expiryDays < 0
+                              ? Icons.event_busy_outlined
+                              : Icons.event_available_outlined,
+                          label: 'EXPIRY',
+                          value: _formatDate(t.registrationExpiry) ?? '',
+                          bgStart: expiryBgStart,
+                          bgEnd: expiryBgEnd,
+                          border: expiryBorder,
+                          fg: expiryFg,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        actionButton(
+                          icon: Icons.visibility_outlined,
+                          label: 'View',
+                          onPressed: () => _openDetail(t),
+                          fg: AppColors.textPrimary,
+                          border: AppColors.border,
+                        ),
+                        const SizedBox(width: 8),
+                        actionButton(
+                          icon: Icons.edit_outlined,
+                          label: 'Edit',
+                          onPressed: () => _openEdit(t),
+                          fg: AppColors.primary,
+                          border: AppColors.primary.withValues(alpha: 0.35),
+                          bg: AppColors.primary.withValues(alpha: 0.06),
+                        ),
+                        const SizedBox(width: 8),
+                        actionButton(
+                          icon: Icons.delete_outline_rounded,
+                          label: 'Delete',
+                          onPressed: () => _confirmDelete(t),
+                          fg: AppColors.danger,
+                          border: AppColors.danger.withValues(alpha: 0.35),
+                          bg: AppColors.danger.withValues(alpha: 0.06),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Container(height: 1, color: AppColors.borderLight),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    dataCell(Icons.category, 'TYPE', t.type),
-                    const SizedBox(width: 16),
-                    dataCell(Icons.credit_card, 'PLATE', t.licensePlate),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    dataCell(Icons.fingerprint, 'VIN', t.vinNumber),
-                    const SizedBox(width: 16),
-                    dataCell(
-                      Icons.event_busy,
-                      'EXPIRY',
-                      _formatDate(t.registrationExpiry),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _openDetail(t),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          side: BorderSide(
-                            color: AppColors.textSecondary.withValues(alpha: 0.3),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(0, 36),
-                          padding: EdgeInsets.zero,
-                        ),
-                        child: const Text(
-                          'View',
-                          style: TextStyle(
-                            letterSpacing: 0.8,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _openEdit(t),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          side: BorderSide(
-                            color: AppColors.textSecondary.withValues(alpha: 0.3),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(0, 36),
-                          padding: EdgeInsets.zero,
-                        ),
-                        child: const Text(
-                          'Edit',
-                          style: TextStyle(
-                            letterSpacing: 0.8,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _confirmDelete(t),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.danger,
-                          backgroundColor: Colors.transparent,
-                          overlayColor: Colors.transparent,
-                          side: BorderSide(color: AppColors.danger.withValues(alpha: 0.4)),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(0, 36),
-                          padding: EdgeInsets.zero,
-                        ),
-                        child: const Text(
-                          'Delete',
-                          style: TextStyle(
-                            letterSpacing: 0.8,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -553,24 +658,48 @@ class _TrailersScreenState extends State<TrailersScreen> {
                 _load();
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             Row(
               children: [
-                Text(
-                  'Total Trailers',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 7,
                   ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '$_total',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.rv_hookup_outlined,
+                        size: 14,
+                        color: AppColors.primary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$_total',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _total == 1 ? 'Trailer' : 'Trailers',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const Spacer(),
@@ -625,7 +754,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
                       itemCount: _items.length,
                       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                         maxCrossAxisExtent: 500,
-                        mainAxisExtent: 320,
+                        mainAxisExtent: 352,
                         crossAxisSpacing: 16,
                         mainAxisSpacing: 16,
                       ),

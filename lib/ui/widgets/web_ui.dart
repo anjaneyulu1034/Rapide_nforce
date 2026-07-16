@@ -447,6 +447,7 @@ class WebListPage extends StatelessWidget {
     this.toolbar,
     required this.sliver,
     this.onRefresh,
+    this.controller,
   });
 
   final String title;
@@ -454,12 +455,14 @@ class WebListPage extends StatelessWidget {
   final Widget? toolbar;
   final Widget sliver;
   final Future<void> Function()? onRefresh;
+  final ScrollController? controller;
 
   @override
   Widget build(BuildContext context) {
     return WebPageBody(
       onRefresh: onRefresh,
       child: CustomScrollView(
+        controller: controller,
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverToBoxAdapter(

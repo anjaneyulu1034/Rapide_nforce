@@ -15,6 +15,8 @@ import 'package:rapide_nforce/services/power_unit_service.dart';
 import 'package:rapide_nforce/ui/power_unit/power_unit_summary_cards.dart';
 import 'package:rapide_nforce/ui/power_unit/power_unit_upload_document_sheet.dart';
 import 'package:rapide_nforce/ui/power_unit_form_screen.dart';
+import 'package:rapide_nforce/ui/widgets/document_card.dart';
+import 'package:rapide_nforce/ui/widgets/qr_code_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
 import 'package:rapide_nforce/ui/widgets/status_chip.dart';
 import 'package:rapide_nforce/ui/widgets/vehicle_info_section.dart';
@@ -762,6 +764,16 @@ class _ComplianceTab extends StatefulWidget {
 class _ComplianceTabState extends State<_ComplianceTab> {
   bool _generatingQr = false;
 
+  void _showDocDetails(TruckDocumentModel doc) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) =>
+          DocumentDetailsSheet(doc: doc, unitNumber: widget.unit.unitNumber),
+    );
+  }
+
   static const List<String> _requiredDocTypes = [
     'Vehicle Registration',
     'Annual Safety / CVIP',
@@ -885,7 +897,7 @@ class _ComplianceTabState extends State<_ComplianceTab> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => _QrCodeSheet(
+      builder: (_) => QrCodeSheet(
         imageBytes: bytes,
         unitNumber: widget.unit.unitNumber,
         onDownloadPacket: () =>
@@ -1098,7 +1110,20 @@ class _ComplianceTabState extends State<_ComplianceTab> {
                   )
                 : Column(
                     children: categoryDocs
-                        .map((d) => _BinderDocCard(doc: d, isPermit: isPermits))
+                        .map(
+                          (d) => _BinderDocCard(
+                            doc: d,
+                            isPermit: isPermits,
+                            onView: () => _showDocDetails(d),
+                            onDownload: () => DocumentDownloadService.instance
+                                .downloadAndOpen(
+                                  context: context,
+                                  truckId: d.truckId,
+                                  documentId: d.id,
+                                  displayFileName: d.fileName,
+                                ),
+                          ),
+                        )
                         .toList(),
                   ),
           ),
@@ -1407,10 +1432,17 @@ class _CategoryBadge extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _BinderDocCard extends StatelessWidget {
-  const _BinderDocCard({required this.doc, required this.isPermit});
+  const _BinderDocCard({
+    required this.doc,
+    required this.isPermit,
+    required this.onView,
+    required this.onDownload,
+  });
 
   final TruckDocumentModel doc;
   final bool isPermit;
+  final VoidCallback onView;
+  final VoidCallback onDownload;
 
   static String _status(TruckDocumentModel d) {
     final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
@@ -1522,107 +1554,23 @@ class _BinderDocCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              DocActionBtn(
+                icon: Icons.visibility_outlined,
+                tooltip: 'View',
+                onTap: onView,
+              ),
+              DocActionBtn(
+                icon: Icons.download_outlined,
+                tooltip: 'Download',
+                onTap: onDownload,
+              ),
+            ],
+          ),
         ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// QR code display sheet
-// ---------------------------------------------------------------------------
-
-class _QrCodeSheet extends StatelessWidget {
-  const _QrCodeSheet({
-    required this.imageBytes,
-    required this.unitNumber,
-    required this.onDownloadPacket,
-  });
-
-  final Uint8List? imageBytes;
-  final String unitNumber;
-  final VoidCallback onDownloadPacket;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Compliance QR Code',
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              unitNumber,
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            if (imageBytes != null)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Image.memory(imageBytes!, width: 220, height: 220),
-              )
-            else
-              Text(
-                'Could not render QR code',
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
-            const SizedBox(height: 8),
-            Text(
-              "Scan to instantly access this vehicle's compliance documents.",
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: onDownloadPacket,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF4B633D),
-                  minimumSize: const Size(double.infinity, 46),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                icon: const Icon(Icons.download_outlined, size: 18),
-                label: const Text('Download PDF Packet'),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () => Navigator.pop(context),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 46),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                child: const Text('Close'),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1728,7 +1676,7 @@ class _DocumentsTabState extends State<_DocumentsTab> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) =>
-          _DocumentDetailsSheet(doc: doc, unitNumber: widget.unit.unitNumber),
+          DocumentDetailsSheet(doc: doc, unitNumber: widget.unit.unitNumber),
     );
   }
 
@@ -1748,7 +1696,7 @@ class _DocumentsTabState extends State<_DocumentsTab> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) =>
-          _VersionHistorySheet(doc: doc, unitNumber: widget.unit.unitNumber),
+          VersionHistorySheet(doc: doc, unitNumber: widget.unit.unitNumber),
     );
   }
 
@@ -1819,7 +1767,7 @@ class _DocumentsTabState extends State<_DocumentsTab> {
         // Status filter boxes
         Row(
           children: [
-            _StatusChipBox(
+            StatusChipBox(
               label: 'ACTIVE',
               count: active,
               textColor: const Color(0xFF1B7A3E),
@@ -1831,7 +1779,7 @@ class _DocumentsTabState extends State<_DocumentsTab> {
               ),
             ),
             const SizedBox(width: 8),
-            _StatusChipBox(
+            StatusChipBox(
               label: 'EXPIRING',
               count: expiring,
               textColor: const Color(0xFF8B5E00),
@@ -1844,7 +1792,7 @@ class _DocumentsTabState extends State<_DocumentsTab> {
               ),
             ),
             const SizedBox(width: 8),
-            _StatusChipBox(
+            StatusChipBox(
               label: 'EXPIRED',
               count: expired,
               textColor: const Color(0xFFBA1A1A),
@@ -1906,7 +1854,7 @@ class _DocumentsTabState extends State<_DocumentsTab> {
           )
         else
           ...filtered.map(
-            (d) => _DocCard(
+            (d) => DocCard(
               doc: d,
               canReplace: _canReplace,
               canDelete: _canDelete,
@@ -1921,15 +1869,6 @@ class _DocumentsTabState extends State<_DocumentsTab> {
                     documentId: d.id,
                     displayFileName: d.fileName,
                   ),
-            ),
-          ),
-        if (!widget.loading && filtered.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Text(
-              '1–${filtered.length} of ${widget.documents.length}',
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              textAlign: TextAlign.center,
             ),
           ),
       ],
@@ -1956,8 +1895,6 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
   final _scrollCtrl = ScrollController();
   String _search = '';
   WorkOrderStatus? _filterStatus;
-  int _page = 0;
-  static const _pageSize = 10;
 
   @override
   void initState() {
@@ -2011,25 +1948,13 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
     return list;
   }
 
-  List<WorkOrderModel> get _currentPage {
-    final list = _filtered;
-    final start = _page * _pageSize;
-    if (start >= list.length) return [];
-    return list.sublist(start, (start + _pageSize).clamp(0, list.length));
-  }
-
-  int get _totalPages =>
-      _filtered.isEmpty ? 1 : ((_filtered.length - 1) ~/ _pageSize) + 1;
-
   void _setFilter(WorkOrderStatus s) => setState(() {
-    _page = 0;
     _filterStatus = _filterStatus == s ? null : s;
   });
 
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
-    final page = _currentPage;
 
     return ListView(
       controller: _scrollCtrl,
@@ -2102,10 +2027,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
                 ),
                 child: TextField(
                   controller: _searchCtrl,
-                  onChanged: (v) => setState(() {
-                    _search = v;
-                    _page = 0;
-                  }),
+                  onChanged: (v) => setState(() => _search = v),
                   decoration: InputDecoration(
                     hintText: 'Search WO #, company',
                     hintStyle: TextStyle(
@@ -2133,7 +2055,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
         // Cards
         if (widget.loading)
           const Center(child: CircularProgressIndicator())
-        else if (page.isEmpty)
+        else if (filtered.isEmpty)
           Container(
             padding: const EdgeInsets.all(32),
             alignment: Alignment.center,
@@ -2148,28 +2070,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
             ),
           )
         else
-          ...page.map((wo) => _WoCard(wo: wo)),
-        // Pagination
-        if (!widget.loading && filtered.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                _PagBtn(
-                  icon: Icons.chevron_left,
-                  enabled: _page > 0,
-                  onTap: () => setState(() => _page--),
-                ),
-                const SizedBox(width: 8),
-                _PagBtn(
-                  icon: Icons.chevron_right,
-                  enabled: _page < _totalPages - 1,
-                  onTap: () => setState(() => _page++),
-                ),
-              ],
-            ),
-          ),
+          ...filtered.map((wo) => _WoCard(wo: wo)),
       ],
     );
   }
@@ -2278,1096 +2179,6 @@ class _PrimaryActionButton extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Status filter chip box (Active / Expiring / Expired)
-// ---------------------------------------------------------------------------
-
-class _StatusChipBox extends StatelessWidget {
-  const _StatusChipBox({
-    required this.label,
-    required this.count,
-    required this.textColor,
-    required this.bgColor,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final int count;
-  final Color textColor;
-  final Color bgColor;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: selected ? textColor : textColor.withValues(alpha: 0.35),
-              width: selected ? 1.8 : 1.0,
-            ),
-          ),
-          child: Column(
-            children: [
-              Text(
-                '$count',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 18,
-                  color: textColor,
-                ),
-              ),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w700,
-                  color: textColor,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Document card with action buttons
-// ---------------------------------------------------------------------------
-
-class _DocCard extends StatelessWidget {
-  const _DocCard({
-    required this.doc,
-    required this.canReplace,
-    required this.canDelete,
-    required this.onView,
-    required this.onDelete,
-    required this.onReplace,
-    required this.onVersionHistory,
-    required this.onDownload,
-  });
-
-  final TruckDocumentModel doc;
-  final bool canReplace;
-  final bool canDelete;
-  final VoidCallback onView;
-  final VoidCallback onDelete;
-  final VoidCallback onReplace;
-  final VoidCallback onVersionHistory;
-  final VoidCallback onDownload;
-
-  static String _status(TruckDocumentModel d) {
-    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
-    if (expiry != null) {
-      final daysLeft = expiry.difference(DateTime.now()).inDays;
-      if (daysLeft < 0) return 'expired';
-      if (daysLeft <= 30) return 'expiring';
-      return 'active';
-    }
-    final s = (d.statusLabel ?? '').toLowerCase();
-    if (s == 'expired') return 'expired';
-    if (s.contains('expir')) return 'expiring';
-    return 'active';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final status = _status(doc);
-    final textColor = status == 'expired'
-        ? const Color(0xFFBA1A1A)
-        : status == 'expiring'
-        ? const Color(0xFF8B5E00)
-        : const Color(0xFF1B7A3E);
-    final bgColor = status == 'expired'
-        ? const Color(0xFFFCE8E8)
-        : status == 'expiring'
-        ? const Color(0xFFFFF3E0)
-        : const Color(0xFFE6F4EC);
-    final expiryHighlight = status == 'expired' || status == 'expiring';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Thumbnail placeholder
-                Container(
-                  width: 44,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: AppColors.border.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.description_outlined,
-                    size: 24,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              doc.documentType ?? doc.fileName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: bgColor,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              status == 'expired'
-                                  ? 'Expired'
-                                  : status == 'expiring'
-                                  ? 'Expiring'
-                                  : 'Active',
-                              style: TextStyle(
-                                color: textColor,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '#${doc.documentNumber ?? 'N/A'}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Text(
-                            'ISSUED',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            doc.issueDate ?? 'N/A',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Text(
-                            'EXPIRES',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            doc.expiryDate ?? 'N/A',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: expiryHighlight
-                                  ? const Color(0xFFBA1A1A)
-                                  : AppColors.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: AppColors.border),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _ActionBtn(
-                  icon: Icons.visibility_outlined,
-                  tooltip: 'View',
-                  onTap: onView,
-                ),
-                _ActionBtn(
-                  icon: Icons.download_outlined,
-                  tooltip: 'Download',
-                  onTap: onDownload,
-                ),
-                if (canReplace)
-                  _ActionBtn(
-                    icon: Icons.upload_file_outlined,
-                    tooltip: 'Replace',
-                    onTap: onReplace,
-                  ),
-                _ActionBtn(
-                  icon: Icons.history_outlined,
-                  tooltip: 'Version history',
-                  onTap: onVersionHistory,
-                ),
-                if (canDelete)
-                  _ActionBtn(
-                    icon: Icons.delete_outline,
-                    tooltip: 'Delete',
-                    color: const Color(0xFFBA1A1A),
-                    onTap: onDelete,
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ActionBtn extends StatelessWidget {
-  const _ActionBtn({
-    required this.icon,
-    required this.onTap,
-    this.tooltip,
-    this.color,
-  });
-
-  final IconData icon;
-  final VoidCallback onTap;
-  final String? tooltip;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(icon, size: 20, color: color ?? AppColors.textSecondary),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Document Details bottom sheet
-// ---------------------------------------------------------------------------
-
-class _DocumentDetailsSheet extends StatelessWidget {
-  const _DocumentDetailsSheet({required this.doc, required this.unitNumber});
-
-  final TruckDocumentModel doc;
-  final String unitNumber;
-
-  static String _status(TruckDocumentModel d) {
-    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
-    if (expiry != null) {
-      final daysLeft = expiry.difference(DateTime.now()).inDays;
-      if (daysLeft < 0) return 'expired';
-      if (daysLeft <= 30) return 'expiring';
-      return 'active';
-    }
-    final s = (d.statusLabel ?? '').toLowerCase();
-    if (s == 'expired') return 'expired';
-    if (s.contains('expir')) return 'expiring';
-    return 'active';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final status = _status(doc);
-    final textColor = status == 'expired'
-        ? const Color(0xFFBA1A1A)
-        : status == 'expiring'
-        ? const Color(0xFF8B5E00)
-        : const Color(0xFF1B7A3E);
-    final bgColor = status == 'expired'
-        ? const Color(0xFFFCE8E8)
-        : status == 'expiring'
-        ? const Color(0xFFFFF3E0)
-        : const Color(0xFFE6F4EC);
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.85,
-      minChildSize: 0.5,
-      maxChildSize: 0.95,
-      builder: (_, scrollCtrl) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            // Drag handle
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(top: 10, bottom: 4),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Document details',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          'View complete information and download',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: AppColors.textSecondary),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            Divider(height: 1, color: AppColors.border),
-            // Scrollable content
-            Expanded(
-              child: ListView(
-                controller: scrollCtrl,
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _SheetSection(
-                    children: [
-                      _SheetRow(
-                        label: 'DOCUMENT TYPE',
-                        value: doc.documentType ?? doc.fileName,
-                        valueBold: true,
-                        valueFontSize: 15,
-                      ),
-                      const SizedBox(height: 10),
-                      _SheetLabel(label: 'STATUS'),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: bgColor,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 6,
-                                  height: 6,
-                                  margin: const EdgeInsets.only(right: 5),
-                                  decoration: BoxDecoration(
-                                    color: textColor,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                Text(
-                                  status == 'expired'
-                                      ? 'Expired'
-                                      : status == 'expiring'
-                                      ? 'Expiring'
-                                      : 'Active',
-                                  style: TextStyle(
-                                    color: textColor,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  _SheetSection(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _SheetRow(
-                              label: 'DOCUMENT NUMBER',
-                              value: doc.documentNumber ?? AppStrings.noData,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _SheetRow(
-                              label: 'UPLOADED BY',
-                              value: AppStrings.noData,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _SheetRow(
-                              label: 'ISSUE DATE',
-                              value: doc.issueDate ?? AppStrings.noData,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _SheetRow(
-                              label: 'EXPIRY DATE',
-                              value: doc.expiryDate ?? AppStrings.noData,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      _SheetRow(
-                        label: 'UPLOADED DATE',
-                        value: doc.updatedOn ?? AppStrings.noData,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  _SheetSection(
-                    children: [
-                      _SheetLabel(label: 'FILE'),
-                      const SizedBox(height: 8),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: AppColors.border.withValues(alpha: 0.25),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFBA1A1A),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: const Center(
-                                child: Text(
-                                  'PDF',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 10,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    doc.fileName,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 13,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  Text(
-                                    'Tap to preview',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (doc.notes != null && doc.notes!.isNotEmpty) ...[
-                    const SizedBox(height: 10),
-                    _SheetSection(
-                      children: [
-                        _SheetLabel(label: 'NOTES'),
-                        const SizedBox(height: 4),
-                        Text(
-                          doc.notes!,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 80),
-                ],
-              ),
-            ),
-            // Bottom actions
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                8,
-                16,
-                MediaQuery.of(context).padding.bottom + 16,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(0, 48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('Close'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () =>
-                          DocumentDownloadService.instance.downloadAndOpen(
-                            context: context,
-                            truckId: doc.truckId,
-                            documentId: doc.id,
-                            displayFileName: doc.fileName,
-                          ),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF1A1A1A),
-                        minimumSize: const Size(0, 48),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      icon: const Icon(Icons.download_outlined, size: 18),
-                      label: const Text('Download'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Version History bottom sheet
-// ---------------------------------------------------------------------------
-
-class _VersionHistorySheet extends StatelessWidget {
-  const _VersionHistorySheet({required this.doc, required this.unitNumber});
-
-  final TruckDocumentModel doc;
-  final String unitNumber;
-
-  static String _status(TruckDocumentModel d) {
-    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
-    if (expiry != null) {
-      final daysLeft = expiry.difference(DateTime.now()).inDays;
-      if (daysLeft < 0) return 'expired';
-      if (daysLeft <= 30) return 'expiring';
-      return 'active';
-    }
-    final s = (d.statusLabel ?? '').toLowerCase();
-    if (s == 'expired') return 'expired';
-    if (s.contains('expir')) return 'expiring';
-    return 'active';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final status = _status(doc);
-    final textColor = status == 'expired'
-        ? const Color(0xFFBA1A1A)
-        : status == 'expiring'
-        ? const Color(0xFF8B5E00)
-        : const Color(0xFF1B7A3E);
-    final bgColor = status == 'expired'
-        ? const Color(0xFFFCE8E8)
-        : status == 'expiring'
-        ? const Color(0xFFFFF3E0)
-        : const Color(0xFFE6F4EC);
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.72,
-      minChildSize: 0.4,
-      maxChildSize: 0.9,
-      builder: (_, scrollCtrl) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            Center(
-              child: Container(
-                margin: const EdgeInsets.only(top: 10, bottom: 4),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.border,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Version history',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 18,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          '$unitNumber · ${doc.documentType ?? doc.fileName}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: AppColors.textSecondary),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-            ),
-            Divider(height: 1, color: AppColors.border),
-            Expanded(
-              child: ListView(
-                controller: scrollCtrl,
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.all(14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Version badges row
-                              Row(
-                                children: [
-                                  _VTag(
-                                    label: 'Current',
-                                    color: const Color(0xFF1A56DB),
-                                    bg: const Color(0xFFE8F0FE),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Version 1',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  _VTag(
-                                    label: 'Latest',
-                                    color: AppColors.textSecondary,
-                                    bg: AppColors.border.withValues(alpha: 0.4),
-                                  ),
-                                  const Spacer(),
-                                  InkWell(
-                                    onTap: () {},
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(6),
-                                      child: Icon(
-                                        Icons.visibility_outlined,
-                                        size: 18,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  InkWell(
-                                    onTap: () => DocumentDownloadService
-                                        .instance
-                                        .downloadAndOpen(
-                                          context: context,
-                                          truckId: doc.truckId,
-                                          documentId: doc.id,
-                                          displayFileName: doc.fileName,
-                                        ),
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(6),
-                                      child: Icon(
-                                        Icons.download_outlined,
-                                        size: 18,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 14),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _SheetRow(
-                                      label: 'DOCUMENT NUMBER',
-                                      value: doc.documentNumber ?? AppStrings.noData,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        _SheetLabel(label: 'DOCUMENT STATUS'),
-                                        const SizedBox(height: 3),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 3,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: bgColor,
-                                            borderRadius: BorderRadius.circular(
-                                              20,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            status == 'expired'
-                                                ? 'Expired'
-                                                : status == 'expiring'
-                                                ? 'Expiring'
-                                                : 'Active',
-                                            style: TextStyle(
-                                              color: textColor,
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _SheetRow(
-                                      label: 'ISSUE DATE',
-                                      value: doc.issueDate ?? AppStrings.noData,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: _SheetRow(
-                                      label: 'EXPIRY DATE',
-                                      value: doc.expiryDate ?? AppStrings.noData,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.person_outline,
-                                    size: 14,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: _SheetRow(
-                                      label: 'UPLOADED BY',
-                                      value: AppStrings.noData,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Icon(
-                                    Icons.calendar_today_outlined,
-                                    size: 14,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: _SheetRow(
-                                      label: 'UPLOADED DATE',
-                                      value: doc.updatedOn ?? AppStrings.noData,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        Divider(height: 1, color: AppColors.border),
-                        Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            'No older versions',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textSecondary,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // Footer summary
-            Padding(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                8,
-                16,
-                MediaQuery.of(context).padding.bottom + 12,
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Total: 1',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  Text(
-                    'Current: 1',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  Text(
-                    'Updated: ${doc.updatedOn ?? 'N/A'}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Version tag badge
-// ---------------------------------------------------------------------------
-
-class _VTag extends StatelessWidget {
-  const _VTag({required this.label, required this.color, required this.bg});
-
-  final String label;
-  final Color color;
-  final Color bg;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Sheet section container
-// ---------------------------------------------------------------------------
-
-class _SheetSection extends StatelessWidget {
-  const _SheetSection({required this.children});
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: children,
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Sheet label + value row
-// ---------------------------------------------------------------------------
-
-class _SheetRow extends StatelessWidget {
-  const _SheetRow({
-    required this.label,
-    required this.value,
-    this.valueBold = false,
-    this.valueFontSize = 14,
-  });
-
-  final String label;
-  final String value;
-  final bool valueBold;
-  final double valueFontSize;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _SheetLabel(label: label),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: valueFontSize,
-            fontWeight: valueBold ? FontWeight.w700 : FontWeight.w500,
-            color: AppColors.textPrimary,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SheetLabel extends StatelessWidget {
-  const _SheetLabel({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      label,
-      style: TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w600,
-        color: AppColors.textSecondary,
-        letterSpacing: 0.5,
       ),
     );
   }
@@ -3693,41 +2504,3 @@ class _IconSquareBtn extends StatelessWidget {
   }
 }
 
-class _PagBtn extends StatelessWidget {
-  const _PagBtn({
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.card,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: enabled ? onTap : null,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: enabled
-                ? AppColors.textPrimary
-                : AppColors.textSecondary.withValues(alpha: 0.4),
-          ),
-        ),
-      ),
-    );
-  }
-}
