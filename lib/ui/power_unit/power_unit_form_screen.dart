@@ -31,6 +31,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   int _step = 1;
   bool _loading = true;
   bool _saving = false;
+  bool _checkingVin = false;
   String? _browseFileName;
   String? _browseFilePath;
 
@@ -114,6 +115,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   void initState() {
     super.initState();
     _startDate.text = DateTime.now().toIso8601String().split('T').first;
+    _inspectionDate.addListener(_recalculateCvipExpiry);
     _bootstrap();
   }
 
@@ -157,6 +159,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         await _loadCities(_stateId!);
       }
     }
+    _recalculateCvipExpiry();
   }
 
   PowerUnitModel? _unitForStateMatch;
@@ -239,6 +242,38 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     final r = await FleetLookupService.instance.fetchCities(stateId: stateId);
     if (!mounted) return;
     setState(() => _cities = r.data ?? []);
+  }
+
+  /// Mirrors the web app's `calculateCVIPExpiry`: BC/SK get 6 months
+  /// validity, every other province gets 12 — using plain `DateTime` month
+  /// arithmetic so day/month overflow rolls over the same way JS's
+  /// `Date.setMonth` does (e.g. Aug 31 + 6mo -> Mar 3, not Feb 28).
+  DateTime _calculateCvipExpiry(DateTime inspectionDate, String province) {
+    final p = province.trim().toLowerCase();
+    final shortValidity =
+        p == 'british columbia' || p == 'bc' || p == 'saskatchewan' || p == 'sk';
+    return DateTime(
+      inspectionDate.year,
+      inspectionDate.month + (shortValidity ? 6 : 12),
+      inspectionDate.day,
+    );
+  }
+
+  /// Recomputes the Annual Safety / CVIP "Expiry Date" from Inspection Date
+  /// + the Registration & Plates province — always overwrites, matching the
+  /// web app's reactive recalculation (the field is not user-editable).
+  void _recalculateCvipExpiry() {
+    final province =
+        _states.where((s) => s.id == _stateId).map((s) => s.name).firstOrNull;
+    if (province == null || province.isEmpty) return;
+    final inspectionDate = DateTime.tryParse(_inspectionDate.text.trim());
+    if (inspectionDate == null) return;
+    final expiry = _calculateCvipExpiry(inspectionDate, province);
+    final formatted =
+        '${expiry.year.toString().padLeft(4, '0')}-${expiry.month.toString().padLeft(2, '0')}-${expiry.day.toString().padLeft(2, '0')}';
+    if (_expiryDate.text != formatted) {
+      setState(() => _expiryDate.text = formatted);
+    }
   }
 
   @override
@@ -678,49 +713,71 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     });
   }
 
-  void _next() {
+  Future<void> _next() async {
     if (!_validateStep(_step)) return;
+    if (_step == 1 && !widget.isEdit) {
+      final vin = _vin.text.trim();
+      if (vin.isNotEmpty) {
+        setState(() => _checkingVin = true);
+        final check = await PowerUnitService.instance.checkVinExists(vin: vin);
+        if (!mounted) return;
+        setState(() => _checkingVin = false);
+        if (check.isSuccess && check.data == true) {
+          AppToast.showError(
+            'This VIN number already exists. Please use a different VIN.',
+          );
+          return;
+        }
+      }
+    }
     setState(() => _step++);
   }
 
   @override
   Widget build(BuildContext context) {
-    return GradientPageBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: Text(
-            widget.isEdit ? 'Edit Power Unit' : 'Add Power Unit',
-            style: const TextStyle(fontWeight: FontWeight.w700),
+    return PopScope(
+      canPop: _step == 1,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        setState(() => _step--);
+      },
+      child: GradientPageBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            title: Text(
+              widget.isEdit ? 'Edit Power Unit' : 'Add Power Unit',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
-        ),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  _StepIndicator(step: _step),
-                  Expanded(
-                    child: Form(
-                      key: _formKey,
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                        children: [
-                          if (_step == 1) ..._buildStep1(),
-                          if (_step == 2) ..._buildStep2(),
-                          if (_step == 3) ..._buildStep3(),
-                        ],
+          body: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  children: [
+                    _StepIndicator(step: _step),
+                    Expanded(
+                      child: Form(
+                        key: _formKey,
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          children: [
+                            if (_step == 1) ..._buildStep1(),
+                            if (_step == 2) ..._buildStep2(),
+                            if (_step == 3) ..._buildStep3(),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  _BottomBar(
-                    step: _step,
-                    saving: _saving,
-                    onCancel: () => Navigator.pop(context),
-                    onContinue: _step < 3 ? _next : null,
-                    onSave: _step == 3 ? _save : null,
-                  ),
-                ],
-              ),
+                    _BottomBar(
+                      step: _step,
+                      saving: _saving || _checkingVin,
+                      onCancel: () => Navigator.pop(context),
+                      onContinue: _step < 3 ? _next : null,
+                      onSave: _step == 3 ? _save : null,
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -773,6 +830,14 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _purchaseDate,
           label: 'Purchase Date',
           required: true,
+          lastDate: DateTime.now(),
+          validator: (v) {
+            final parsed = DateTime.tryParse(v ?? '');
+            if (parsed != null && parsed.isAfter(DateTime.now())) {
+              return 'Purchase Date cannot be in the future';
+            }
+            return null;
+          },
         ),
         WebTextFormField(
           controller: _purchasePrice,
@@ -834,6 +899,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
               _cities = [];
             });
             if (v != null) await _loadCities(v);
+            _recalculateCvipExpiry();
           },
         ),
         WebDropdownField<int>(
@@ -1019,10 +1085,12 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           label: 'Inspection Date',
           required: true,
         ),
-        WebDateField(
+        WebTextFormField(
           controller: _expiryDate,
-          label: 'Expiry Date',
-          required: true,
+          label: 'Expiry Date *',
+          readOnly: true,
+          hint: 'Auto-calculated from Inspection Date + Province',
+          validator: (v) => _req(v, 'Expiry Date'),
         ),
         WebDateField(
           controller: _nextInspectionDue,
@@ -1140,13 +1208,12 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 0, 16),
       decoration: BoxDecoration(
         color: AppColors.card,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
         children: [
           TextButton(
             onPressed: saving ? null : onCancel,
@@ -1155,7 +1222,7 @@ class _BottomBar extends StatelessWidget {
             ),
             child: const Text('Cancel'),
           ),
-          const SizedBox(width: 8),
+          const Spacer(),
           Flexible(
             child: onContinue != null
                 ? WebPrimaryButton(

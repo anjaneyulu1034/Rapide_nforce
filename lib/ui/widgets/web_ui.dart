@@ -390,7 +390,7 @@ class WebPrimaryButton extends StatelessWidget {
                   ],
           ),
           padding: EdgeInsets.symmetric(
-            horizontal: dense ? 10 : 20,
+            horizontal: dense ? 6 : 20,
             vertical: dense ? 9 : (expand ? 14 : 12),
           ),
           child: DefaultTextStyle(

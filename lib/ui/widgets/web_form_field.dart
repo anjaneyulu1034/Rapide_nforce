@@ -68,7 +68,10 @@ Widget buildFieldLabel(String label, double fontSize) {
         TextSpan(text: base),
         const TextSpan(
           text: ' *',
-          style: TextStyle(color: AppColors.danger, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: AppColors.danger,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     ),
@@ -106,9 +109,10 @@ class _WebFormSectionState extends State<WebFormSection>
       duration: const Duration(milliseconds: 250),
       value: _expanded ? 1.0 : 0.0,
     );
-    _rotation = Tween<double>(begin: 0.0, end: 0.5).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+    _rotation = Tween<double>(
+      begin: 0.0,
+      end: 0.5,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
   }
 
   @override
@@ -275,7 +279,7 @@ class WebTextFormField extends StatelessWidget {
         onChanged: onChanged,
         autovalidateMode: autovalidateMode,
         style: TextStyle(
-          color: AppColors.textPrimary,
+          color: Colors.black,
           fontSize: fontSize,
           fontWeight: FontWeight.w600,
         ),
@@ -284,22 +288,22 @@ class WebTextFormField extends StatelessWidget {
           hintText: hint,
           suffixIcon: suffix,
           hintStyle: TextStyle(
-            color: AppColors.textSecondary,
+            color: Colors.black,
             fontSize: fontSize - 1,
           ),
           filled: true,
           fillColor: isLight ? Colors.white : AppColors.inputFill,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.borderLight),
+            borderSide: const BorderSide(color: Colors.black),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.borderLight),
+            borderSide: const BorderSide(color: Colors.black),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+            borderSide: const BorderSide(color: Colors.black, width: 1.5),
           ),
         ),
         validator: validator,
@@ -338,8 +342,8 @@ class WebDropdownField<T> extends StatelessWidget {
         initialValue: value,
         isExpanded: true,
         dropdownColor: AppColors.card,
-        style: TextStyle(
-          color: AppColors.textPrimary,
+        style: const TextStyle(
+          color: Colors.black,
           fontWeight: FontWeight.w600,
         ),
         decoration: InputDecoration(
@@ -348,26 +352,23 @@ class WebDropdownField<T> extends StatelessWidget {
           fillColor: isLight ? Colors.white : AppColors.inputFill,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.borderLight),
+            borderSide: const BorderSide(color: Colors.black),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.borderLight),
+            borderSide: const BorderSide(color: Colors.black),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: AppColors.primary, width: 1.5),
+            borderSide: const BorderSide(color: Colors.black, width: 1.5),
           ),
         ),
-        hint: Text(hint, style: TextStyle(color: AppColors.textSecondary)),
+        hint: Text(hint, style: const TextStyle(color: Colors.black)),
         items: items
             .map(
               (item) => DropdownMenuItem(
                 value: item,
-                child: Text(
-                  itemLabel(item),
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: Text(itemLabel(item), overflow: TextOverflow.ellipsis),
               ),
             )
             .toList(),
@@ -435,11 +436,11 @@ class WebSearchableDropdownField<T> extends StatelessWidget {
             fillColor: isLight ? Colors.white : AppColors.inputFill,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.borderLight),
+              borderSide: const BorderSide(color: Colors.black),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: AppColors.borderLight),
+              borderSide: const BorderSide(color: Colors.black),
             ),
             suffixIcon: Icon(
               Icons.keyboard_arrow_down_rounded,
@@ -449,10 +450,8 @@ class WebSearchableDropdownField<T> extends StatelessWidget {
           child: Text(
             selectedLabel ?? hint,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: selectedLabel != null
-                  ? AppColors.textPrimary
-                  : AppColors.textSecondary,
+            style: const TextStyle(
+              color: Colors.black,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -495,9 +494,13 @@ class _SearchableListSheetState<T> extends State<_SearchableListSheet<T>> {
     final filtered = _query.isEmpty
         ? widget.items
         : widget.items
-            .where((i) =>
-                widget.itemLabel(i).toLowerCase().contains(_query.toLowerCase()))
-            .toList();
+              .where(
+                (i) => widget
+                    .itemLabel(i)
+                    .toLowerCase()
+                    .contains(_query.toLowerCase()),
+              )
+              .toList();
 
     return SafeArea(
       child: Container(
@@ -578,21 +581,28 @@ class WebDateField extends StatelessWidget {
     required this.label,
     this.validator,
     this.required = false,
+    this.firstDate,
+    this.lastDate,
   });
 
   final TextEditingController controller;
   final String label;
   final String? Function(String?)? validator;
   final bool required;
+  /// Defaults to 1980 / now+20y. Pass [lastDate]: today for fields that
+  /// can't be a future date (e.g. Purchase Date).
+  final DateTime? firstDate;
+  final DateTime? lastDate;
 
   Future<void> _pick(BuildContext context) async {
     final now = DateTime.now();
     final initial = DateTime.tryParse(controller.text) ?? now;
+    final maxDate = lastDate ?? DateTime(now.year + 20);
     final picked = await showCompactDatePicker(
       context: context,
-      initialDate: initial,
-      firstDate: DateTime(1980),
-      lastDate: DateTime(now.year + 20),
+      initialDate: initial.isAfter(maxDate) ? maxDate : initial,
+      firstDate: firstDate ?? DateTime(1980),
+      lastDate: maxDate,
     );
     if (picked != null) {
       controller.text = DateFormat('yyyy-MM-dd').format(picked);
@@ -621,17 +631,19 @@ class WebFileUploadZone extends StatelessWidget {
     this.onCamera,
     this.onScan,
     this.filePath,
-    this.subtitle =
-        'Click to browse files. Supported: JPG, PNG, PDF (max 20MB)',
+    this.subtitle = 'Click to browse files.',
   });
 
   final String? fileName;
   final VoidCallback onBrowse;
+
   /// When set, shows a "Camera" action alongside Browse (and Scan below).
   final VoidCallback? onCamera;
+
   /// When set, shows a "Scan to File" action that runs real document
   /// scanning (edge detection + crop) instead of a raw photo.
   final VoidCallback? onScan;
+
   /// Local path of the selected file, if any — when it looks like an image,
   /// tapping the file name previews it full-screen.
   final String? filePath;

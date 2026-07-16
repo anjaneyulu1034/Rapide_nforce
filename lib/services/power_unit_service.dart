@@ -162,6 +162,26 @@ class PowerUnitService {
     }
   }
 
+  Future<ApiResult<bool>> checkVinExists({required String vin}) async {
+    try {
+      final body = await _api.parseJson(
+        () => _api.get(
+          ApiConstants.vehiclesVinExists,
+          params: {'vin': vin},
+        ),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.asMap(ApiParse.unwrapData(body)) ?? {};
+      final exists = data['exists'] == true || body == true;
+      return ApiResult.ok(exists);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      // Fail open — matches web behavior of proceeding if the check errors.
+      return ApiResult.ok(false);
+    }
+  }
+
   Future<ApiResult<List<TruckDocumentModel>>> fetchDocuments(
     int truckId,
   ) async {

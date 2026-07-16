@@ -631,42 +631,49 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GradientPageBackground(
-      child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: Text(
-            widget.isEdit ? 'Edit Trailer' : 'Add Trailer',
-            style: const TextStyle(fontWeight: FontWeight.w700),
+    return PopScope(
+      canPop: _step == 1,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        setState(() => _step--);
+      },
+      child: GradientPageBackground(
+        child: Scaffold(
+          backgroundColor: Colors.transparent,
+          appBar: AppBar(
+            title: Text(
+              widget.isEdit ? 'Edit Trailer' : 'Add Trailer',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
-        ),
-        body: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  _StepIndicator(step: _step),
-                  Expanded(
-                    child: Form(
-                      key: _formKey,
-                      child: ListView(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                        children: [
-                          if (_step == 1) ..._buildStep1(),
-                          if (_step == 2) ..._buildStep2(),
-                          if (_step == 3) ..._buildStep3(),
-                        ],
+          body: _loading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  children: [
+                    _StepIndicator(step: _step),
+                    Expanded(
+                      child: Form(
+                        key: _formKey,
+                        child: ListView(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                          children: [
+                            if (_step == 1) ..._buildStep1(),
+                            if (_step == 2) ..._buildStep2(),
+                            if (_step == 3) ..._buildStep3(),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  _BottomBar(
-                    step: _step,
-                    saving: _saving || _checkingVin,
-                    onCancel: () => Navigator.pop(context),
-                    onContinue: _step < 3 ? _next : null,
-                    onSave: _step == 3 ? _save : null,
-                  ),
-                ],
-              ),
+                    _BottomBar(
+                      step: _step,
+                      saving: _saving || _checkingVin,
+                      onCancel: () => Navigator.pop(context),
+                      onContinue: _step < 3 ? _next : null,
+                      onSave: _step == 3 ? _save : null,
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -727,7 +734,19 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           keyboardType: TextInputType.number,
           validator: (v) => _req(v, 'Current Odometer'),
         ),
-        WebDateField(controller: _purchaseDate, label: 'Purchase Date', required: true),
+        WebDateField(
+          controller: _purchaseDate,
+          label: 'Purchase Date',
+          required: true,
+          lastDate: DateTime.now(),
+          validator: (v) {
+            final parsed = DateTime.tryParse(v ?? '');
+            if (parsed != null && parsed.isAfter(DateTime.now())) {
+              return 'Purchase Date cannot be in the future';
+            }
+            return null;
+          },
+        ),
         WebTextFormField(
           controller: _purchasePrice,
           label: 'Purchase Price *',
@@ -981,13 +1000,12 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 0, 16),
       decoration: BoxDecoration(
         color: AppColors.card,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
         children: [
           TextButton(
             onPressed: saving ? null : onCancel,
@@ -996,7 +1014,7 @@ class _BottomBar extends StatelessWidget {
             ),
             child: const Text('Cancel'),
           ),
-          const SizedBox(width: 8),
+          const Spacer(),
           Flexible(
             child: onContinue != null
                 ? WebPrimaryButton(

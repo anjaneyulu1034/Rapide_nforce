@@ -71,6 +71,11 @@ class _VehicleInfoSectionState extends State<VehicleInfoSection>
     for (var i = 0; i < rows.length; i += 2) {
       final left = rows[i];
       final right = i + 1 < rows.length ? rows[i + 1] : null;
+      final leftValue = left.value.isEmpty ? AppStrings.noData : left.value;
+      final leftIsEmpty = leftValue == AppStrings.noData;
+      final rightValue =
+          right != null && right.value.isEmpty ? AppStrings.noData : right?.value;
+      final rightIsEmpty = rightValue == AppStrings.noData;
       rowWidgets.add(
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
@@ -92,10 +97,13 @@ class _VehicleInfoSectionState extends State<VehicleInfoSection>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      left.value.isEmpty ? AppStrings.noData : left.value,
+                      leftValue,
                       style: TextStyle(
-                        color: left.valueColor ?? AppColors.textPrimary,
-                        fontWeight: FontWeight.bold,
+                        color: leftIsEmpty
+                            ? AppColors.textSecondary
+                            : left.valueColor ?? AppColors.textPrimary,
+                        fontWeight:
+                            leftIsEmpty ? FontWeight.normal : FontWeight.bold,
                         fontSize: 14,
                       ),
                     ),
@@ -119,12 +127,14 @@ class _VehicleInfoSectionState extends State<VehicleInfoSection>
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            right.value.isEmpty
-                                ? AppStrings.noData
-                                : right.value,
+                            rightValue!,
                             style: TextStyle(
-                              color: right.valueColor ?? AppColors.textPrimary,
-                              fontWeight: FontWeight.bold,
+                              color: rightIsEmpty
+                                  ? AppColors.textSecondary
+                                  : right.valueColor ?? AppColors.textPrimary,
+                              fontWeight: rightIsEmpty
+                                  ? FontWeight.normal
+                                  : FontWeight.bold,
                               fontSize: 14,
                             ),
                           ),

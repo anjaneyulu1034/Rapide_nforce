@@ -29,5 +29,5 @@ class AppStrings {
   static const String viewRequests = 'View requests';
   static const String viewHistory = 'View history';
   static const String version = 'Version 1.0.3';
-  static const String noData = 'No data available';
+  static const String noData = 'Not available';
 }
