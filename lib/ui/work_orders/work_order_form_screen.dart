@@ -48,6 +48,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   int? _entityTypeId;
   int? _selectedEntityId;
   int? _assigneeId;
+  String? _assigneeName;
   WorkOrderStatus _status = WorkOrderStatus.notStarted;
   WorkOrderPriority _priority = WorkOrderPriority.medium;
   bool _isPm = false;
@@ -121,6 +122,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     _hoursController.text = order.workOrderDetails?.hours ?? '';
     _totalLabourCostController.text = order.totalLabourCost?.toString() ?? '';
     _assigneeId = order.workOrderDetails?.assignee;
+    _assigneeName = order.workOrderDetails?.technicianName;
     _priority = order.priority ?? WorkOrderPriority.medium;
 
     _startDate = DateTime.tryParse(order.workOrderDetails?.startDate ?? '');
@@ -201,13 +203,6 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
 
       if (_entityTypeId == null && _entityTypes.isNotEmpty) {
         _entityTypeId = _entityTypes.first.id;
-      }
-
-      if (_assigneeId != null &&
-          !_technicians.any(
-            (t) => (t.userId != 0 ? t.userId : t.id) == _assigneeId,
-          )) {
-        _assigneeId = null;
       }
     });
 
@@ -791,14 +786,24 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                         _DropdownField<int>(
                           label: 'Assign To *',
                           value: _assigneeId,
-                          items: _technicians
-                              .map(
-                                (t) => DropdownMenuItem(
-                                  value: t.userId != 0 ? t.userId : t.id,
-                                  child: Text(t.name),
-                                ),
-                              )
-                              .toList(),
+                          items: [
+                            ..._technicians.map(
+                              (t) => DropdownMenuItem(
+                                value: t.userId != 0 ? t.userId : t.id,
+                                child: Text(t.name),
+                              ),
+                            ),
+                            if (_assigneeId != null &&
+                                !_technicians.any(
+                                  (t) =>
+                                      (t.userId != 0 ? t.userId : t.id) ==
+                                      _assigneeId,
+                                ))
+                              DropdownMenuItem(
+                                value: _assigneeId,
+                                child: Text(_assigneeName ?? 'Technician'),
+                              ),
+                          ],
                           onChanged: (v) =>
                               setState(() => _assigneeId = v),
                           validator: (v) => v == null ? 'Required' : null,
@@ -1341,11 +1346,15 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
             DropdownButtonFormField<int>(
               decoration: const InputDecoration(labelText: 'Part *'),
               initialValue: line.partId,
+              isExpanded: true,
               items: filteredParts
                   .map(
                     (p) => DropdownMenuItem(
                       value: p.id,
-                      child: Text('${p.code} (${p.quantity ?? 0})'),
+                      child: Text(
+                        '${p.code} (${p.quantity ?? 0})',
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   )
                   .toList(),

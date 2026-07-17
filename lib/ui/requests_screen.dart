@@ -6,6 +6,7 @@ import 'package:rapide_nforce/services/request_service.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_detail_screen.dart';
 import 'package:rapide_nforce/ui/widgets/fleet_list_card.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
+import 'package:rapide_nforce/ui/widgets/status_chip.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class RequestsScreen extends StatefulWidget {
@@ -19,6 +20,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
   bool _loading = true;
   String? _error;
   List<MaintenanceRequestModel> _items = [];
+  RequestApprovalStatus? _statusFilter;
 
   @override
   void initState() {
@@ -43,12 +45,43 @@ class _RequestsScreenState extends State<RequestsScreen> {
     });
   }
 
-  Color _color(RequestApprovalStatus status) {
+  int _countFor(RequestApprovalStatus? status) {
+    if (status == null) return _items.length;
+    return _items.where((r) => r.approvalStatusEnum == status).length;
+  }
+
+  StatusChipTone _toneFor(RequestApprovalStatus status) {
     switch (status) {
       case RequestApprovalStatus.pending:
-        return AppColors.warning;
+        return StatusChipTone.warning;
       case RequestApprovalStatus.approved:
-        return AppColors.primary;
+        return StatusChipTone.success;
+      case RequestApprovalStatus.rejected:
+        return StatusChipTone.danger;
+      case RequestApprovalStatus.unknown:
+        return StatusChipTone.neutral;
+    }
+  }
+
+  Color _avatarBg(RequestApprovalStatus status) {
+    switch (status) {
+      case RequestApprovalStatus.pending:
+        return const Color(0xFFEDE9FE);
+      case RequestApprovalStatus.approved:
+        return AppColors.statusCompleted.withValues(alpha: 0.15);
+      case RequestApprovalStatus.rejected:
+        return AppColors.danger.withValues(alpha: 0.15);
+      case RequestApprovalStatus.unknown:
+        return AppColors.surfaceTertiary;
+    }
+  }
+
+  Color _avatarFg(RequestApprovalStatus status) {
+    switch (status) {
+      case RequestApprovalStatus.pending:
+        return const Color(0xFF6D28D9);
+      case RequestApprovalStatus.approved:
+        return AppColors.statusCompleted;
       case RequestApprovalStatus.rejected:
         return AppColors.danger;
       case RequestApprovalStatus.unknown:
@@ -58,6 +91,10 @@ class _RequestsScreenState extends State<RequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final filtered = _statusFilter == null
+        ? _items
+        : _items.where((r) => r.approvalStatusEnum == _statusFilter).toList();
+
     return ScreenStateBuilder(
       loading: _loading,
       error: _error,
@@ -69,22 +106,84 @@ class _RequestsScreenState extends State<RequestsScreen> {
         title: 'Requests',
         subtitle: '${_items.length} maintenance requests',
         onRefresh: _load,
+        toolbar: SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              _RequestFilterChip(
+                label: 'All',
+                count: _countFor(null),
+                color: AppColors.primary,
+                selected: _statusFilter == null,
+                onTap: () => setState(() => _statusFilter = null),
+              ),
+              const SizedBox(width: 8),
+              _RequestFilterChip(
+                label: 'Pending',
+                count: _countFor(RequestApprovalStatus.pending),
+                color: AppColors.warning,
+                selected: _statusFilter == RequestApprovalStatus.pending,
+                onTap: () => setState(
+                  () => _statusFilter = RequestApprovalStatus.pending,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _RequestFilterChip(
+                label: 'Approved',
+                count: _countFor(RequestApprovalStatus.approved),
+                color: AppColors.statusCompleted,
+                selected: _statusFilter == RequestApprovalStatus.approved,
+                onTap: () => setState(
+                  () => _statusFilter = RequestApprovalStatus.approved,
+                ),
+              ),
+              const SizedBox(width: 8),
+              _RequestFilterChip(
+                label: 'Rejected',
+                count: _countFor(RequestApprovalStatus.rejected),
+                color: AppColors.danger,
+                selected: _statusFilter == RequestApprovalStatus.rejected,
+                onTap: () => setState(
+                  () => _statusFilter = RequestApprovalStatus.rejected,
+                ),
+              ),
+            ],
+          ),
+        ),
         sliver: SliverList(
           delegate: SliverChildBuilderDelegate(
             (context, i) {
-              final req = _items[i];
+              final req = filtered[i];
+              final status = req.approvalStatusEnum;
               return FleetListCard(
                 title: req.title,
                 subtitle: '${req.unitNumber} · ${req.requestedOn}',
-                trailing: Text(
-                  req.approvalStatusEnum.label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: _color(req.approvalStatusEnum),
-                    fontSize: 12,
+                leading: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: _avatarBg(status),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.handyman_outlined,
+                    size: 20,
+                    color: _avatarFg(status),
                   ),
                 ),
-                leading: const Icon(Icons.handyman_outlined),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    StatusChip(label: status.label, tone: _toneFor(status)),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 20,
+                      color: AppColors.textSecondary,
+                    ),
+                  ],
+                ),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -95,7 +194,50 @@ class _RequestsScreenState extends State<RequestsScreen> {
                 },
               );
             },
-            childCount: _items.length,
+            childCount: filtered.length,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RequestFilterChip extends StatelessWidget {
+  const _RequestFilterChip({
+    required this.label,
+    required this.count,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        decoration: BoxDecoration(
+          color: selected ? color : color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? color : color.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Text(
+          '$label $count',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selected ? AppColors.white : color,
           ),
         ),
       ),

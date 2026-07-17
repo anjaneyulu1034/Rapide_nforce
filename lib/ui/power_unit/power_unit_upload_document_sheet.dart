@@ -40,7 +40,8 @@ Future<bool?> showPowerUnitEditDocumentSheet({
     context,
     MaterialPageRoute(
       fullscreenDialog: true,
-      builder: (_) => _EditDocumentSheet(truckId: truckId, unit: unit, doc: doc),
+      builder: (_) =>
+          _EditDocumentSheet(truckId: truckId, unit: unit, doc: doc),
     ),
   );
 }
@@ -128,10 +129,11 @@ class _UploadDocumentSheetState extends State<_UploadDocumentSheet> {
       _docNameCtrl.clear();
       _customTypeCtrl.clear();
     });
-    final result = await FleetLookupService.instance.fetchComplianceDocumentTypes(
-      entityTypeId: 1,
-      documentCategory: category,
-    );
+    final result = await FleetLookupService.instance
+        .fetchComplianceDocumentTypes(
+          entityTypeId: 1,
+          documentCategory: category,
+        );
     if (!mounted) return;
     setState(() {
       _loadingTypes = false;
@@ -221,10 +223,10 @@ class _UploadDocumentSheetState extends State<_UploadDocumentSheet> {
       documentCategory: _category,
       location: _location,
       issueDate: _issueDate.text.trim(),
-      expiryDate:
-          _expiryDate.text.trim().isEmpty ? null : _expiryDate.text.trim(),
-      documentNumber:
-          _number.text.trim().isEmpty ? null : _number.text.trim(),
+      expiryDate: _expiryDate.text.trim().isEmpty
+          ? null
+          : _expiryDate.text.trim(),
+      documentNumber: _number.text.trim().isEmpty ? null : _number.text.trim(),
       notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
       companyId: AuthService.instance.selectedCompanyId,
     );
@@ -272,55 +274,55 @@ class _UploadDocumentSheetState extends State<_UploadDocumentSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Unit info card
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  gradient: AppGradients.card,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF374151),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.upload_file_rounded,
-                        size: 22,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Unit: ${widget.unit.unitNumber}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Supported: PDF, JPG, PNG, DOC (max 20 MB)',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              // Container(
+              //   margin: const EdgeInsets.only(bottom: 16),
+              //   padding: const EdgeInsets.all(14),
+              //   decoration: BoxDecoration(
+              //     gradient: AppGradients.card,
+              //     borderRadius: BorderRadius.circular(12),
+              //     border: Border.all(color: AppColors.border),
+              //   ),
+              //   child: Row(
+              //     children: [
+              //       // Container(
+              //       //   padding: const EdgeInsets.all(10),
+              //       //   decoration: BoxDecoration(
+              //       //     color: const Color(0xFF374151),
+              //       //     borderRadius: BorderRadius.circular(10),
+              //       //   ),
+              //       //   // child: const Icon(
+              //       //   //   Icons.upload_file_rounded,
+              //       //   //   size: 22,
+              //       //   //   color: Colors.white,
+              //       //   // ),
+              //       // ),
+              //       //const SizedBox(width: 12),
+              //       // Expanded(
+              //       //   child: Column(
+              //       //     crossAxisAlignment: CrossAxisAlignment.start,
+              //       //     children: [
+              //       //       // Text(
+              //       //       //   'Unit: ${widget.unit.unitNumber}',
+              //       //       //   style: TextStyle(
+              //       //       //     fontWeight: FontWeight.w700,
+              //       //       //     fontSize: 13,
+              //       //       //     color: AppColors.textPrimary,
+              //       //       //   ),
+              //       //       // ),
+              //       //       //const SizedBox(height: 2),
+              //       //       // Text(
+              //       //       //   'Supported: PDF, JPG, PNG, DOC (max 20 MB)',
+              //       //       //   style: TextStyle(
+              //       //       //     fontSize: 12,
+              //       //       //     color: AppColors.textSecondary,
+              //       //       //   ),
+              //       //       // ),
+              //       //     ],
+              //       //   ),
+              //       // ),
+              //     ],
+              //   ),
+              // ),
 
               // Section 1: Document Category & Type
               _SectionCard(
@@ -370,8 +372,9 @@ class _UploadDocumentSheetState extends State<_UploadDocumentSheet> {
                           if (_customTypeCtrl.text != upper) {
                             _customTypeCtrl.value = TextEditingValue(
                               text: upper,
-                              selection:
-                                  TextSelection.collapsed(offset: upper.length),
+                              selection: TextSelection.collapsed(
+                                offset: upper.length,
+                              ),
                             );
                           }
                           setState(() => _docNameCtrl.text = upper);
@@ -444,8 +447,9 @@ class _UploadDocumentSheetState extends State<_UploadDocumentSheet> {
                         ),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
-                      onPressed:
-                          _uploading ? null : () => Navigator.pop(context),
+                      onPressed: _uploading
+                          ? null
+                          : () => Navigator.pop(context),
                       child: const Text('Cancel'),
                     ),
                   ),
@@ -506,8 +510,9 @@ class _EditDocumentSheet extends StatefulWidget {
 class _EditDocumentSheetState extends State<_EditDocumentSheet> {
   late final _number = TextEditingController(text: widget.doc.documentNumber);
   late final _issueDate = TextEditingController(text: widget.doc.issueDateIso);
-  late final _expiryDate =
-      TextEditingController(text: widget.doc.expiryDateIso);
+  late final _expiryDate = TextEditingController(
+    text: widget.doc.expiryDateIso,
+  );
   late final _notes = TextEditingController(text: widget.doc.notes);
   final _customTypeCtrl = TextEditingController();
 
@@ -525,7 +530,8 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
   @override
   void initState() {
     super.initState();
-    if (_category != null) _loadDocTypesForCategory(_category!, keepSelection: true);
+    if (_category != null)
+      _loadDocTypesForCategory(_category!, keepSelection: true);
   }
 
   @override
@@ -550,10 +556,11 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
         _customTypeCtrl.clear();
       }
     });
-    final result = await FleetLookupService.instance.fetchComplianceDocumentTypes(
-      entityTypeId: 1,
-      documentCategory: category,
-    );
+    final result = await FleetLookupService.instance
+        .fetchComplianceDocumentTypes(
+          entityTypeId: 1,
+          documentCategory: category,
+        );
     if (!mounted) return;
     final docType = widget.doc.documentType;
     final types = List<String>.from(result.data ?? const ['Other']);
@@ -649,8 +656,9 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
       documentCategory: _category,
       location: _location,
       issueDate: _issueDate.text.trim(),
-      expiryDate:
-          _expiryDate.text.trim().isEmpty ? null : _expiryDate.text.trim(),
+      expiryDate: _expiryDate.text.trim().isEmpty
+          ? null
+          : _expiryDate.text.trim(),
       documentNumber: _number.text.trim(),
       notes: _notes.text.trim(),
       filePath: _newFilePath,
@@ -670,7 +678,9 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    final currentFileName = _fileRemoved ? null : (_newFileName ?? widget.doc.fileName);
+    final currentFileName = _fileRemoved
+        ? null
+        : (_newFileName ?? widget.doc.fileName);
 
     return GradientPageBackground(
       child: Scaffold(
@@ -687,7 +697,10 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
             children: [
               Text(
                 'Edit document for ${widget.doc.documentNumber ?? widget.doc.id}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               Text(
                 'Editing: ${widget.doc.fileName}',
@@ -895,10 +908,10 @@ class _SimpleUploadDocumentSheetState
     extends State<_SimpleUploadDocumentSheet> {
   final _customTypeCtrl = TextEditingController();
   late final _number = TextEditingController(text: widget.doc?.documentNumber);
-  late final _issueDate =
-      TextEditingController(text: widget.doc?.issueDateIso);
-  late final _expiryDate =
-      TextEditingController(text: widget.doc?.expiryDateIso);
+  late final _issueDate = TextEditingController(text: widget.doc?.issueDateIso);
+  late final _expiryDate = TextEditingController(
+    text: widget.doc?.expiryDateIso,
+  );
   late final _notes = TextEditingController(text: widget.doc?.notes);
 
   bool get _isEditing => widget.doc != null;
@@ -932,9 +945,8 @@ class _SimpleUploadDocumentSheetState
   /// — every active truck document type, with no category filter.
   Future<void> _loadDocTypes() async {
     setState(() => _loadingTypes = true);
-    final result = await FleetLookupService.instance.fetchComplianceDocumentTypes(
-      entityTypeId: 1,
-    );
+    final result = await FleetLookupService.instance
+        .fetchComplianceDocumentTypes(entityTypeId: 1);
     if (!mounted) return;
     final types = List<String>.from(result.data ?? const ['Other']);
     final existingType = widget.doc?.documentType;
@@ -1052,8 +1064,9 @@ class _SimpleUploadDocumentSheetState
             expiryDate: _expiryDate.text.trim().isEmpty
                 ? null
                 : _expiryDate.text.trim(),
-            documentNumber:
-                _number.text.trim().isEmpty ? null : _number.text.trim(),
+            documentNumber: _number.text.trim().isEmpty
+                ? null
+                : _number.text.trim(),
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
             companyId: AuthService.instance.selectedCompanyId,
           );
@@ -1061,7 +1074,9 @@ class _SimpleUploadDocumentSheetState
     if (!mounted) return;
     setState(() => _saving = false);
     if (result.isSuccess) {
-      AppToast.showSuccess(_isEditing ? 'Document updated' : 'Document uploaded');
+      AppToast.showSuccess(
+        _isEditing ? 'Document updated' : 'Document uploaded',
+      );
       Navigator.pop(context, true);
     } else {
       ApiFeedback.showError(
@@ -1074,8 +1089,9 @@ class _SimpleUploadDocumentSheetState
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    final currentFileName =
-        _fileRemoved ? null : (_newFileName ?? widget.doc?.fileName);
+    final currentFileName = _fileRemoved
+        ? null
+        : (_newFileName ?? widget.doc?.fileName);
 
     return GradientPageBackground(
       child: Scaffold(
@@ -1199,8 +1215,7 @@ class _SimpleUploadDocumentSheetState
                         ),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
-                      onPressed:
-                          _saving ? null : () => Navigator.pop(context),
+                      onPressed: _saving ? null : () => Navigator.pop(context),
                       child: const Text('Cancel'),
                     ),
                   ),
