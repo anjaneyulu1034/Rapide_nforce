@@ -66,9 +66,11 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
       menuName: 'Documents',
     );
     if (!mounted) return;
-    setState(() => _canUploadDocuments = result.isSuccess
-        ? (result.data?.canCreate ?? false)
-        : false);
+    setState(
+      () => _canUploadDocuments = result.isSuccess
+          ? (result.data?.canCreate ?? false)
+          : false,
+    );
   }
 
   Future<void> _load() async {
@@ -1212,8 +1214,9 @@ class _ComplianceTabState extends State<_ComplianceTab> {
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFF1D4ED8),
                 foregroundColor: Colors.white,
-                disabledBackgroundColor:
-                    const Color(0xFF1D4ED8).withValues(alpha: 0.5),
+                disabledBackgroundColor: const Color(
+                  0xFF1D4ED8,
+                ).withValues(alpha: 0.5),
                 minimumSize: const Size(double.infinity, 46),
                 elevation: 2,
                 shape: RoundedRectangleBorder(
@@ -2012,44 +2015,43 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
               selected: _filterStatus == WorkOrderStatus.completed,
               onTap: () => _setFilter(WorkOrderStatus.completed),
             ),
+            const SizedBox(width: 8),
+            _ComplianceStatBox(
+              label: 'ON HOLD',
+              count: _count(WorkOrderStatus.onHold),
+              textColor: WorkOrderStatus.onHold.textColor,
+              bgColor: WorkOrderStatus.onHold.backgroundColor,
+              selected: _filterStatus == WorkOrderStatus.onHold,
+              onTap: () => _setFilter(WorkOrderStatus.onHold),
+            ),
           ],
         ),
         const SizedBox(height: 12),
         // Search row
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: AppColors.card,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: TextField(
-                  controller: _searchCtrl,
-                  onChanged: (v) => setState(() => _search = v),
-                  decoration: InputDecoration(
-                    hintText: 'Search WO #, company',
-                    hintStyle: TextStyle(
-                      color: AppColors.textSecondary,
-                      fontSize: 13,
-                    ),
-                    prefixIcon: Icon(
-                      Icons.search,
-                      size: 18,
-                      color: AppColors.textSecondary,
-                    ),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                ),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: TextField(
+            controller: _searchCtrl,
+            onChanged: (v) => setState(() => _search = v),
+            decoration: InputDecoration(
+              hintText: 'Search WO #, company',
+              hintStyle: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
               ),
+              prefixIcon: Icon(
+                Icons.search,
+                size: 18,
+                color: AppColors.textSecondary,
+              ),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
             ),
-            const SizedBox(width: 8),
-            _IconSquareBtn(icon: Icons.tune_outlined, onTap: () {}),
-            const SizedBox(width: 8),
-            _IconSquareBtn(icon: Icons.swap_vert_outlined, onTap: () {}),
-          ],
+          ),
         ),
         const SizedBox(height: 12),
         // Cards
@@ -2305,12 +2307,12 @@ class _WoCard extends StatelessWidget {
                     value: _fmtDate(details?.startDate),
                   ),
                 ),
-                Expanded(
-                  child: _InfoCell(
-                    label: 'DUE DATE',
-                    value: _fmtDate(details?.dueDate),
-                  ),
-                ),
+                // Expanded(
+                //   child: _InfoCell(
+                //     label: 'DUE DATE',
+                //     value: _fmtDate(details?.dueDate),
+                //   ),
+                // ),
               ],
             ),
             const SizedBox(height: 10),
@@ -2413,6 +2415,8 @@ class _ComplianceStatBox extends StatelessWidget {
             children: [
               Text(
                 label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
@@ -2475,32 +2479,3 @@ class _InfoCell extends StatelessWidget {
     );
   }
 }
-
-class _IconSquareBtn extends StatelessWidget {
-  const _IconSquareBtn({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.card,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Icon(icon, size: 20, color: AppColors.textSecondary),
-        ),
-      ),
-    );
-  }
-}
-

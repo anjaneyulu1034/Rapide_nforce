@@ -574,7 +574,7 @@ class _DocumentDetailsSheet extends StatelessWidget {
                     child: FilledButton.icon(
                       onPressed: onDownload,
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF1A1A1A),
+                        backgroundColor: const Color(0xFF4B633D),
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 14),
                         shape: RoundedRectangleBorder(

@@ -93,6 +93,20 @@ class _SimpleUploadDocumentSheetState
   bool _fileRemoved = false;
   bool _saving = false;
 
+  DateTime? get _minExpiryDate {
+    final issue = DateTime.tryParse(_issueDate.text.trim());
+    return issue?.add(const Duration(days: 1));
+  }
+
+  void _onIssueDateChanged(String value) {
+    final issue = DateTime.tryParse(value);
+    final expiry = DateTime.tryParse(_expiryDate.text.trim());
+    if (issue != null && expiry != null && !expiry.isAfter(issue)) {
+      _expiryDate.clear();
+    }
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -192,6 +206,11 @@ class _SimpleUploadDocumentSheetState
     }
     if (_issueDate.text.trim().isEmpty) {
       AppToast.showError('Select issue date');
+      return;
+    }
+    if (_expiryDate.text.trim().isNotEmpty &&
+        _expiryDate.text.trim().compareTo(_issueDate.text.trim()) <= 0) {
+      AppToast.showError('Expiry date must be after issue date');
       return;
     }
     if (!_isEditing && _newFilePath == null) {
@@ -322,8 +341,13 @@ class _SimpleUploadDocumentSheetState
                     controller: _issueDate,
                     label: 'Issue Date',
                     required: true,
+                    onChanged: _onIssueDateChanged,
                   ),
-                  WebDateField(controller: _expiryDate, label: 'Expiry Date'),
+                  WebDateField(
+                    controller: _expiryDate,
+                    label: 'Expiry Date',
+                    firstDate: _minExpiryDate,
+                  ),
                 ],
               ),
               _SectionCard(
@@ -462,6 +486,20 @@ class _TrailerUploadDocumentSheetState
   String? _fileName;
   bool _uploading = false;
 
+  DateTime? get _minExpiryDate {
+    final issue = DateTime.tryParse(_issueDate.text.trim());
+    return issue?.add(const Duration(days: 1));
+  }
+
+  void _onIssueDateChanged(String value) {
+    final issue = DateTime.tryParse(value);
+    final expiry = DateTime.tryParse(_expiryDate.text.trim());
+    if (issue != null && expiry != null && !expiry.isAfter(issue)) {
+      _expiryDate.clear();
+    }
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -569,6 +607,11 @@ class _TrailerUploadDocumentSheetState
     }
     if (_issueDate.text.trim().isEmpty) {
       AppToast.showError('Select issue date');
+      return;
+    }
+    if (_expiryDate.text.trim().isNotEmpty &&
+        _expiryDate.text.trim().compareTo(_issueDate.text.trim()) <= 0) {
+      AppToast.showError('Expiry date must be after issue date');
       return;
     }
     if (_filePath == null) {
@@ -757,9 +800,12 @@ class _TrailerUploadDocumentSheetState
                   WebDateField(
                       controller: _issueDate,
                       label: 'Issue Date',
-                      required: true),
+                      required: true,
+                      onChanged: _onIssueDateChanged),
                   WebDateField(
-                      controller: _expiryDate, label: 'Expiry Date'),
+                      controller: _expiryDate,
+                      label: 'Expiry Date',
+                      firstDate: _minExpiryDate),
                 ],
               ),
               _SectionCard(

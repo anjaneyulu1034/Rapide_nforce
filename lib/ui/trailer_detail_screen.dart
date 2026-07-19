@@ -1018,6 +1018,7 @@ class _ComplianceTabState extends State<_ComplianceTab> {
                   label: 'Roadside Packet',
                   onPressed: _downloadPacket,
                   icon: Icons.download_outlined,
+                  color: const Color(0xFF4B633D),
                 ),
                 _BlackButton(
                   label: 'Upload',
@@ -1853,11 +1854,13 @@ class _BlackButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     required this.icon,
+    this.color = const Color(0xFF1A1A1A),
   });
 
   final String label;
   final VoidCallback onPressed;
   final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -1868,7 +1871,7 @@ class _BlackButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: Ink(
           decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
+            color: color,
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
               BoxShadow(

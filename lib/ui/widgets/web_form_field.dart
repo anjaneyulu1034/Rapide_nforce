@@ -583,6 +583,7 @@ class WebDateField extends StatelessWidget {
     this.required = false,
     this.firstDate,
     this.lastDate,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -593,19 +594,27 @@ class WebDateField extends StatelessWidget {
   /// can't be a future date (e.g. Purchase Date).
   final DateTime? firstDate;
   final DateTime? lastDate;
+  /// Called with the new `yyyy-MM-dd` text after a date is picked — use
+  /// this to react to the change (e.g. re-validate a dependent field).
+  final ValueChanged<String>? onChanged;
 
   Future<void> _pick(BuildContext context) async {
     final now = DateTime.now();
-    final initial = DateTime.tryParse(controller.text) ?? now;
+    final minDate = firstDate ?? DateTime(1980);
     final maxDate = lastDate ?? DateTime(now.year + 20);
+    var initial = DateTime.tryParse(controller.text) ?? now;
+    if (initial.isAfter(maxDate)) initial = maxDate;
+    if (initial.isBefore(minDate)) initial = minDate;
     final picked = await showCompactDatePicker(
       context: context,
-      initialDate: initial.isAfter(maxDate) ? maxDate : initial,
-      firstDate: firstDate ?? DateTime(1980),
+      initialDate: initial,
+      firstDate: minDate,
       lastDate: maxDate,
     );
     if (picked != null) {
-      controller.text = DateFormat('yyyy-MM-dd').format(picked);
+      final text = DateFormat('yyyy-MM-dd').format(picked);
+      controller.text = text;
+      onChanged?.call(text);
     }
   }
 

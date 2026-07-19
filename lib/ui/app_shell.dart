@@ -345,6 +345,7 @@ class _AppShellState extends State<AppShell> {
       drawer: AppDrawer(
         currentRoute: _currentRoute,
         onRouteSelected: _onRouteSelected,
+        onLogout: _onLogout,
         menuItems: _menuItems,
         menusLoading: _loadingMenus,
       ),

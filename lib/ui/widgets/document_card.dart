@@ -735,7 +735,7 @@ class DocumentDetailsSheet extends StatelessWidget {
                             entityBasePath: entityBasePath,
                           ),
                       style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF1A1A1A),
+                        backgroundColor: const Color(0xFF4B633D),
                         minimumSize: const Size(0, 48),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),

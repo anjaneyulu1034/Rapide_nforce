@@ -44,12 +44,16 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
   String _statusFilter = 'all'; // all | active | inactive
   DateTime? _startDateFrom;
   DateTime? _startDateTo;
+  String _sortOrder = 'newest'; // newest | oldest
 
   bool get _isSuperAdmin =>
       isSuperAdminRole(AuthService.instance.currentUser?.role);
 
   bool get _hasActiveFilters =>
-      _statusFilter != 'all' || _startDateFrom != null || _startDateTo != null;
+      _statusFilter != 'all' ||
+      _startDateFrom != null ||
+      _startDateTo != null ||
+      _sortOrder != 'newest';
 
   int get _effectiveLimit => _hasActiveFilters ? 500 : _limit;
 
@@ -128,6 +132,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     String tempStatus = _statusFilter;
     DateTime? tempFrom = _startDateFrom;
     DateTime? tempTo = _startDateTo;
+    String tempSort = _sortOrder;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -235,6 +240,25 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
               );
             }
 
+            Widget sortChip(String value, String label) {
+              final selected = tempSort == value;
+              return ChoiceChip(
+                label: Text(label),
+                selected: selected,
+                onSelected: (_) => setSheetState(() => tempSort = value),
+                selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                labelStyle: TextStyle(
+                  color: selected ? AppColors.primary : AppColors.textPrimary,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 13,
+                ),
+                side: BorderSide(
+                  color: selected ? AppColors.primary : AppColors.border,
+                ),
+                backgroundColor: AppColors.inputFill,
+              );
+            }
+
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.only(
@@ -293,6 +317,25 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                         dateField('To', tempTo, false),
                       ],
                     ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'SORT BY',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        sortChip('newest', 'Newest'),
+                        sortChip('oldest', 'Oldest'),
+                      ],
+                    ),
                     const SizedBox(height: 24),
                     Row(
                       children: [
@@ -303,14 +346,13 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                                 tempStatus = 'all';
                                 tempFrom = null;
                                 tempTo = null;
+                                tempSort = 'newest';
                               });
                             },
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppColors.textPrimary,
                               side: BorderSide(color: AppColors.border),
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 12,
-                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(10),
                               ),
@@ -320,18 +362,29 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: WebPrimaryButton(
-                            label: 'Apply Filters',
-                            expand: false,
+                          child: FilledButton(
                             onPressed: () {
                               setState(() {
                                 _statusFilter = tempStatus;
                                 _startDateFrom = tempFrom;
                                 _startDateTo = tempTo;
+                                _sortOrder = tempSort;
                               });
                               Navigator.pop(sheetContext);
                               _load();
                             },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF4B633D),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'Apply Filters',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
                           ),
                         ),
                       ],
@@ -359,7 +412,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
       limit: _effectiveLimit,
       search: _search.isEmpty ? null : _search,
       sortBy: 'id',
-      sortOrder: 'desc',
+      sortOrder: _sortOrder == 'oldest' ? 'asc' : 'desc',
     );
 
     if (!mounted) return;
@@ -386,10 +439,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
   }
 
   Future<void> _loadMore() async {
-    if (_loading ||
-        _loadingMore ||
-        _page >= _totalPages ||
-        _hasActiveFilters) {
+    if (_loading || _loadingMore || _page >= _totalPages || _hasActiveFilters) {
       return;
     }
 
@@ -403,7 +453,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
       limit: _effectiveLimit,
       search: _search.isEmpty ? null : _search,
       sortBy: 'id',
-      sortOrder: 'desc',
+      sortOrder: _sortOrder == 'oldest' ? 'asc' : 'desc',
     );
 
     if (!mounted) return;
@@ -542,7 +592,10 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                         ),
                         child: const Text(
                           'Cancel',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
@@ -558,10 +611,16 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 16,
+                        ),
                         label: const Text(
                           'Delete',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
@@ -933,7 +992,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                 Expanded(
                   child: WebSearchField(
                     controller: _searchController,
-                    hintText: 'Search by Unit',
+                    hintText: 'Search by Unit, VIN',
                     showClear: _search.isNotEmpty,
                     onClear: () {
                       _searchController.clear();
@@ -982,10 +1041,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                           decoration: BoxDecoration(
                             color: AppColors.primary,
                             shape: BoxShape.circle,
-                            border: Border.all(
-                              color: AppColors.card,
-                              width: 2,
-                            ),
+                            border: Border.all(color: AppColors.card, width: 2),
                           ),
                         ),
                       ),
@@ -1021,6 +1077,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                         _statusFilter = 'all';
                         _startDateFrom = null;
                         _startDateTo = null;
+                        _sortOrder = 'newest';
                       });
                       _load();
                     },
@@ -1031,7 +1088,10 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                     ),
                     child: const Text(
                       'Clear filters',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],

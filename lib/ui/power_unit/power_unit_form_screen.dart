@@ -1336,7 +1336,7 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 0, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
         color: AppColors.card,
         border: Border(top: BorderSide(color: AppColors.border)),
@@ -1351,22 +1351,20 @@ class _BottomBar extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           const Spacer(),
-          Flexible(
-            child: onContinue != null
-                ? WebPrimaryButton(
-                    label: 'Continue',
-                    onPressed: onContinue,
-                    expand: false,
-                    dense: true,
-                  )
-                : WebPrimaryButton(
-                    label: 'Save Power Unit',
-                    loading: saving,
-                    onPressed: saving ? null : onSave,
-                    expand: false,
-                    dense: true,
-                  ),
-          ),
+          onContinue != null
+              ? WebPrimaryButton(
+                  label: 'Continue',
+                  onPressed: onContinue,
+                  expand: false,
+                  dense: true,
+                )
+              : WebPrimaryButton(
+                  label: 'Save Power Unit',
+                  loading: saving,
+                  onPressed: saving ? null : onSave,
+                  expand: false,
+                  dense: true,
+                ),
         ],
       ),
     );

@@ -118,7 +118,9 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
       return;
     }
     setState(() => _eventUploadsLoading = true);
-    final result = await MaintenanceService.instance.getMaintenanceIssueUploads(ids);
+    final result = await MaintenanceService.instance.getMaintenanceIssueUploads(
+      ids,
+    );
     if (!mounted) return;
     setState(() {
       _eventUploadsLoading = false;
@@ -1044,7 +1046,10 @@ class _SourceEventCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   defectText,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               IconButton(
@@ -1066,7 +1071,10 @@ class _SourceEventCard extends StatelessWidget {
             children: [
               if ((issue.category ?? '').isNotEmpty)
                 _SourceEventChip(label: 'Category', value: issue.category!),
-              _SourceEventChip(label: 'Type', value: _formatSourceEventType(issue)),
+              _SourceEventChip(
+                label: 'Type',
+                value: _formatSourceEventType(issue),
+              ),
               if ((issue.status ?? '').isNotEmpty)
                 _SourceEventStatusBadge(status: issue.status!),
               if ((issue.severity ?? '').isNotEmpty)
@@ -1132,10 +1140,12 @@ class _SourceEventStatusBadge extends StatelessWidget {
     if (normalized.contains('progress')) {
       bg = const Color(0xFFDBEAFE);
       fg = const Color(0xFF1D4ED8);
-    } else if (normalized.contains('complete') || normalized.contains('resolved')) {
+    } else if (normalized.contains('complete') ||
+        normalized.contains('resolved')) {
       bg = const Color(0xFFDCFCE7);
       fg = const Color(0xFF15803D);
-    } else if (normalized.contains('not started') || normalized.contains('open')) {
+    } else if (normalized.contains('not started') ||
+        normalized.contains('open')) {
       bg = const Color(0xFFFEF3C7);
       fg = const Color(0xFF92400E);
     } else {
@@ -1144,7 +1154,10 @@ class _SourceEventStatusBadge extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Text(
         status,
         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg),
@@ -1175,7 +1188,10 @@ class _SourceEventSeverityBadge extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Text(
         severity,
         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg),
@@ -1185,7 +1201,10 @@ class _SourceEventSeverityBadge extends StatelessWidget {
 }
 
 class _SourceEventImagePreviewSheet extends StatefulWidget {
-  const _SourceEventImagePreviewSheet({required this.uploads, required this.loading});
+  const _SourceEventImagePreviewSheet({
+    required this.uploads,
+    required this.loading,
+  });
 
   final List<MaintenanceIssueUpload> uploads;
   final bool loading;
@@ -1204,8 +1223,9 @@ class _SourceEventImagePreviewSheetState
     final images = widget.uploads
         .where((u) => u.isImage && (u.signedUrl ?? '').isNotEmpty)
         .toList();
-    final selected =
-        images.isNotEmpty ? images[_selectedIndex.clamp(0, images.length - 1)] : null;
+    final selected = images.isNotEmpty
+        ? images[_selectedIndex.clamp(0, images.length - 1)]
+        : null;
 
     return SafeArea(
       child: Padding(
@@ -1237,26 +1257,29 @@ class _SourceEventImagePreviewSheetState
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.border, style: BorderStyle.solid),
+                border: Border.all(
+                  color: AppColors.border,
+                  style: BorderStyle.solid,
+                ),
               ),
               child: widget.loading
                   ? const CircularProgressIndicator()
                   : selected == null
-                      ? Text(
+                  ? Text(
+                      'No image found',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        selected.signedUrl!,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, _, _) => Text(
                           'No image found',
                           style: TextStyle(color: AppColors.textSecondary),
-                        )
-                      : ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.network(
-                            selected.signedUrl!,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, _, _) => Text(
-                              'No image found',
-                              style: TextStyle(color: AppColors.textSecondary),
-                            ),
-                          ),
                         ),
+                      ),
+                    ),
             ),
             if (images.length > 1) ...[
               const SizedBox(height: 12),
@@ -1277,13 +1300,18 @@ class _SourceEventImagePreviewSheetState
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: isSelected ? AppColors.primary : Colors.transparent,
+                            color: isSelected
+                                ? AppColors.primary
+                                : Colors.transparent,
                             width: 2,
                           ),
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(6),
-                          child: Image.network(images[i].signedUrl!, fit: BoxFit.cover),
+                          child: Image.network(
+                            images[i].signedUrl!,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
                     );

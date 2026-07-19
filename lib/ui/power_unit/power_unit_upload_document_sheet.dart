@@ -242,7 +242,9 @@ class _UploadDocumentSheetState extends State<_UploadDocumentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    final bottom =
+        MediaQuery.viewInsetsOf(context).bottom +
+        MediaQuery.paddingOf(context).bottom;
 
     return GradientPageBackground(
       child: Scaffold(
@@ -440,8 +442,8 @@ class _UploadDocumentSheetState extends State<_UploadDocumentSheet> {
                   Expanded(
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textSecondary,
-                        side: BorderSide(color: AppColors.border),
+                        foregroundColor: const Color(0xFF374151),
+                        side: const BorderSide(color: Color(0xFF374151)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -483,7 +485,7 @@ class _UploadDocumentSheetState extends State<_UploadDocumentSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -677,7 +679,9 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    final bottom =
+        MediaQuery.viewInsetsOf(context).bottom +
+        MediaQuery.paddingOf(context).bottom;
     final currentFileName = _fileRemoved
         ? null
         : (_newFileName ?? widget.doc.fileName);
@@ -838,8 +842,8 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
                   Expanded(
                     child: OutlinedButton(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.textSecondary,
-                        side: BorderSide(color: AppColors.border),
+                        foregroundColor: const Color(0xFF1A1A1A),
+                        side: const BorderSide(color: Color(0xFF1A1A1A)),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
@@ -879,7 +883,7 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 24),
             ],
           ),
         ),
@@ -1088,7 +1092,9 @@ class _SimpleUploadDocumentSheetState
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    final bottom =
+        MediaQuery.viewInsetsOf(context).bottom +
+        MediaQuery.paddingOf(context).bottom;
     final currentFileName = _fileRemoved
         ? null
         : (_newFileName ?? widget.doc?.fileName);
@@ -1249,7 +1255,7 @@ class _SimpleUploadDocumentSheetState
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 24),
             ],
           ),
         ),

@@ -158,9 +158,9 @@ class _TrailersScreenState extends State<TrailersScreen> {
       return;
     }
 
-    final changed = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const TrailerFormScreen()),
-    );
+    final changed = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const TrailerFormScreen()));
     if (changed == true) _load();
   }
 
@@ -280,7 +280,10 @@ class _TrailersScreenState extends State<TrailersScreen> {
                         ),
                         child: const Text(
                           'Cancel',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
@@ -296,10 +299,16 @@ class _TrailersScreenState extends State<TrailersScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 16,
+                        ),
                         label: const Text(
                           'Delete',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
@@ -647,7 +656,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
           children: [
             WebSearchField(
               controller: _searchController,
-              hintText: 'Search by Unit #, VIN, or Plate…',
+              hintText: 'Search by Unit #, VIN',
               showClear: _search.isNotEmpty,
               onClear: () {
                 _searchController.clear();
@@ -713,7 +722,10 @@ class _TrailersScreenState extends State<TrailersScreen> {
                     icon: const Icon(Icons.file_upload_outlined, size: 16),
                     label: const Text(
                       'Import Excel',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
               ],
@@ -752,12 +764,13 @@ class _TrailersScreenState extends State<TrailersScreen> {
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: _items.length,
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 500,
-                        mainAxisExtent: 352,
-                        crossAxisSpacing: 16,
-                        mainAxisSpacing: 16,
-                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 500,
+                            mainAxisExtent: 352,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                          ),
                       itemBuilder: (context, i) => _buildCard(_items[i]),
                     );
                   }

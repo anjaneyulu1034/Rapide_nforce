@@ -101,8 +101,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: _tab == _Tab.profile
-                      ? _ProfileTab(user: user, onReload: _load)
-                      : _SecurityTab(onLogout: widget.onLogout),
+                      ? _ProfileTab(
+                          user: user,
+                          onReload: _load,
+                          onLogout: widget.onLogout,
+                        )
+                      : const _SecurityTab(),
                 ),
               ],
             ),
@@ -135,7 +139,7 @@ class _ProfileHero extends StatelessWidget {
             width: 88,
             height: 88,
             decoration: const BoxDecoration(
-              color: Color(0xFF1A1A1A),
+              color: Color(0xFF4B633D),
               shape: BoxShape.circle,
             ),
             child: Center(
@@ -166,7 +170,7 @@ class _ProfileHero extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: const Color(0xFF374151),
+              gradient: AppGradients.goldAccent,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
@@ -174,7 +178,7 @@ class _ProfileHero extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
-                color: Colors.white,
+                color: AppColors.black,
                 letterSpacing: 0.5,
               ),
             ),
@@ -236,7 +240,7 @@ class _TabToggle extends StatelessWidget {
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFF374151) : Colors.transparent,
+            color: selected ? const Color(0xFF2563EB) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
@@ -257,10 +261,15 @@ class _TabToggle extends StatelessWidget {
 // ─── Profile Tab ─────────────────────────────────────────────────────────────
 
 class _ProfileTab extends StatefulWidget {
-  const _ProfileTab({required this.user, required this.onReload});
+  const _ProfileTab({
+    required this.user,
+    required this.onReload,
+    required this.onLogout,
+  });
 
   final UserModel user;
   final VoidCallback onReload;
+  final VoidCallback onLogout;
 
   @override
   State<_ProfileTab> createState() => _ProfileTabState();
@@ -345,6 +354,120 @@ class _ProfileTabState extends State<_ProfileTab> {
     }
   }
 
+  Future<void> _confirmLogout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 36),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 32,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withValues(alpha: 0.10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.logout,
+                    color: AppColors.danger,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Log Out',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Are you sure you want to log out?',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: BorderSide(color: AppColors.border, width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.danger,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        icon: const Icon(Icons.logout, size: 16),
+                        label: const Text(
+                          AppStrings.logout,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (confirmed == true) widget.onLogout();
+  }
+
   @override
   Widget build(BuildContext context) {
     final u = widget.user;
@@ -406,7 +529,7 @@ class _ProfileTabState extends State<_ProfileTab> {
           child: FilledButton.icon(
             onPressed: _saving ? null : _save,
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF374151),
+              backgroundColor: const Color(0xFF4B633D),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -428,6 +551,33 @@ class _ProfileTabState extends State<_ProfileTab> {
             ),
           ),
         ),
+        const SizedBox(height: 20),
+
+        // ── Logout ───────────────────────────────────────────────────
+        _SectionCard(
+          title: 'Session',
+          icon: Icons.security_outlined,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _confirmLogout,
+              icon: const Icon(Icons.logout, color: AppColors.danger, size: 18),
+              label: const Text(
+                AppStrings.logout,
+                style: TextStyle(
+                  color: AppColors.danger,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+                side: const BorderSide(color: AppColors.danger),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -436,9 +586,7 @@ class _ProfileTabState extends State<_ProfileTab> {
 // ─── Security Tab ─────────────────────────────────────────────────────────────
 
 class _SecurityTab extends StatefulWidget {
-  const _SecurityTab({required this.onLogout});
-
-  final VoidCallback onLogout;
+  const _SecurityTab();
 
   @override
   State<_SecurityTab> createState() => _SecurityTabState();
@@ -577,7 +725,7 @@ class _SecurityTabState extends State<_SecurityTab> {
           child: FilledButton.icon(
             onPressed: _saving ? null : _submit,
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF374151),
+              backgroundColor: const Color(0xFF4B633D),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -598,33 +746,6 @@ class _SecurityTabState extends State<_SecurityTab> {
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
             ),
           ),
-        ),
-        const SizedBox(height: 20),
-
-        // ── Logout ───────────────────────────────────────────────────
-        _SectionCard(
-          title: 'Session',
-          icon: Icons.security_outlined,
-          children: [
-            OutlinedButton.icon(
-              onPressed: widget.onLogout,
-              icon: const Icon(Icons.logout, color: AppColors.danger, size: 18),
-              label: const Text(
-                AppStrings.logout,
-                style: TextStyle(
-                  color: AppColors.danger,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size.fromHeight(46),
-                side: const BorderSide(color: AppColors.danger),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-            ),
-          ],
         ),
         const SizedBox(height: 16),
         Text(
