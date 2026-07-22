@@ -194,7 +194,12 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     }
 
     setState(() {
-      _entityTypes = typesRes.data ?? [];
+      // Mirrors web's `visibleEntityTypes` (CreateWorkOrderDrawer.tsx): the
+      // Unit Type dropdown excludes "Driver" — that's a valid entity_type
+      // row (id 3) used elsewhere (driver documents), not a work order unit.
+      _entityTypes = (typesRes.data ?? [])
+          .where((t) => t.name.trim().toLowerCase() != 'driver')
+          .toList();
       _technicians = techRes.data ?? [];
       final partsData = partsRes.data;
       _partTypes = partsData?.types ?? [];

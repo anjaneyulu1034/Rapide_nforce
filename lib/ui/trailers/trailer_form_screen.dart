@@ -15,6 +15,7 @@ import 'package:rapide_nforce/services/fleet_lookup_service.dart';
 import 'package:rapide_nforce/services/ocr_service.dart';
 import 'package:rapide_nforce/services/power_unit_service.dart';
 import 'package:rapide_nforce/services/trailer_service.dart';
+import 'package:rapide_nforce/ui/widgets/unsaved_changes_dialog.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
@@ -108,10 +109,67 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
   bool get _isSuperAdmin =>
       isSuperAdminRole(AuthService.instance.currentUser?.role);
 
+  // Guards against Form.onChanged firing while _bootstrap() populates
+  // fields (edit mode load, lookups) — only field changes made after
+  // bootstrap finishes count as "unsaved".
+  bool _bootstrapped = false;
+  bool _hasUnsavedChanges = false;
+
+  void _onFormChanged() {
+    if (!_bootstrapped || _hasUnsavedChanges) return;
+    setState(() => _hasUnsavedChanges = true);
+  }
+
+  // All text controllers, listened to directly (rather than relying on
+  // Form.onChanged propagation) so dirty-tracking doesn't depend on every
+  // custom field widget correctly wiring itself into the ambient Form.
+  List<TextEditingController> get _allControllers => [
+    _unitNumber,
+    _vin,
+    _make,
+    _model,
+    _year,
+    _color,
+    _currentOdometer,
+    _purchaseDate,
+    _purchasePrice,
+    _startDate,
+    _specType,
+    _specLength,
+    _specWidth,
+    _specHeight,
+    _specCapacity,
+    _specGvwr,
+    _plate,
+    _registrationNumber,
+    _ownerName,
+    _ownerEmail,
+    _ownerPhone,
+    _ownerAddress,
+    _cviExpiry,
+    _pmDueDate,
+    _pmDueOdometer,
+    _certificateNumber,
+    _inspectionDate,
+    _expiryDate,
+    _nextInspectionDue,
+    _inspectorName,
+    _inspectorLicense,
+    _inspectionFacility,
+    _facilityNumber,
+    _criticalDefects,
+    _majorDefects,
+    _advisoryItems,
+    _inspectionSummary,
+  ];
+
   @override
   void initState() {
     super.initState();
     _startDate.text = DateTime.now().toIso8601String().split('T').first;
+    for (final c in _allControllers) {
+      c.addListener(_onFormChanged);
+    }
     _bootstrap();
   }
 
@@ -153,6 +211,7 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
         await _loadCities(_stateId!);
       }
     }
+    if (mounted) _bootstrapped = true;
   }
 
   TrailerModel? _trailerForStateMatch;
@@ -684,13 +743,28 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
     setState(() => _step++);
   }
 
+  /// Leaves the screen, prompting for confirmation first if there are
+  /// unsaved changes — mirrors web's `navigateWithUnsavedCheck`.
+  Future<void> _attemptLeave() async {
+    if (!_hasUnsavedChanges) {
+      Navigator.pop(context);
+      return;
+    }
+    final shouldLeave = await confirmDiscardUnsavedChanges(context);
+    if (shouldLeave && mounted) Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _step == 1,
+      canPop: _step == 1 && !_hasUnsavedChanges,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        setState(() => _step--);
+        if (_step > 1) {
+          setState(() => _step--);
+          return;
+        }
+        _attemptLeave();
       },
       child: GradientPageBackground(
         child: Scaffold(
@@ -709,6 +783,7 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
                     Expanded(
                       child: Form(
                         key: _formKey,
+                        onChanged: _onFormChanged,
                         child: ListView(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                           children: [
@@ -722,7 +797,7 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
                     _BottomBar(
                       step: _step,
                       saving: _saving || _checkingVin,
-                      onCancel: () => Navigator.pop(context),
+                      onCancel: _attemptLeave,
                       onContinue: _step < 3 ? _next : null,
                       onSave: _step == 3 ? _save : null,
                     ),
@@ -764,7 +839,11 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
             (a, b) => _kTrailerTypes[a]!.compareTo(_kTrailerTypes[b]!),
           )),
           itemLabel: (v) => _kTrailerTypes[v] ?? v,
-          onChanged: (v) => setState(() => _trailerType = v),
+          onChanged: (v) {
+            setState(() => _trailerType = v);
+            _onFormChanged();
+          },
+          validator: (v) => v == null ? 'Trailer Type is required' : null,
         ),
         WebTextFormField(
           controller: _make,
@@ -780,7 +859,15 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           controller: _year,
           label: 'Year *',
           keyboardType: TextInputType.number,
-          validator: (v) => _req(v, 'Year'),
+          validator: (v) {
+            final required = _req(v, 'Year');
+            if (required != null) return required;
+            final year = int.tryParse((v ?? '').trim());
+            if (year == null || year < 1900 || year > 2099) {
+              return 'Enter a valid year between 1900 and 2099';
+            }
+            return null;
+          },
         ),
         WebTextFormField(controller: _color, label: 'Color'),
         WebTextFormField(
@@ -799,6 +886,8 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           required: true,
           lastDate: DateTime.now(),
           validator: (v) {
+            final required = _req(v, 'Purchase Date');
+            if (required != null) return required;
             final parsed = DateTime.tryParse(v ?? '');
             if (parsed != null && parsed.isAfter(DateTime.now())) {
               return 'Purchase Date cannot be in the future';
@@ -813,13 +902,21 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           validator: (v) =>
               _nonNegativeNumberValidator(v, 'Purchase Price', required: true),
         ),
-        WebDateField(controller: _startDate, label: 'Start Date', required: true),
+        WebDateField(
+          controller: _startDate,
+          label: 'Start Date',
+          required: true,
+          validator: (v) => _req(v, 'Start Date'),
+        ),
         WebDropdownField<String>(
           label: 'Status',
           value: _status,
           items: const ['active', 'inactive'],
           itemLabel: (v) => v == 'active' ? 'Active' : 'Inactive',
-          onChanged: (v) => setState(() => _status = v ?? 'active'),
+          onChanged: (v) {
+            setState(() => _status = v ?? 'active');
+            _onFormChanged();
+          },
         ),
         WebSearchableDropdownField<int>(
           label: 'Assigned Truck',
@@ -827,7 +924,10 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           items: _trucks.map((t) => t.id).toList(),
           itemLabel: (id) =>
               _trucks.firstWhere((t) => t.id == id).unitNumber,
-          onChanged: (v) => setState(() => _assignedTruckId = v),
+          onChanged: (v) {
+            setState(() => _assignedTruckId = v);
+            _onFormChanged();
+          },
           hint: 'Not assigned',
         ),
       ],
@@ -868,8 +968,10 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
               _states = [];
               _cities = [];
             });
+            _onFormChanged();
             if (v != null) await _loadStates(v);
           },
+          validator: (v) => v == null ? 'Country is required' : null,
         ),
         WebDropdownField<int>(
           label: 'State / Province *',
@@ -882,15 +984,22 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
               _cityId = null;
               _cities = [];
             });
+            _onFormChanged();
             if (v != null) await _loadCities(v);
           },
+          validator: (v) => (v == null && _states.isNotEmpty)
+              ? 'State/Province is required'
+              : null,
         ),
         WebDropdownField<int>(
           label: 'City',
           value: _cityId,
           items: _cities.map((c) => c.id).toList(),
           itemLabel: (id) => _cities.firstWhere((c) => c.id == id).name,
-          onChanged: (v) => setState(() => _cityId = v),
+          onChanged: (v) {
+            setState(() => _cityId = v);
+            _onFormChanged();
+          },
         ),
         WebTextFormField(
           controller: _registrationNumber,
@@ -906,7 +1015,11 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           value: _ownershipType.isEmpty ? null : _ownershipType,
           items: const ['owned', 'owner-operator'],
           itemLabel: (v) => v == 'owned' ? 'Owned' : 'Owner Operator',
-          onChanged: (v) => setState(() => _ownershipType = v ?? ''),
+          onChanged: (v) {
+            setState(() => _ownershipType = v ?? '');
+            _onFormChanged();
+          },
+          validator: (v) => _req(v, 'Ownership Type'),
         ),
         if (_ownershipType == 'owner-operator') ...[
           WebFormSection(
@@ -949,7 +1062,11 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           value: _selectedPolicy,
           items: _policies.map((p) => p.name).toList(),
           itemLabel: (v) => v,
-          onChanged: (v) => setState(() => _selectedPolicy = v),
+          onChanged: (v) {
+            setState(() => _selectedPolicy = v);
+            _onFormChanged();
+          },
+          validator: (v) => _req(v, 'Maintenance Policy'),
         ),
         WebDateField(controller: _cviExpiry, label: 'CVI Expiry'),
         WebDateField(controller: _pmDueDate, label: 'PM Due Date'),
@@ -971,13 +1088,25 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
         WebTextFormField(
           controller: _certificateNumber,
           label: 'Certificate Number *',
+          validator: (v) => _req(v, 'Certificate Number'),
         ),
-        WebDateField(controller: _inspectionDate, label: 'Inspection Date', required: true),
-        WebDateField(controller: _expiryDate, label: 'Expiry Date', required: true),
+        WebDateField(
+          controller: _inspectionDate,
+          label: 'Inspection Date',
+          required: true,
+          validator: (v) => _req(v, 'Inspection Date'),
+        ),
+        WebDateField(
+          controller: _expiryDate,
+          label: 'Expiry Date',
+          required: true,
+          validator: (v) => _req(v, 'Expiry Date'),
+        ),
         WebDateField(
           controller: _nextInspectionDue,
           label: 'Next Inspection Due',
           required: true,
+          validator: (v) => _req(v, 'Next Inspection Due'),
         ),
         WebTextFormField(
           controller: _inspectorName,

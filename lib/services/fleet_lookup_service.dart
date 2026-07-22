@@ -115,6 +115,37 @@ class FleetLookupService {
     }
   }
 
+  /// OCR-eligible document types for a given entity — mirrors web's
+  /// `DocumentUpload` modal, which fetches `/compliance-document-types` with
+  /// `isOCR: true` while open (a narrower list than the general document
+  /// type dropdown) so the OCR extraction template matches the picked type.
+  Future<ApiResult<List<String>>> fetchOcrDocumentTypes({
+    int entityTypeId = 1,
+    List<String> excluded = const [],
+  }) async {
+    try {
+      final params = <String, dynamic>{
+        'isActive': true,
+        'isOCR': true,
+        'entityTypeId': entityTypeId,
+      };
+      final body = await _api.parseJson(
+        () => _api.get(ApiConstants.complianceDocumentTypes, params: params),
+        onSuccess: (b) => b,
+      );
+      final items = ApiParse.listItems(body)
+          .map((e) => (e['name'] as String? ?? '').trim())
+          .where((n) => n.isNotEmpty && !excluded.contains(n))
+          .toList()
+        ..sort((a, b) => a.compareTo(b));
+      return ApiResult.ok(items);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to load document types.');
+    }
+  }
+
   Future<ApiResult<List<LookupOption>>> fetchDrivers({int? companyId}) async {
     final cid = companyId ?? AuthService.instance.selectedCompanyIdInt;
     return _fetchList(

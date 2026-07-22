@@ -3,12 +3,6 @@
 		{
 			"name": "rapide_nforce",
 			"path": "../../.."
-		},
-		{
-			"path": "../../../../../../Downloads/rapidenforce-ui (1)"
-		},
-		{
-			"path": "../../../../../../Downloads/rapidenforce-backend"
 		}
 	],
 	"settings": {}

@@ -38,13 +38,14 @@ class OcrService {
   Future<ApiResult<String>> submitScan({
     required String filePath,
     required String fileName,
+    String documentType = 'OCR Scan',
     String? companyId,
   }) async {
     try {
       final request = http.MultipartRequest('POST', Uri.parse('dummy'))
         ..fields['documents'] = jsonEncode([
           {
-            'documentType': 'OCR Scan',
+            'documentType': documentType,
             'isOcrUpload': true,
             'isEntityNotApplicable': true,
           },
@@ -129,11 +130,13 @@ class OcrService {
   Future<TruckOcrPrefill?> scanAndExtract({
     required String filePath,
     required String fileName,
+    String documentType = 'OCR Scan',
     String? companyId,
   }) async {
     final submit = await submitScan(
       filePath: filePath,
       fileName: fileName,
+      documentType: documentType,
       companyId: companyId,
     );
     if (!submit.isSuccess || submit.data == null) return null;

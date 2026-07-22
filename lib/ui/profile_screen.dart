@@ -1,9 +1,13 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
+import 'package:rapide_nforce/core/utils/document_download_service.dart';
+import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/user_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/company_service.dart';
@@ -277,20 +281,58 @@ class _ProfileTab extends StatefulWidget {
 
 class _ProfileTabState extends State<_ProfileTab> {
   late final TextEditingController _phone;
+  late final TextEditingController _certificateNumber;
   bool _saving = false;
   int? _signatureUploadId;
   String? _signatureFileName;
+  String? _signatureLocalPath;
   bool _signatureUploading = false;
+  bool _signaturePreviewLoading = false;
+  int? _certificateUploadId;
+  String? _certificateFileName;
+  String? _certificateLocalPath;
+  bool _certificateUploading = false;
+  bool _certificatePreviewLoading = false;
+
+  bool get _isLeadTechnician => isLeadTechnicianRole(widget.user.role);
 
   @override
   void initState() {
     super.initState();
     _phone = TextEditingController(text: widget.user.phone ?? '');
+    _certificateNumber = TextEditingController(
+      text: widget.user.certificateNumber ?? '',
+    );
+    _signatureUploadId = widget.user.signatureUploadId;
+    if (_signatureUploadId != null) {
+      _loadUploadFileName(_signatureUploadId!, isSignature: true);
+    }
+    _certificateUploadId = widget.user.certificateUploadId;
+    if (_certificateUploadId != null) {
+      _loadUploadFileName(_certificateUploadId!, isSignature: false);
+    }
+  }
+
+  // Only the upload id is persisted server-side, so on load we resolve it to
+  // a display file name the same way web's SignatureUpload component does —
+  // falling back to a generic label if the lookup fails.
+  Future<void> _loadUploadFileName(int uploadId, {required bool isSignature}) async {
+    final result = await AuthService.instance.fetchUploadMeta(uploadId);
+    if (!mounted) return;
+    final name = result.isSuccess ? result.data?.fileName : null;
+    if (isSignature) {
+      if (_signatureUploadId != uploadId) return;
+      setState(() => _signatureFileName = name ?? 'Signature uploaded');
+    } else {
+      if (_certificateUploadId != uploadId) return;
+      setState(() => _certificateFileName = name ?? 'Certificate uploaded');
+    }
   }
 
   @override
   void dispose() {
     _phone.dispose();
+    _certificateNumber.dispose();
     super.dispose();
   }
 
@@ -311,10 +353,85 @@ class _ProfileTabState extends State<_ProfileTab> {
       setState(() {
         _signatureUploadId = result.data;
         _signatureFileName = file.name;
+        _signatureLocalPath = file.path;
       });
     } else {
       AppToast.showError(result.message ?? 'Upload failed');
     }
+  }
+
+  Future<void> _pickCertificate() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.first;
+    if (file.path == null) return;
+
+    setState(() => _certificateUploading = true);
+    final result = await AuthService.instance.uploadFile(file.path!, file.name);
+    if (!mounted) return;
+    setState(() => _certificateUploading = false);
+    if (result.isSuccess) {
+      setState(() {
+        _certificateUploadId = result.data;
+        _certificateFileName = file.name;
+        _certificateLocalPath = file.path;
+      });
+    } else {
+      AppToast.showError(result.message ?? 'Upload failed');
+    }
+  }
+
+  Future<void> _previewSignature() => _previewFile(
+    uploadId: _signatureUploadId,
+    localPath: _signatureLocalPath,
+    displayName: _signatureFileName,
+    setLoading: (v) => setState(() => _signaturePreviewLoading = v),
+  );
+
+  Future<void> _previewCertificate() => _previewFile(
+    uploadId: _certificateUploadId,
+    localPath: _certificateLocalPath,
+    displayName: _certificateFileName,
+    setLoading: (v) => setState(() => _certificatePreviewLoading = v),
+  );
+
+  // A freshly-picked file can be opened straight from its local path; a
+  // previously-saved one only has an upload id, so we resolve a short-lived
+  // signed URL first and hand it to the shared download-and-open helper
+  // (same pattern already used for document attachments elsewhere).
+  Future<void> _previewFile({
+    required int? uploadId,
+    required String? localPath,
+    required String? displayName,
+    required ValueChanged<bool> setLoading,
+  }) async {
+    if (localPath != null) {
+      final result = await OpenFilex.open(localPath);
+      if (mounted && result.type != ResultType.done) {
+        AppToast.showError('Could not open file: ${result.message}');
+      }
+      return;
+    }
+    if (uploadId == null) return;
+
+    setLoading(true);
+    final result = await AuthService.instance.fetchUploadMeta(uploadId);
+    if (!mounted) return;
+    setLoading(false);
+
+    final signedUrl = result.isSuccess ? result.data?.signedUrl : null;
+    if (signedUrl == null || signedUrl.isEmpty) {
+      AppToast.showError(result.message ?? 'Preview unavailable');
+      return;
+    }
+    await DocumentDownloadService.instance.downloadAndOpenDirect(
+      context: context,
+      url: signedUrl,
+      displayFileName: displayName ?? 'file',
+    );
   }
 
   Future<void> _save() async {
@@ -330,19 +447,25 @@ class _ProfileTabState extends State<_ProfileTab> {
 
     setState(() => _saving = true);
     final parts = widget.user.name.split(' ');
+    final payload = <String, dynamic>{
+      'username': widget.user.employeeId,
+      'email': widget.user.email ?? '',
+      'role_id': widget.user.roleId ?? 0,
+      'is_active': true,
+      'company_id': widget.user.companyId,
+      'first_name': parts.first,
+      'last_name': parts.skip(1).join(' '),
+      'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+      'signature_upload_id': _signatureUploadId,
+    };
+    if (_isLeadTechnician) {
+      payload['certificate_number'] =
+          _certificateNumber.text.trim().isEmpty ? null : _certificateNumber.text.trim();
+      payload['certificate_upload_id'] = _certificateUploadId;
+    }
     final result = await AuthService.instance.updateProfile(
       userId: userId,
-      payload: {
-        'username': widget.user.employeeId,
-        'email': widget.user.email ?? '',
-        'role_id': widget.user.roleId ?? 0,
-        'is_active': true,
-        'company_id': widget.user.companyId,
-        'first_name': parts.first,
-        'last_name': parts.skip(1).join(' '),
-        'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
-        'signature_upload_id': _signatureUploadId,
-      },
+      payload: payload,
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -513,12 +636,42 @@ class _ProfileTabState extends State<_ProfileTab> {
             _FileField(
               fileName: _signatureFileName,
               uploading: _signatureUploading,
+              previewLoading: _signaturePreviewLoading,
               onPick: _pickSignature,
+              onPreview: _previewSignature,
               onRemove: () => setState(() {
                 _signatureUploadId = null;
                 _signatureFileName = null;
+                _signatureLocalPath = null;
               }),
             ),
+            if (_isLeadTechnician) ...[
+              const SizedBox(height: 14),
+              _FieldLabel(label: 'Certificate Number'),
+              const SizedBox(height: 6),
+              _InputField(
+                controller: _certificateNumber,
+                hint: 'Enter certificate number',
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9]')),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _FieldLabel(label: 'Certificate Upload'),
+              const SizedBox(height: 6),
+              _FileField(
+                fileName: _certificateFileName,
+                uploading: _certificateUploading,
+                previewLoading: _certificatePreviewLoading,
+                onPick: _pickCertificate,
+                onPreview: _previewCertificate,
+                onRemove: () => setState(() {
+                  _certificateUploadId = null;
+                  _certificateFileName = null;
+                  _certificateLocalPath = null;
+                }),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 20),
@@ -900,17 +1053,24 @@ class _FieldLabel extends StatelessWidget {
 // ─── Text input ───────────────────────────────────────────────────────────────
 
 class _InputField extends StatelessWidget {
-  const _InputField({required this.controller, this.hint, this.keyboardType});
+  const _InputField({
+    required this.controller,
+    this.hint,
+    this.keyboardType,
+    this.inputFormatters,
+  });
 
   final TextEditingController controller;
   final String? hint;
   final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       style: TextStyle(fontSize: 13, color: AppColors.textPrimary),
       decoration: _inputDeco(hint),
     );
@@ -983,15 +1143,20 @@ class _FileField extends StatelessWidget {
     required this.onRemove,
     this.fileName,
     this.uploading = false,
+    this.onPreview,
+    this.previewLoading = false,
   });
 
   final String? fileName;
   final bool uploading;
+  final bool previewLoading;
   final VoidCallback onPick;
   final VoidCallback onRemove;
+  final VoidCallback? onPreview;
 
   @override
   Widget build(BuildContext context) {
+    final canPreview = fileName != null && onPreview != null;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
@@ -1021,14 +1186,37 @@ class _FileField extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              fileName ?? 'No file chosen',
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12,
-                color: fileName != null
-                    ? AppColors.textPrimary
-                    : AppColors.textSecondary,
+            child: GestureDetector(
+              onTap: canPreview && !previewLoading ? onPreview : null,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      fileName ?? 'No file chosen',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: canPreview
+                            ? AppColors.primary
+                            : fileName != null
+                                ? AppColors.textPrimary
+                                : AppColors.textSecondary,
+                        decoration: canPreview
+                            ? TextDecoration.underline
+                            : TextDecoration.none,
+                      ),
+                    ),
+                  ),
+                  if (previewLoading) ...[
+                    const SizedBox(width: 8),
+                    const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),

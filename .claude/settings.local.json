@@ -14,7 +14,18 @@
       "Bash(grep -E \"\\\\.dart$\")",
       "Bash(flutter analyze *)",
       "Bash(flutter pub *)",
-      "Bash(flutter --version)"
+      "Bash(flutter --version)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-backend/src/controllers/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-backend/src/services/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-backend/src/repositories/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-ui \\\\\\(1\\\\\\)/src/pages/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-ui \\\\\\(1\\\\\\)/src/services/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-ui \\\\\\(1\\\\\\)/src/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-ui \\\\\\(1\\\\\\)/src/components/maintenance/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-backend/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-backend/prisma/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-backend/src/schemas/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-backend/src/**)"
     ]
   }
 }

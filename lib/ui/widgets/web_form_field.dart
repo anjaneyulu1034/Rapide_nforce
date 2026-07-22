@@ -305,6 +305,19 @@ class WebTextFormField extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: Colors.black, width: 1.5),
           ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.danger, width: 1.5),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.danger, width: 2),
+          ),
+          errorStyle: const TextStyle(
+            color: AppColors.danger,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         validator: validator,
       ),
@@ -361,6 +374,19 @@ class WebDropdownField<T> extends StatelessWidget {
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: Colors.black, width: 1.5),
+          ),
+          errorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.danger, width: 1.5),
+          ),
+          focusedErrorBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.danger, width: 2),
+          ),
+          errorStyle: const TextStyle(
+            color: AppColors.danger,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
           ),
         ),
         hint: Text(hint, style: const TextStyle(color: Colors.black)),

@@ -217,7 +217,17 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onRouteSelected(AppRoute route) {
-    setState(() => _currentRoute = route);
+    setState(() {
+      _currentRoute = route;
+      // Approvals is a shared inbox other users/processes change constantly
+      // (new requests submitted, items approved/rejected elsewhere) — unlike
+      // most tabs, it must never serve a stale cached copy, so re-fetch
+      // every time it's opened instead of keeping the first-load result
+      // alive for the rest of the session.
+      if (route == AppRoute.approvals) {
+        _screenCache.remove(AppRoute.approvals);
+      }
+    });
   }
 
   void _onCompanyChanged(String companyId) {

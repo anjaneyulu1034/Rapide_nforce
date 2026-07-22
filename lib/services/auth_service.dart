@@ -9,6 +9,16 @@ import 'package:rapide_nforce/services/api_client.dart';
 import 'package:rapide_nforce/services/api_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Metadata for a stored `/uploads/{id}` record — display name, mime type,
+/// and a temporary signed URL for preview/download.
+class UploadMeta {
+  const UploadMeta({this.fileName, this.fileType, this.signedUrl});
+
+  final String? fileName;
+  final String? fileType;
+  final String? signedUrl;
+}
+
 /// Handles login and session state — aligned with web `authService.ts`.
 class AuthService {
   AuthService._();
@@ -231,6 +241,39 @@ class AuthService {
     }
   }
 
+  /// Looks up metadata for a previously-uploaded file (e.g. a signature saved
+  /// on an earlier visit, where only the upload id is known) — mirrors web's
+  /// `SignatureUpload` component fetching `/uploads/{id}` for both the
+  /// display file name and the signed URL used to preview it.
+  Future<ApiResult<UploadMeta>> fetchUploadMeta(int uploadId) async {
+    try {
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.uploads}/$uploadId',
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return ApiResult.fail(
+          'Failed to load file info',
+          statusCode: response.statusCode,
+        );
+      }
+      final decoded = response.body.isNotEmpty
+          ? jsonDecode(response.body) as Map<String, dynamic>
+          : <String, dynamic>{};
+      final data = decoded['data'] is Map<String, dynamic>
+          ? decoded['data'] as Map<String, dynamic>
+          : decoded;
+      return ApiResult.ok(
+        UploadMeta(
+          fileName: data['fileName'] as String?,
+          fileType: data['fileType'] as String?,
+          signedUrl: data['signedUrl'] as String?,
+        ),
+      );
+    } catch (_) {
+      return ApiResult.fail('Network error. Please try again.');
+    }
+  }
+
   static String _mimeFromPath(String name) {
     final ext = name.split('.').last.toLowerCase();
     switch (ext) {
@@ -315,6 +358,9 @@ class AuthService {
       token: fetched.token ?? existing?.token,
       companyId: fetched.companyId ?? existing?.companyId,
       roleId: fetched.roleId ?? existing?.roleId,
+      signatureUploadId: fetched.signatureUploadId ?? existing?.signatureUploadId,
+      certificateNumber: pickOptional(fetched.certificateNumber, existing?.certificateNumber),
+      certificateUploadId: fetched.certificateUploadId ?? existing?.certificateUploadId,
     );
   }
 

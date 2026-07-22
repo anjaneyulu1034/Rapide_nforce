@@ -1,6 +1,3 @@
-import 'package:cunning_document_scanner/cunning_document_scanner.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
@@ -13,6 +10,8 @@ import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/fleet_lookup_service.dart';
 import 'package:rapide_nforce/services/ocr_service.dart';
 import 'package:rapide_nforce/services/power_unit_service.dart';
+import 'package:rapide_nforce/ui/power_unit/power_unit_ocr_document_upload_sheet.dart';
+import 'package:rapide_nforce/ui/widgets/unsaved_changes_dialog.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
@@ -32,8 +31,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _checkingVin = false;
-  String? _browseFileName;
-  String? _browseFilePath;
+  List<OcrDocumentEntry> _ocrDocuments = [];
 
   // Step 1
   final _unitNumber = TextEditingController();
@@ -111,11 +109,81 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   bool get _isSuperAdmin =>
       isSuperAdminRole(AuthService.instance.currentUser?.role);
 
+  // Guards against Form.onChanged firing while _bootstrap() populates
+  // fields (edit mode load, lookups, CVIP recalculation) — only field
+  // changes made after bootstrap finishes count as "unsaved".
+  bool _bootstrapped = false;
+  bool _hasUnsavedChanges = false;
+
+  void _onFormChanged() {
+    if (!_bootstrapped || _hasUnsavedChanges) return;
+    setState(() => _hasUnsavedChanges = true);
+  }
+
+  // All text controllers, listened to directly (rather than relying on
+  // Form.onChanged propagation) so dirty-tracking doesn't depend on every
+  // custom field widget correctly wiring itself into the ambient Form.
+  List<TextEditingController> get _allControllers => [
+    _unitNumber,
+    _vin,
+    _make,
+    _model,
+    _year,
+    _color,
+    _purchaseDate,
+    _purchasePrice,
+    _startDate,
+    _plate,
+    _registrationNumber,
+    _registrationExpiry,
+    _imsNumber,
+    _gvwr,
+    _transmission,
+    _engineMake,
+    _engineModel,
+    _ownerName,
+    _ownerEmail,
+    _ownerPhone,
+    _ownerAddress,
+    _assignedDriver,
+    _maintenancePolicy,
+    _cviExpiry,
+    _currentOdometer,
+    _annualInspectionDue,
+    _lastInspection,
+    _pmInterval,
+    _nextPmDue,
+    _nextPmOdometer,
+    _telematicsProvider,
+    _eldProvider,
+    _permitNumber,
+    _permitIssue,
+    _permitExpiry,
+    _certificateNumber,
+    _inspectionDate,
+    _expiryDate,
+    _nextInspectionDue,
+    _inspectorName,
+    _inspectorLicense,
+    _inspectionFacility,
+    _facilityNumber,
+    _safetyPlate,
+    _safetyVehicle,
+    _safetyVehicleType,
+    _criticalDefects,
+    _majorDefects,
+    _advisoryItems,
+    _inspectionSummary,
+  ];
+
   @override
   void initState() {
     super.initState();
     _startDate.text = DateTime.now().toIso8601String().split('T').first;
     _inspectionDate.addListener(_recalculateCvipExpiry);
+    for (final c in _allControllers) {
+      c.addListener(_onFormChanged);
+    }
     _bootstrap();
   }
 
@@ -160,6 +228,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       }
     }
     _recalculateCvipExpiry();
+    if (mounted) _bootstrapped = true;
   }
 
   PowerUnitModel? _unitForStateMatch;
@@ -609,95 +678,18 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     }
   }
 
-  Future<void> _pickFromCamera() async {
-    try {
-      final picker = ImagePicker();
-      final XFile? photo = await picker.pickImage(source: ImageSource.camera);
-      if (photo == null) return;
-      await _runOcrScan(photo.path, photo.name);
-    } catch (e) {
-      AppToast.showError('Failed to capture image: $e');
-    }
-  }
-
-  Future<void> _pickFromFiles() async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
-    );
-    if (picked == null || picked.files.isEmpty) return;
-    final file = picked.files.first;
-    if (file.path == null) {
-      // No filesystem path available (e.g. some web/desktop pickers) — keep
-      // the file attached but skip OCR, which needs a real path to upload.
-      setState(() {
-        _browseFileName = file.name;
-        _browseFilePath = null;
-      });
-      return;
-    }
-    await _runOcrScan(file.path!, file.name);
-  }
-
-  Future<void> _scanDocument() async {
-    try {
-      final pages = await CunningDocumentScanner.getPictures(
-        noOfPages: 1,
-        scannerSource: ScannerSource.camera,
-      );
-      if (pages == null || pages.isEmpty) return;
-      final path = pages.first;
-      await _runOcrScan(path, path.split('/').last);
-    } catch (e) {
-      AppToast.showError('Failed to scan document: $e');
-    }
-  }
-
-  /// Uploads the picked/captured file, runs it through the real OCR
-  /// pipeline (same `/documents` + `/ocr/ocr-results` flow the web app
-  /// uses), and auto-fills blank form fields from whatever gets extracted.
-  Future<void> _runOcrScan(String filePath, String fileName) async {
-    setState(() {
-      _browseFileName = fileName;
-      _browseFilePath = filePath;
-    });
-
-    showDialog(
+  /// Opens the "Upload Documents" sheet (Document Type per row, like web),
+  /// which handles its own file picking + OCR scanning; each successfully
+  /// extracted document streams its fields into the form as it resolves.
+  Future<void> _openDocumentUploadSheet() async {
+    final result = await showPowerUnitOcrDocumentUploadSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const AlertDialog(
-        backgroundColor: Colors.black87,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.white),
-            SizedBox(height: 16),
-            Text(
-              'Extracting information…',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ),
+      initialDocuments: _ocrDocuments,
+      onPrefillExtracted: _applyOcrPrefill,
     );
-
-    final prefill = await OcrService.instance.scanAndExtract(
-      filePath: filePath,
-      fileName: fileName,
-      companyId: AuthService.instance.selectedCompanyId,
-    );
-
-    if (!mounted) return;
-    Navigator.pop(context);
-
-    if (prefill == null) {
-      AppToast.showError(
-        'No data could be extracted — you can still fill the form manually',
-      );
-      return;
-    }
-    _applyOcrPrefill(prefill);
-    AppToast.showSuccess('Document scanned — fields auto-filled');
+    if (result == null || !mounted) return;
+    setState(() => _ocrDocuments = result);
+    _onFormChanged();
   }
 
   /// Fills blank controllers only — never clobbers what the user already
@@ -811,13 +803,28 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     setState(() => _step++);
   }
 
+  /// Leaves the screen, prompting for confirmation first if there are
+  /// unsaved changes — mirrors web's `navigateWithUnsavedCheck`.
+  Future<void> _attemptLeave() async {
+    if (!_hasUnsavedChanges) {
+      Navigator.pop(context);
+      return;
+    }
+    final shouldLeave = await confirmDiscardUnsavedChanges(context);
+    if (shouldLeave && mounted) Navigator.pop(context);
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: _step == 1,
+      canPop: _step == 1 && !_hasUnsavedChanges,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        setState(() => _step--);
+        if (_step > 1) {
+          setState(() => _step--);
+          return;
+        }
+        _attemptLeave();
       },
       child: GradientPageBackground(
         child: Scaffold(
@@ -836,6 +843,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                     Expanded(
                       child: Form(
                         key: _formKey,
+                        onChanged: _onFormChanged,
                         child: ListView(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                           children: [
@@ -849,7 +857,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                     _BottomBar(
                       step: _step,
                       saving: _saving || _checkingVin,
-                      onCancel: () => Navigator.pop(context),
+                      onCancel: _attemptLeave,
                       onContinue: _step < 3 ? _next : null,
                       onSave: _step == 3 ? _save : null,
                     ),
@@ -860,14 +868,146 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     );
   }
 
+  /// Matches web's Add Truck step 1: an empty "Click to browse files" card
+  /// when nothing's attached yet, or a summary of the documents committed
+  /// via the Upload Documents sheet with an "Add More" affordance.
+  Widget _buildDocumentUploadSection() {
+    if (_ocrDocuments.isEmpty) {
+      return GestureDetector(
+        onTap: _openDocumentUploadSheet,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: AppColors.textSecondary.withValues(alpha: 0.35),
+              width: 1.5,
+            ),
+            color: AppColors.inputFill.withValues(alpha: 0.35),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.cloud_upload_outlined,
+                  size: 28,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Click to browse files',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Supported formats: Images (JPG, PNG) and PDF',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                onPressed: _openDocumentUploadSheet,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF4B633D),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                ),
+                icon: const Icon(Icons.description_outlined, size: 18),
+                label: const Text(
+                  'Browse Files',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+        color: AppColors.inputFill.withValues(alpha: 0.35),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final doc in _ocrDocuments)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.description_outlined,
+                    size: 18,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          doc.fileName,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          doc.documentType,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18, color: AppColors.danger),
+                    onPressed: () => setState(
+                      () => _ocrDocuments = _ocrDocuments
+                          .where((d) => d != doc)
+                          .toList(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _openDocumentUploadSheet,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add More'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Widget> _buildStep1() => [
-    WebFileUploadZone(
-      fileName: _browseFileName,
-      filePath: _browseFilePath,
-      onBrowse: _pickFromFiles,
-      onCamera: _pickFromCamera,
-      onScan: _scanDocument,
-    ),
+    _buildDocumentUploadSection(),
     const SizedBox(height: 12),
     WebFormSection(
       title: 'Vehicle Details',
@@ -910,6 +1050,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           required: true,
           lastDate: DateTime.now(),
           validator: (v) {
+            final required = _req(v, 'Purchase Date');
+            if (required != null) return required;
             final parsed = DateTime.tryParse(v ?? '');
             if (parsed != null && parsed.isAfter(DateTime.now())) {
               return 'Purchase Date cannot be in the future';
@@ -928,13 +1070,17 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _startDate,
           label: 'Start Date',
           required: true,
+          validator: (v) => _req(v, 'Start Date'),
         ),
         WebDropdownField<String>(
           label: 'Status *',
           value: _status,
           items: const ['active', 'inactive'],
           itemLabel: (v) => v == 'active' ? 'Active' : 'Inactive',
-          onChanged: (v) => setState(() => _status = v ?? 'active'),
+          onChanged: (v) {
+            setState(() => _status = v ?? 'active');
+            _onFormChanged();
+          },
         ),
         WebTextFormField(
           controller: _assignedDriver,
@@ -963,8 +1109,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
               _states = [];
               _cities = [];
             });
+            _onFormChanged();
             if (v != null) await _loadStates(v);
           },
+          validator: (v) => v == null ? 'Country is required' : null,
         ),
         WebDropdownField<int>(
           label: 'State / Province *',
@@ -977,16 +1125,23 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
               _cityId = null;
               _cities = [];
             });
+            _onFormChanged();
             if (v != null) await _loadCities(v);
             _recalculateCvipExpiry();
           },
+          validator: (v) => (v == null && _states.isNotEmpty)
+              ? 'State/Province is required'
+              : null,
         ),
         WebDropdownField<int>(
           label: 'City',
           value: _cityId,
           items: _cities.map((c) => c.id).toList(),
           itemLabel: (id) => _cities.firstWhere((c) => c.id == id).name,
-          onChanged: (v) => setState(() => _cityId = v),
+          onChanged: (v) {
+            setState(() => _cityId = v);
+            _onFormChanged();
+          },
         ),
         WebTextFormField(
           controller: _registrationNumber,
@@ -997,6 +1152,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _registrationExpiry,
           label: 'Registration Expiry',
           required: true,
+          validator: (v) => _req(v, 'Registration Expiry'),
         ),
         WebTextFormField(
           controller: _imsNumber,
@@ -1013,7 +1169,11 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           value: _ownershipType.isEmpty ? null : _ownershipType,
           items: const ['owned', 'owner-operator'],
           itemLabel: (v) => v == 'owned' ? 'Owned' : 'Owner Operator',
-          onChanged: (v) => setState(() => _ownershipType = v ?? ''),
+          onChanged: (v) {
+            setState(() => _ownershipType = v ?? '');
+            _onFormChanged();
+          },
+          validator: (v) => _req(v, 'Ownership Type'),
         ),
         if (_ownershipType == 'owner-operator') ...[
           WebTextFormField(
@@ -1053,7 +1213,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           value: _fuelType,
           items: _fuelTypes.map((f) => f.name).toList(),
           itemLabel: (v) => v,
-          onChanged: (v) => setState(() => _fuelType = v),
+          onChanged: (v) {
+            setState(() => _fuelType = v);
+            _onFormChanged();
+          },
         ),
         WebTextFormField(
           controller: _transmission,
@@ -1075,25 +1238,33 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           value: _selectedPolicy,
           items: _policies.map((p) => p.name).toList(),
           itemLabel: (v) => v,
-          onChanged: (v) => setState(() {
-            _selectedPolicy = v;
-            _maintenancePolicy.text = v ?? '';
-          }),
+          onChanged: (v) {
+            setState(() {
+              _selectedPolicy = v;
+              _maintenancePolicy.text = v ?? '';
+            });
+            _onFormChanged();
+          },
+          validator: (v) => _req(v, 'Maintenance Policy'),
         ),
         WebDateField(
           controller: _cviExpiry,
           label: 'CVIP/Annual Inspection Due',
           required: true,
+          validator: (v) => _req(v, 'CVIP/Annual Inspection Due'),
         ),
         WebDateField(
           controller: _lastInspection,
           label: 'Last Inspection',
           required: true,
+          validator: (v) => _req(v, 'Last Inspection'),
         ),
         WebTextFormField(
           controller: _currentOdometer,
           label: 'Current Odometer *',
           keyboardType: TextInputType.number,
+          validator: (v) =>
+              _nonNegativeNumberValidator(v, 'Current Odometer', required: true),
         ),
         WebTextFormField(
           controller: _annualInspectionDue,
@@ -1103,16 +1274,21 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _pmInterval,
           label: 'PM Interval *',
           keyboardType: TextInputType.number,
+          validator: (v) =>
+              _nonNegativeNumberValidator(v, 'PM Interval', required: true),
         ),
         WebDateField(
           controller: _nextPmDue,
           label: 'Next PM Due',
           required: true,
+          validator: (v) => _req(v, 'Next PM Due'),
         ),
         WebTextFormField(
           controller: _nextPmOdometer,
           label: 'Next PM Odometer *',
           keyboardType: TextInputType.number,
+          validator: (v) =>
+              _nonNegativeNumberValidator(v, 'Next PM Odometer', required: true),
         ),
       ],
     ),
@@ -1124,13 +1300,21 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           value: _telematicsEnabled,
           items: const ['active', 'inactive'],
           itemLabel: (v) => v == 'active' ? 'Active' : 'Inactive',
-          onChanged: (v) => setState(() => _telematicsEnabled = v ?? 'active'),
+          onChanged: (v) {
+            setState(() => _telematicsEnabled = v ?? 'active');
+            _onFormChanged();
+          },
         ),
         WebTextFormField(
           controller: _telematicsProvider,
           label: 'Telematics Provider *',
+          validator: (v) => _req(v, 'Telematics Provider'),
         ),
-        WebTextFormField(controller: _eldProvider, label: 'ELD Provider *'),
+        WebTextFormField(
+          controller: _eldProvider,
+          label: 'ELD Provider *',
+          validator: (v) => _req(v, 'ELD Provider'),
+        ),
       ],
     ),
     WebFormSection(
@@ -1141,7 +1325,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           value: _selectedPermitType,
           items: _permitTypes.map((p) => p.name).toList(),
           itemLabel: (v) => v,
-          onChanged: (v) => setState(() => _selectedPermitType = v),
+          onChanged: (v) {
+            setState(() => _selectedPermitType = v);
+            _onFormChanged();
+          },
         ),
         WebTextFormField(controller: _permitNumber, label: 'Permit Number *'),
         WebDateField(
@@ -1187,6 +1374,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _inspectionDate,
           label: 'Inspection Date',
           required: true,
+          validator: (v) => _req(v, 'Inspection Date'),
         ),
         WebTextFormField(
           controller: _expiryDate,
@@ -1199,6 +1387,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _nextInspectionDue,
           label: 'Next Inspection Due',
           required: true,
+          validator: (v) => _req(v, 'Next Inspection Due'),
         ),
         WebTextFormField(
           controller: _inspectorName,

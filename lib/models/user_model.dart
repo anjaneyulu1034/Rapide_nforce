@@ -12,6 +12,9 @@ class UserModel {
     this.token,
     this.companyId,
     this.roleId,
+    this.signatureUploadId,
+    this.certificateNumber,
+    this.certificateUploadId,
   });
 
   final int id;
@@ -26,6 +29,9 @@ class UserModel {
   final String? token;
   final int? companyId;
   final int? roleId;
+  final int? signatureUploadId;
+  final String? certificateNumber;
+  final int? certificateUploadId;
 
   String get resolvedCompanyName {
     for (final value in [companyName, territory]) {
@@ -46,6 +52,11 @@ class UserModel {
     String? companyName,
     String? territory,
     int? roleId,
+    int? signatureUploadId,
+    bool clearSignatureUploadId = false,
+    String? certificateNumber,
+    int? certificateUploadId,
+    bool clearCertificateUploadId = false,
   }) {
     return UserModel(
       id: id,
@@ -60,6 +71,13 @@ class UserModel {
       token: token ?? this.token,
       companyId: companyId ?? this.companyId,
       roleId: roleId ?? this.roleId,
+      signatureUploadId: clearSignatureUploadId
+          ? null
+          : (signatureUploadId ?? this.signatureUploadId),
+      certificateNumber: certificateNumber ?? this.certificateNumber,
+      certificateUploadId: clearCertificateUploadId
+          ? null
+          : (certificateUploadId ?? this.certificateUploadId),
     );
   }
 
@@ -67,6 +85,8 @@ class UserModel {
     final roleId = json['role_id'] as int? ?? json['roleId'] as int?;
     final companyMap =
         json['company'] is Map ? json['company'] as Map<String, dynamic> : null;
+    final technicianMap =
+        json['technician'] is Map ? json['technician'] as Map<String, dynamic> : null;
 
     return UserModel(
       // Login response nests the id as lowercase `userid` (not `id`/`userId`)
@@ -96,7 +116,27 @@ class UserModel {
           json['companyId'] as int? ??
           json['carrier_id'] as int?,
       roleId: roleId,
+      signatureUploadId: _parseId(
+        json['signature_upload_id'] ?? json['signatureUploadId'],
+      ),
+      certificateNumber: json['certificate_number'] as String? ??
+          json['certificateNumber'] as String? ??
+          json['certificate_id'] as String? ??
+          technicianMap?['certificate_id'] as String?,
+      certificateUploadId: _parseId(
+        json['certificate_upload_id'] ??
+            json['certificateUploadId'] ??
+            json['certificate_image_id'] ??
+            technicianMap?['certificate_image_id'],
+      ),
     );
+  }
+
+  static int? _parseId(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is String) return int.tryParse(value);
+    return null;
   }
 
   factory UserModel.fromLoginJson(
@@ -193,5 +233,8 @@ class UserModel {
         'avatar_url': avatarUrl,
         'token': token,
         'company_id': companyId,
+        'signature_upload_id': signatureUploadId,
+        'certificate_number': certificateNumber,
+        'certificate_upload_id': certificateUploadId,
       };
 }
