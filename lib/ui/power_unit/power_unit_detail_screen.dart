@@ -780,8 +780,6 @@ class _ComplianceTabState extends State<_ComplianceTab> {
     'Vehicle Registration',
     'Annual Safety / CVIP',
     'Proof of Insurance',
-    'Operating Authority (Copy)',
-    'Maintenance Records',
     'IFTA Permit',
     'KYU Permit',
     'NY HUT Permit',

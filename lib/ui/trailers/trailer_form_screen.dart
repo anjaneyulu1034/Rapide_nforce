@@ -1,6 +1,3 @@
-import 'package:cunning_document_scanner/cunning_document_scanner.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
@@ -15,6 +12,8 @@ import 'package:rapide_nforce/services/fleet_lookup_service.dart';
 import 'package:rapide_nforce/services/ocr_service.dart';
 import 'package:rapide_nforce/services/power_unit_service.dart';
 import 'package:rapide_nforce/services/trailer_service.dart';
+import 'package:rapide_nforce/ui/widgets/document_upload_section.dart';
+import 'package:rapide_nforce/ui/widgets/ocr_document_upload_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/unsaved_changes_dialog.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
@@ -43,8 +42,7 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _checkingVin = false;
-  String? _browseFileName;
-  String? _browseFilePath;
+  List<OcrDocumentEntry> _ocrDocuments = [];
 
   // Step 1 — Trailer Details / Technical Specs / Registration / Ownership
   final _unitNumber = TextEditingController();
@@ -421,6 +419,7 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           _req(_purchasePrice.text, 'Purchase Price') != null ||
           _req(_startDate.text, 'Start Date') != null ||
           _req(_plate.text, 'Plate Number') != null ||
+          _req(_specGvwr.text, 'GVWR') != null ||
           _trailerType == null ||
           _ownershipType.isEmpty) {
         AppToast.showError('Complete all required Trailer Details fields');
@@ -567,16 +566,38 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
       return;
     }
 
-    // Add-mode only — matches the web app, which skips re-attaching the
-    // scanned document to the trailer record when editing.
-    if (!widget.isEdit && _browseFilePath != null && result.data != null) {
-      await TrailerService.instance.uploadDocumentFull(
-        trailerId: result.data!.id,
-        filePath: _browseFilePath!,
-        fileName: _browseFileName ?? 'document',
-        vinNumber: _vin.text.trim(),
-        companyId: AuthService.instance.selectedCompanyId,
-      );
+    // Add-mode only — matches the web app's `handleDocumentUpload`, which
+    // skips re-attaching the committed documents when editing. Each row is
+    // persisted as a real trailer document tagged with its picked type,
+    // defaulting to a 1-year validity window the same way web does.
+    if (!widget.isEdit && _ocrDocuments.isNotEmpty && result.data != null) {
+      final today = DateTime.now();
+      final issueDate = today.toIso8601String().split('T').first;
+      final expiryDate = DateTime(today.year + 1, today.month, today.day)
+          .toIso8601String()
+          .split('T')
+          .first;
+      var anyFailed = false;
+      for (final doc in _ocrDocuments) {
+        if (doc.filePath == null) continue;
+        final uploadResult = await TrailerService.instance.uploadDocumentFull(
+          trailerId: result.data!.id,
+          filePath: doc.filePath!,
+          fileName: doc.fileName,
+          vinNumber: _vin.text.trim(),
+          documentType: doc.documentType,
+          issueDate: issueDate,
+          expiryDate: expiryDate,
+          companyId: AuthService.instance.selectedCompanyId,
+        );
+        if (!uploadResult.isSuccess) anyFailed = true;
+      }
+      if (anyFailed && mounted) {
+        AppToast.showError(
+          'Trailer saved, but some documents failed to upload. '
+          'Please try again from the trailer details page.',
+        );
+      }
     }
 
     if (!mounted) return;
@@ -585,90 +606,20 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
     Navigator.pop(context, true);
   }
 
-  Future<void> _pickFromCamera() async {
-    try {
-      final picker = ImagePicker();
-      final XFile? photo = await picker.pickImage(source: ImageSource.camera);
-      if (photo == null) return;
-      await _runOcrScan(photo.path, photo.name);
-    } catch (e) {
-      AppToast.showError('Failed to capture image: $e');
-    }
-  }
-
-  Future<void> _pickFromFiles() async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
-    );
-    if (picked == null || picked.files.isEmpty) return;
-    final file = picked.files.first;
-    if (file.path == null) {
-      setState(() {
-        _browseFileName = file.name;
-        _browseFilePath = null;
-      });
-      return;
-    }
-    await _runOcrScan(file.path!, file.name);
-  }
-
-  Future<void> _scanDocument() async {
-    try {
-      final pages = await CunningDocumentScanner.getPictures(
-        noOfPages: 1,
-        scannerSource: ScannerSource.camera,
-      );
-      if (pages == null || pages.isEmpty) return;
-      final path = pages.first;
-      await _runOcrScan(path, path.split('/').last);
-    } catch (e) {
-      AppToast.showError('Failed to scan document: $e');
-    }
-  }
-
-  Future<void> _runOcrScan(String filePath, String fileName) async {
-    setState(() {
-      _browseFileName = fileName;
-      _browseFilePath = filePath;
-    });
-
-    showDialog(
+  /// Opens the "Upload Documents" sheet (Document Type per row, like web),
+  /// which handles its own file picking + OCR scanning; each successfully
+  /// extracted document streams its fields into the form as it resolves.
+  /// entityTypeId 2 = Trailer, scoping the Document Type list accordingly.
+  Future<void> _openDocumentUploadSheet() async {
+    final result = await showOcrDocumentUploadSheet(
       context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const AlertDialog(
-        backgroundColor: Colors.black87,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(color: Colors.white),
-            SizedBox(height: 16),
-            Text(
-              'Extracting information…',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-      ),
+      initialDocuments: _ocrDocuments,
+      onPrefillExtracted: _applyOcrPrefill,
+      entityTypeId: 2,
     );
-
-    final prefill = await OcrService.instance.scanAndExtract(
-      filePath: filePath,
-      fileName: fileName,
-      companyId: AuthService.instance.selectedCompanyId,
-    );
-
-    if (!mounted) return;
-    Navigator.pop(context);
-
-    if (prefill == null) {
-      AppToast.showError(
-        'No data could be extracted — you can still fill the form manually',
-      );
-      return;
-    }
-    _applyOcrPrefill(prefill);
-    AppToast.showSuccess('Document scanned — fields auto-filled');
+    if (result == null || !mounted) return;
+    setState(() => _ocrDocuments = result);
+    _onFormChanged();
   }
 
   /// Fills blank controllers only — never clobbers what the user already
@@ -809,12 +760,12 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
   }
 
   List<Widget> _buildStep1() => [
-    WebFileUploadZone(
-      fileName: _browseFileName,
-      filePath: _browseFilePath,
-      onBrowse: _pickFromFiles,
-      onCamera: _pickFromCamera,
-      onScan: _scanDocument,
+    DocumentUploadSection(
+      documents: _ocrDocuments,
+      onOpenSheet: _openDocumentUploadSheet,
+      onRemove: (doc) => setState(
+        () => _ocrDocuments = _ocrDocuments.where((d) => d != doc).toList(),
+      ),
     ),
     const SizedBox(height: 12),
     WebFormSection(
@@ -942,8 +893,9 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
         WebTextFormField(controller: _specCapacity, label: 'Capacity'),
         WebTextFormField(
           controller: _specGvwr,
-          label: 'GVWR (Gross Vehicle Weight Rating)',
+          label: 'GVWR (Gross Vehicle Weight Rating) *',
           keyboardType: TextInputType.number,
+          validator: (v) => _nonNegativeNumberValidator(v, 'GVWR', required: true),
         ),
       ],
     ),
@@ -1221,7 +1173,7 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 0, 16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       decoration: BoxDecoration(
         color: AppColors.card,
         border: Border(top: BorderSide(color: AppColors.border)),
@@ -1236,23 +1188,20 @@ class _BottomBar extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           const Spacer(),
-          Flexible(
-            child: onContinue != null
-                ? WebPrimaryButton(
-                    label: 'Continue',
-                    loading: saving,
-                    onPressed: saving ? null : onContinue,
-                    expand: false,
-                    dense: true,
-                  )
-                : WebPrimaryButton(
-                    label: 'Save Trailer',
-                    loading: saving,
-                    onPressed: saving ? null : onSave,
-                    expand: false,
-                    dense: true,
-                  ),
-          ),
+          onContinue != null
+              ? WebPrimaryButton(
+                  label: 'Continue',
+                  onPressed: onContinue,
+                  expand: false,
+                  dense: true,
+                )
+              : WebPrimaryButton(
+                  label: 'Save Trailer',
+                  loading: saving,
+                  onPressed: saving ? null : onSave,
+                  expand: false,
+                  dense: true,
+                ),
         ],
       ),
     );

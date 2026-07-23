@@ -245,7 +245,7 @@ class WebTextFormField extends StatelessWidget {
     this.onTap,
     this.onChanged,
     this.suffix,
-    this.autovalidateMode,
+    this.autovalidateMode = AutovalidateMode.onUserInteraction,
   });
 
   final TextEditingController controller;
@@ -335,6 +335,7 @@ class WebDropdownField<T> extends StatelessWidget {
     required this.onChanged,
     this.hint = 'Select',
     this.validator,
+    this.autovalidateMode = AutovalidateMode.onUserInteraction,
   });
 
   final String label;
@@ -344,6 +345,7 @@ class WebDropdownField<T> extends StatelessWidget {
   final ValueChanged<T?> onChanged;
   final String hint;
   final String? Function(T?)? validator;
+  final AutovalidateMode? autovalidateMode;
 
   @override
   Widget build(BuildContext context) {
@@ -400,6 +402,7 @@ class WebDropdownField<T> extends StatelessWidget {
             .toList(),
         onChanged: onChanged,
         validator: validator,
+        autovalidateMode: autovalidateMode,
       ),
     );
   }

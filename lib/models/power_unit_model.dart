@@ -1,5 +1,5 @@
-import 'package:intl/intl.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
+import 'package:rapide_nforce/core/utils/date_format.dart';
 import 'package:rapide_nforce/models/truck_permit_model.dart';
 
 class PowerUnitModel {
@@ -263,8 +263,10 @@ class PowerUnitModel {
       kmUntilPm: json['kmUntilPm']?.toString(),
       telematicsProvider: json['telematicsProvider'] as String?,
       telematicsEnabled: _telematicsLabel(json['telematicsEnabled']),
-      telematicsLastSynced: json['telematicsLastSynced'] as String? ??
-          json['telematics_last_synced'] as String?,
+      telematicsLastSynced: formatDateTimeMMDDYYYY(
+        json['telematicsLastSynced'] as String? ??
+            json['telematics_last_synced'] as String?,
+      ),
       eldProvider: json['eldProvider'] as String?,
       samsaraVehicleId: json['samsaraVehicleId'] as String?,
       certificateNumber: json['certificateNumber'] as String?,
@@ -309,12 +311,7 @@ class PowerUnitModel {
     return num.tryParse(value.toString());
   }
 
-  static String? _formatDate(String? iso) {
-    if (iso == null || iso.isEmpty) return null;
-    final parsed = DateTime.tryParse(iso);
-    if (parsed == null) return iso;
-    return DateFormat('MM-dd-yyyy').format(parsed);
-  }
+  static String? _formatDate(String? iso) => formatDateMMDDYYYY(iso);
 
   static String displayOrDash(String? value) =>
       value == null || value.trim().isEmpty ? AppStrings.noData : value;

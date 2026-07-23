@@ -1,5 +1,5 @@
-import 'package:intl/intl.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
+import 'package:rapide_nforce/core/utils/date_format.dart';
 
 class TrailerModel {
   const TrailerModel({
@@ -208,12 +208,7 @@ class TrailerModel {
     return v.toString();
   }
 
-  static String? _fmt(String? iso) {
-    if (iso == null || iso.isEmpty) return null;
-    final parsed = DateTime.tryParse(iso);
-    if (parsed == null) return iso;
-    return DateFormat('MM-dd-yyyy').format(parsed);
-  }
+  static String? _fmt(String? iso) => formatDateMMDDYYYY(iso);
 
   static int? _toInt(dynamic v) {
     if (v == null) return null;

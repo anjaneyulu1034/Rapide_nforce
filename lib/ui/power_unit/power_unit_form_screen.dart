@@ -3,6 +3,7 @@ import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
+import 'package:rapide_nforce/core/utils/date_format.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/power_unit_model.dart';
 import 'package:rapide_nforce/models/truck_permit_model.dart';
@@ -10,7 +11,8 @@ import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/fleet_lookup_service.dart';
 import 'package:rapide_nforce/services/ocr_service.dart';
 import 'package:rapide_nforce/services/power_unit_service.dart';
-import 'package:rapide_nforce/ui/power_unit/power_unit_ocr_document_upload_sheet.dart';
+import 'package:rapide_nforce/ui/widgets/document_upload_section.dart';
+import 'package:rapide_nforce/ui/widgets/ocr_document_upload_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/unsaved_changes_dialog.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
@@ -253,10 +255,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _registrationExpiry.text = u.registrationExpiry ?? '';
     _imsNumber.text = u.imsNumber ?? '';
     final ownershipType = (u.ownershipType ?? '').toLowerCase().trim();
-    _ownershipType =
-        ['owned', 'owner-operator'].contains(ownershipType)
-            ? ownershipType
-            : '';
+    _ownershipType = ['owned', 'owner-operator'].contains(ownershipType)
+        ? ownershipType
+        : '';
     _ownerName.text = u.ownerName ?? '';
     _ownerEmail.text = u.ownerEmail ?? '';
     _ownerPhone.text = u.ownerPhone ?? '';
@@ -320,7 +321,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   DateTime _calculateCvipExpiry(DateTime inspectionDate, String province) {
     final p = province.trim().toLowerCase();
     final shortValidity =
-        p == 'british columbia' || p == 'bc' || p == 'saskatchewan' || p == 'sk';
+        p == 'british columbia' ||
+        p == 'bc' ||
+        p == 'saskatchewan' ||
+        p == 'sk';
     return DateTime(
       inspectionDate.year,
       inspectionDate.month + (shortValidity ? 6 : 12),
@@ -332,8 +336,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   /// + the Registration & Plates province — always overwrites, matching the
   /// web app's reactive recalculation (the field is not user-editable).
   void _recalculateCvipExpiry() {
-    final province =
-        _states.where((s) => s.id == _stateId).map((s) => s.name).firstOrNull;
+    final province = _states
+        .where((s) => s.id == _stateId)
+        .map((s) => s.name)
+        .firstOrNull;
     if (province == null || province.isEmpty) return;
     final inspectionDate = DateTime.tryParse(_inspectionDate.text.trim());
     if (inspectionDate == null) return;
@@ -682,7 +688,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   /// which handles its own file picking + OCR scanning; each successfully
   /// extracted document streams its fields into the form as it resolves.
   Future<void> _openDocumentUploadSheet() async {
-    final result = await showPowerUnitOcrDocumentUploadSheet(
+    final result = await showOcrDocumentUploadSheet(
       context: context,
       initialDocuments: _ocrDocuments,
       onPrefillExtracted: _applyOcrPrefill,
@@ -737,7 +743,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       fill(_safetyVehicleType, prefill['vehicleType']);
 
       final extractedFuelType = prefill['fuelType'];
-      if ((_fuelType == null || _fuelType!.isEmpty) && extractedFuelType != null) {
+      if ((_fuelType == null || _fuelType!.isEmpty) &&
+          extractedFuelType != null) {
         final match = _fuelTypes.where(
           (f) => f.name.toLowerCase() == extractedFuelType.toLowerCase(),
         );
@@ -868,146 +875,14 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     );
   }
 
-  /// Matches web's Add Truck step 1: an empty "Click to browse files" card
-  /// when nothing's attached yet, or a summary of the documents committed
-  /// via the Upload Documents sheet with an "Add More" affordance.
-  Widget _buildDocumentUploadSection() {
-    if (_ocrDocuments.isEmpty) {
-      return GestureDetector(
-        onTap: _openDocumentUploadSheet,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AppColors.textSecondary.withValues(alpha: 0.35),
-              width: 1.5,
-            ),
-            color: AppColors.inputFill.withValues(alpha: 0.35),
-          ),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.cloud_upload_outlined,
-                  size: 28,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Click to browse files',
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Supported formats: Images (JPG, PNG) and PDF',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
-              ),
-              const SizedBox(height: 14),
-              FilledButton.icon(
-                onPressed: _openDocumentUploadSheet,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF4B633D),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                ),
-                icon: const Icon(Icons.description_outlined, size: 18),
-                label: const Text(
-                  'Browse Files',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-        color: AppColors.inputFill.withValues(alpha: 0.35),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (final doc in _ocrDocuments)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.description_outlined,
-                    size: 18,
-                    color: AppColors.primary,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          doc.fileName,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          doc.documentType,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18, color: AppColors.danger),
-                    onPressed: () => setState(
-                      () => _ocrDocuments = _ocrDocuments
-                          .where((d) => d != doc)
-                          .toList(),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: _openDocumentUploadSheet,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add More'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   List<Widget> _buildStep1() => [
-    _buildDocumentUploadSection(),
+    DocumentUploadSection(
+      documents: _ocrDocuments,
+      onOpenSheet: _openDocumentUploadSheet,
+      onRemove: (doc) => setState(
+        () => _ocrDocuments = _ocrDocuments.where((d) => d != doc).toList(),
+      ),
+    ),
     const SizedBox(height: 12),
     WebFormSection(
       title: 'Vehicle Details',
@@ -1082,10 +957,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
             _onFormChanged();
           },
         ),
-        WebTextFormField(
-          controller: _assignedDriver,
-          label: 'Assigned Driver',
-        ),
+        WebTextFormField(controller: _assignedDriver, label: 'Assigned Driver'),
       ],
     ),
     WebFormSection(
@@ -1263,8 +1135,11 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _currentOdometer,
           label: 'Current Odometer *',
           keyboardType: TextInputType.number,
-          validator: (v) =>
-              _nonNegativeNumberValidator(v, 'Current Odometer', required: true),
+          validator: (v) => _nonNegativeNumberValidator(
+            v,
+            'Current Odometer',
+            required: true,
+          ),
         ),
         WebTextFormField(
           controller: _annualInspectionDue,
@@ -1287,8 +1162,11 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _nextPmOdometer,
           label: 'Next PM Odometer *',
           keyboardType: TextInputType.number,
-          validator: (v) =>
-              _nonNegativeNumberValidator(v, 'Next PM Odometer', required: true),
+          validator: (v) => _nonNegativeNumberValidator(
+            v,
+            'Next PM Odometer',
+            required: true,
+          ),
         ),
       ],
     ),
@@ -1349,7 +1227,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         ..._permits.map(
           (p) => ListTile(
             title: Text('${p.permitType} — ${p.permitNumber}'),
-            subtitle: Text('${p.issueDate} → ${p.expiryDate}'),
+            subtitle: Text(
+              '${formatDateMMDDYYYY(p.issueDate)} → ${formatDateMMDDYYYY(p.expiryDate)}',
+            ),
             trailing: IconButton(
               icon: const Icon(Icons.delete_outline),
               onPressed: () => setState(() => _permits.remove(p)),

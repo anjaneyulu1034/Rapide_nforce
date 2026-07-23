@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'package:rapide_nforce/core/utils/date_format.dart';
 
 class TruckDocumentModel {
   const TruckDocumentModel({
@@ -70,12 +71,7 @@ class TruckDocumentModel {
     );
   }
 
-  static String? _formatDate(String? iso) {
-    if (iso == null || iso.isEmpty) return null;
-    final parsed = DateTime.tryParse(iso);
-    if (parsed == null) return iso;
-    return DateFormat('d MMM yyyy').format(parsed);
-  }
+  static String? _formatDate(String? iso) => formatDateMMDDYYYY(iso);
 
   static String? _isoDate(String? iso) {
     if (iso == null || iso.isEmpty) return null;

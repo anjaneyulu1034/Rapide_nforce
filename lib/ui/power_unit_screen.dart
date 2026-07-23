@@ -1053,7 +1053,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
             Row(
               children: [
                 Text(
-                  _hasActiveFilters ? 'Filtered Results' : 'Total Units',
+                  _hasActiveFilters ? 'Filtered Results' : 'Total Power Units',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,

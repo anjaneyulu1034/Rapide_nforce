@@ -23,17 +23,19 @@ class OcrDocumentEntry {
 }
 
 /// Mirrors the web app's "Upload Documents" drawer shown from the Add Power
-/// Unit wizard's step 1 (`DocumentUpload` in `Documentupload.tsx`): the user
-/// picks a Document Type per row *before* browsing a file for that row, can
-/// add/remove rows, and each file is scanned for OCR prefill data as soon as
-/// it's picked. [onPrefillExtracted] is called for every document that
-/// yields extracted fields, so the caller can merge them into the form as
-/// they arrive — same as web applying OCR results progressively rather than
-/// waiting for every row to finish.
-Future<List<OcrDocumentEntry>?> showPowerUnitOcrDocumentUploadSheet({
+/// Unit / Add Trailer wizards' step 1 (`DocumentUpload` in
+/// `Documentupload.tsx`): the user picks a Document Type per row *before*
+/// browsing a file for that row, can add/remove rows, and each file is
+/// scanned for OCR prefill data as soon as it's picked. [onPrefillExtracted]
+/// is called for every document that yields extracted fields, so the caller
+/// can merge them into the form as they arrive — same as web applying OCR
+/// results progressively rather than waiting for every row to finish.
+/// [entityTypeId] scopes the Document Type list (1 = Truck, 2 = Trailer).
+Future<List<OcrDocumentEntry>?> showOcrDocumentUploadSheet({
   required BuildContext context,
   required List<OcrDocumentEntry> initialDocuments,
   required void Function(TruckOcrPrefill prefill) onPrefillExtracted,
+  int entityTypeId = 1,
 }) {
   return Navigator.push<List<OcrDocumentEntry>>(
     context,
@@ -42,12 +44,13 @@ Future<List<OcrDocumentEntry>?> showPowerUnitOcrDocumentUploadSheet({
       builder: (_) => _OcrDocumentUploadSheet(
         initialDocuments: initialDocuments,
         onPrefillExtracted: onPrefillExtracted,
+        entityTypeId: entityTypeId,
       ),
     ),
   );
 }
 
-/// Document types that only make sense once a truck already exists (or
+/// Document types that only make sense once a vehicle already exists (or
 /// aren't OCR-relevant at intake) — mirrors web's
 /// `excludedDocumentTypeValues={['Maintenance Policy', 'Part Invoice']}`.
 const List<String> _kExcludedOcrDocumentTypes = [
@@ -71,10 +74,12 @@ class _OcrDocumentUploadSheet extends StatefulWidget {
   const _OcrDocumentUploadSheet({
     required this.initialDocuments,
     required this.onPrefillExtracted,
+    required this.entityTypeId,
   });
 
   final List<OcrDocumentEntry> initialDocuments;
   final void Function(TruckOcrPrefill prefill) onPrefillExtracted;
+  final int entityTypeId;
 
   @override
   State<_OcrDocumentUploadSheet> createState() =>
@@ -107,6 +112,7 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
   Future<void> _loadDocumentTypes() async {
     setState(() => _loadingTypes = true);
     final result = await FleetLookupService.instance.fetchOcrDocumentTypes(
+      entityTypeId: widget.entityTypeId,
       excluded: _kExcludedOcrDocumentTypes,
     );
     if (!mounted) return;

@@ -25,7 +25,16 @@
       "Read(//c/Users/anjik/Downloads/rapidenforce-backend/**)",
       "Read(//c/Users/anjik/Downloads/rapidenforce-backend/prisma/**)",
       "Read(//c/Users/anjik/Downloads/rapidenforce-backend/src/schemas/**)",
-      "Read(//c/Users/anjik/Downloads/rapidenforce-backend/src/**)"
+      "Read(//c/Users/anjik/Downloads/rapidenforce-backend/src/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-ui \\\\\\(2\\\\\\)/src/pages/**)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-ui \\\\\\(2\\\\\\)/src/utils/**)",
+      "Bash(ls \"/c/Users/anjik/Downloads/\" 2>/dev/null; echo \"---\"; ls \"/c/Users/anjik/Downloads/rapidenforce-ui \\(1\\)\" 2>/dev/null | head -30; echo \"---backend---\"; ls \"/c/Users/anjik/Downloads/rapidenforce-backend\" 2>/dev/null | head -30)",
+      "Read(//c/Users/anjik/Downloads//**)",
+      "Bash(grep -rln \"formatDateMMDDYYYY\" \"/c/Users/anjik/Downloads/rapidenforce-ui \\(2\\)\" 2>/dev/null | head -50)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-ui \\\\\\(2\\\\\\)/**)",
+      "Bash(grep -rln \"formatDateMMDDYYYY\" \"/c/Users/anjik/Downloads/rapidenforce-backend \\(1\\)\" 2>/dev/null | head -50)",
+      "Read(//c/Users/anjik/Downloads/rapidenforce-backend \\\\\\(1\\\\\\)/**)",
+      "Bash(grep -n \"formatDateMMDDYYYY\" -A 20 \"/c/Users/anjik/Downloads/rapidenforce-ui \\(2\\)/src/utils/index.ts\" | head -40)"
     ]
   }
 }
