@@ -872,6 +872,10 @@ class _ComplianceTabState extends State<_ComplianceTab> {
   }
 
   Future<void> _generateQrCode() async {
+    if (widget.documents.isEmpty) {
+      DocumentDownloadService.instance.showNoDocumentsError(context);
+      return;
+    }
     setState(() => _generatingQr = true);
     final result = await PowerUnitService.instance.generateQrCode(
       widget.unit.id,
@@ -1854,23 +1858,41 @@ class _DocumentsTabState extends State<_DocumentsTab> {
             ),
           )
         else
-          ...filtered.map(
-            (d) => DocCard(
-              doc: d,
-              canReplace: _canReplace,
-              canDelete: _canDelete,
-              onView: () => _showDetails(d),
-              onDelete: () => widget.onDelete(d),
-              onReplace: () => _replaceDocument(d),
-              onVersionHistory: () => _showVersionHistory(d),
-              onDownload: () =>
-                  DocumentDownloadService.instance.downloadAndOpen(
-                    context: context,
-                    truckId: d.truckId,
-                    documentId: d.id,
-                    displayFileName: d.fileName,
-                  ),
-            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              Widget buildDocCard(TruckDocumentModel d) => DocCard(
+                doc: d,
+                canEdit: _canReplace,
+                canDelete: _canDelete,
+                onView: () => _showDetails(d),
+                onDelete: () => widget.onDelete(d),
+                onEdit: () => _replaceDocument(d),
+                onVersionHistory: () => _showVersionHistory(d),
+                onDownload: () =>
+                    DocumentDownloadService.instance.downloadAndOpen(
+                      context: context,
+                      truckId: d.truckId,
+                      documentId: d.id,
+                      displayFileName: d.fileName,
+                    ),
+              );
+
+              if (constraints.maxWidth < 600) {
+                return Column(children: filtered.map(buildDocCard).toList());
+              }
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: filtered.length,
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 500,
+                  mainAxisExtent: 160,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 6,
+                ),
+                itemBuilder: (context, i) => buildDocCard(filtered[i]),
+              );
+            },
           ),
       ],
     );
@@ -2070,7 +2092,27 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
             ),
           )
         else
-          ...filtered.map((wo) => _WoCard(wo: wo)),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 600) {
+                return Column(
+                  children: filtered.map((wo) => _WoCard(wo: wo)).toList(),
+                );
+              }
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: filtered.length,
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 500,
+                  mainAxisExtent: 220,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 6,
+                ),
+                itemBuilder: (context, i) => _WoCard(wo: filtered[i]),
+              );
+            },
+          ),
       ],
     );
   }
@@ -2275,6 +2317,8 @@ class _WoCard extends StatelessWidget {
                 wo.issueDescription,
                 wo.companyName,
               ].where((s) => s != null && s.isNotEmpty).join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 10),

@@ -44,6 +44,246 @@ class _TrailersScreenState extends State<TrailersScreen> {
   bool get _isAdminOrSuperAdmin =>
       isAdminRole(AuthService.instance.currentUser?.role);
 
+  // Column sort — applied client-side over the fetched batch, mirroring the
+  // web list's clickable-column-header sort (which is also client-side).
+  String? _sortColumn;
+  bool _sortAscending = true;
+
+  static const Map<String, String> _sortColumns = {
+    'trailerNumber': 'Unit #',
+    'startDate': 'Start Date',
+    'vinNumber': 'VIN',
+    'licensePlate': 'Plate',
+    'registrationExpiry': 'Registration Expiry',
+    'status': 'Status',
+  };
+
+  DateTime? _parseDate(String? s) {
+    if (s == null || s.isEmpty) return null;
+    final parsed = DateTime.tryParse(s);
+    if (parsed != null) return parsed;
+    final parts = s.split('-');
+    if (parts.length == 3) {
+      final m = int.tryParse(parts[0]);
+      final d = int.tryParse(parts[1]);
+      final y = int.tryParse(parts[2]);
+      if (m != null && d != null && y != null) return DateTime(y, m, d);
+    }
+    return null;
+  }
+
+  List<TrailerModel> get _visibleItems {
+    final column = _sortColumn;
+    if (column == null) return _items;
+    int compareStrings(String? a, String? b) =>
+        (a ?? '').toLowerCase().compareTo((b ?? '').toLowerCase());
+    int compareDates(String? a, String? b) {
+      final da = _parseDate(a)?.millisecondsSinceEpoch ?? 0;
+      final db = _parseDate(b)?.millisecondsSinceEpoch ?? 0;
+      return da.compareTo(db);
+    }
+
+    int cmp(TrailerModel a, TrailerModel b) {
+      switch (column) {
+        case 'trailerNumber':
+          return compareStrings(a.trailerNumber, b.trailerNumber);
+        case 'startDate':
+          return compareDates(a.startDate, b.startDate);
+        case 'vinNumber':
+          return compareStrings(a.vinNumber, b.vinNumber);
+        case 'licensePlate':
+          return compareStrings(a.licensePlate, b.licensePlate);
+        case 'registrationExpiry':
+          return compareDates(a.registrationExpiry, b.registrationExpiry);
+        case 'status':
+          return (a.isActive ? 1 : 0).compareTo(b.isActive ? 1 : 0);
+        default:
+          return 0;
+      }
+    }
+
+    final sorted = [..._items];
+    sorted.sort((a, b) => _sortAscending ? cmp(a, b) : cmp(b, a));
+    return sorted;
+  }
+
+  Future<void> _openSortSheet() async {
+    String? tempColumn = _sortColumn;
+    bool tempAscending = _sortAscending;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            Widget columnChip(String value, String label) {
+              final selected = tempColumn == value;
+              return ChoiceChip(
+                label: Text(label),
+                selected: selected,
+                onSelected: (_) =>
+                    setSheetState(() => tempColumn = selected ? null : value),
+                selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                labelStyle: TextStyle(
+                  color: selected ? AppColors.primary : AppColors.textPrimary,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 13,
+                ),
+                side: BorderSide(
+                  color: selected ? AppColors.primary : AppColors.border,
+                ),
+                backgroundColor: AppColors.inputFill,
+              );
+            }
+
+            Widget directionChip(String label, bool ascending) {
+              final selected = tempAscending == ascending;
+              return ChoiceChip(
+                label: Text(label),
+                selected: selected,
+                onSelected: (_) =>
+                    setSheetState(() => tempAscending = ascending),
+                selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                labelStyle: TextStyle(
+                  color: selected ? AppColors.primary : AppColors.textPrimary,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 13,
+                ),
+                side: BorderSide(
+                  color: selected ? AppColors.primary : AppColors.border,
+                ),
+                backgroundColor: AppColors.inputFill,
+              );
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 20,
+                  bottom: 20 + MediaQuery.of(sheetContext).viewInsets.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Sort Trailers',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'SORT BY COLUMN',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final entry in _sortColumns.entries)
+                          columnChip(entry.key, entry.value),
+                      ],
+                    ),
+                    if (tempColumn != null) ...[
+                      const SizedBox(height: 18),
+                      Text(
+                        'ORDER',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          directionChip('Ascending', true),
+                          directionChip('Descending', false),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              setSheetState(() {
+                                tempColumn = null;
+                                tempAscending = true;
+                              });
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.textPrimary,
+                              side: BorderSide(color: AppColors.border),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text('Clear'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () {
+                              final columnChanged = tempColumn != _sortColumn;
+                              setState(() {
+                                _sortColumn = tempColumn;
+                                _sortAscending = tempAscending;
+                              });
+                              Navigator.pop(sheetContext);
+                              // A column pick/clear changes the effective
+                              // fetch size (need the full batch to sort
+                              // correctly), so re-fetch when it changes.
+                              if (columnChanged) _load();
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF4B633D),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'Apply',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -82,6 +322,10 @@ class _TrailersScreenState extends State<TrailersScreen> {
     });
   }
 
+  // Fetches a larger batch when a column sort is active so the sort reflects
+  // the whole list, not just the currently-paginated-in page.
+  int get _effectiveLimit => _sortColumn != null ? 500 : _limit;
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -92,7 +336,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
 
     final result = await TrailerService.instance.fetchTrailers(
       page: 1,
-      limit: _limit,
+      limit: _effectiveLimit,
       search: _search.isEmpty ? null : _search,
     );
 
@@ -129,7 +373,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
     final nextPage = _page + 1;
     final result = await TrailerService.instance.fetchTrailers(
       page: nextPage,
-      limit: _limit,
+      limit: _effectiveLimit,
       search: _search.isEmpty ? null : _search,
     );
 
@@ -712,6 +956,41 @@ class _TrailersScreenState extends State<TrailersScreen> {
                   ),
                 ),
                 const Spacer(),
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    IconButton(
+                      onPressed: _openSortSheet,
+                      icon: Icon(
+                        Icons.sort_rounded,
+                        color: _sortColumn != null
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
+                      ),
+                      style: IconButton.styleFrom(
+                        backgroundColor: AppColors.card,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: BorderSide(color: AppColors.border),
+                        ),
+                      ),
+                    ),
+                    if (_sortColumn != null)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: AppColors.primary,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.card, width: 2),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
                 if (_isAdminOrSuperAdmin)
                   TextButton.icon(
                     onPressed: _openImport,
@@ -750,9 +1029,10 @@ class _TrailersScreenState extends State<TrailersScreen> {
             else ...[
               LayoutBuilder(
                 builder: (context, constraints) {
+                  final visible = _visibleItems;
                   if (constraints.maxWidth < 600) {
                     return Column(
-                      children: _items.map((t) {
+                      children: visible.map((t) {
                         return Padding(
                           padding: const EdgeInsets.only(bottom: 16),
                           child: _buildCard(t),
@@ -763,7 +1043,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
                     return GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _items.length,
+                      itemCount: visible.length,
                       gridDelegate:
                           const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 500,
@@ -771,7 +1051,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                           ),
-                      itemBuilder: (context, i) => _buildCard(_items[i]),
+                      itemBuilder: (context, i) => _buildCard(visible[i]),
                     );
                   }
                 },

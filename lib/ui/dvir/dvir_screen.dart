@@ -72,10 +72,15 @@ Color _avatarColor(String seed) {
 }
 
 String _initials(String name) {
-  final parts = name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+  final parts = name
+      .trim()
+      .split(RegExp(r'\s+'))
+      .where((p) => p.isNotEmpty)
+      .toList();
   if (parts.isEmpty) return '?';
   if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-  return (parts.first.substring(0, 1) + parts.last.substring(0, 1)).toUpperCase();
+  return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
+      .toUpperCase();
 }
 
 class DvirScreen extends StatefulWidget {
@@ -87,7 +92,8 @@ class DvirScreen extends StatefulWidget {
   State<DvirScreen> createState() => _DvirScreenState();
 }
 
-class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateMixin {
+class _DvirScreenState extends State<DvirScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _searchController = TextEditingController();
   final _reportsScrollController = ScrollController();
@@ -244,7 +250,10 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
     if (!result.isSuccess) {
       setState(() {
         _reportsLoading = false;
-        _reportsError = ApiFeedback.errorMessage(result, fallback: 'Failed to load DVIR reports');
+        _reportsError = ApiFeedback.errorMessage(
+          result,
+          fallback: 'Failed to load DVIR reports',
+        );
       });
       return;
     }
@@ -259,7 +268,10 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _loadMoreReports() async {
-    if (_reportsLoading || _reportsLoadingMore || _reportsPage >= _reportsTotalPages) return;
+    if (_reportsLoading ||
+        _reportsLoadingMore ||
+        _reportsPage >= _reportsTotalPages)
+      return;
 
     setState(() {
       _reportsLoadingMore = true;
@@ -315,7 +327,10 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
     if (!result.isSuccess) {
       setState(() {
         _defectsLoading = false;
-        _defectsError = ApiFeedback.errorMessage(result, fallback: 'Failed to load DVIR defects');
+        _defectsError = ApiFeedback.errorMessage(
+          result,
+          fallback: 'Failed to load DVIR defects',
+        );
       });
       return;
     }
@@ -330,7 +345,10 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _loadMoreDefects() async {
-    if (_defectsLoading || _defectsLoadingMore || _defectsPage >= _defectsTotalPages) return;
+    if (_defectsLoading ||
+        _defectsLoadingMore ||
+        _defectsPage >= _defectsTotalPages)
+      return;
 
     setState(() {
       _defectsLoadingMore = true;
@@ -408,7 +426,10 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                       const SizedBox(height: 2),
                       Text(
                         r.vin!,
-                        style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                        style: TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ],
@@ -423,7 +444,9 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
             children: [
               CircleAvatar(
                 radius: 16,
-                backgroundColor: _avatarColor(r.driverName).withValues(alpha: 0.15),
+                backgroundColor: _avatarColor(
+                  r.driverName,
+                ).withValues(alpha: 0.15),
                 child: Text(
                   _initials(r.driverName),
                   style: TextStyle(
@@ -440,12 +463,18 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                   children: [
                     Text(
                       r.driverName,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
                       r.driverExternalId,
-                      style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -453,7 +482,11 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
             ],
           ),
           const SizedBox(height: 14),
-          Divider(height: 1, thickness: 1, color: AppColors.textSecondary.withValues(alpha: 0.12)),
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: AppColors.textSecondary.withValues(alpha: 0.12),
+          ),
           const SizedBox(height: 14),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -470,7 +503,12 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                 child: _GridCell(
                   icon: Icons.category_outlined,
                   label: 'TYPE',
-                  child: _Badge(label: r.inspectionType, bg: typeBg, fg: typeFg, compact: true),
+                  child: _Badge(
+                    label: r.inspectionType,
+                    bg: typeBg,
+                    fg: typeFg,
+                    compact: true,
+                  ),
                 ),
               ),
             ],
@@ -492,8 +530,9 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                   icon: Icons.report_problem_outlined,
                   label: 'DEFECTS',
                   value: '${r.defectCount}',
-                  valueColor:
-                      r.defectCount > 0 ? const Color(0xFFBA1A1A) : AppColors.textPrimary,
+                  valueColor: r.defectCount > 0
+                      ? const Color(0xFFBA1A1A)
+                      : AppColors.textPrimary,
                 ),
               ),
             ],
@@ -554,7 +593,10 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                     const SizedBox(height: 2),
                     Text(
                       'Code: ${d.defectCode}',
-                      style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                      style: TextStyle(
+                        color: AppColors.textSecondary,
+                        fontSize: 11,
+                      ),
                     ),
                   ],
                 ),
@@ -573,7 +615,11 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
             ),
           ],
           const SizedBox(height: 12),
-          Divider(height: 1, thickness: 1, color: AppColors.textSecondary.withValues(alpha: 0.12)),
+          Divider(
+            height: 1,
+            thickness: 1,
+            color: AppColors.textSecondary.withValues(alpha: 0.12),
+          ),
           const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -587,12 +633,18 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                     children: [
                       Text(
                         d.vehicleNumber ?? '—',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
                       ),
                       if ((d.vin ?? '').isNotEmpty)
                         Text(
                           d.vin!,
-                          style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 11,
+                          ),
                         ),
                     ],
                   ),
@@ -617,7 +669,9 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                   icon: Icons.warning_amber_outlined,
                   label: 'SEVERITY',
                   child: _Badge(
-                    label: (d.severity ?? '').trim().isEmpty ? 'No Severity' : d.severity!,
+                    label: (d.severity ?? '').trim().isEmpty
+                        ? 'No Severity'
+                        : d.severity!,
                     bg: sevBg,
                     fg: sevFg,
                     compact: true,
@@ -656,8 +710,9 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                           onTap: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    DvirDetailScreen(reportId: d.syncedDvirReportId!),
+                                builder: (_) => DvirDetailScreen(
+                                  reportId: d.syncedDvirReportId!,
+                                ),
                               ),
                             );
                           },
@@ -741,8 +796,14 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
           labelColor: AppColors.textPrimary,
           unselectedLabelColor: AppColors.textSecondary,
           indicatorColor: AppColors.primary,
-          labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.normal, fontSize: 14),
+          labelStyle: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+          ),
+          unselectedLabelStyle: const TextStyle(
+            fontWeight: FontWeight.normal,
+            fontSize: 14,
+          ),
           tabs: const [
             Tab(text: 'DVIR Reports'),
             Tab(text: 'Defects'),
@@ -768,7 +829,9 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                   child: WebSearchField(
                     controller: _searchController,
-                    hintText: isReportsTab ? 'Search Reports...' : 'Search Defects...',
+                    hintText: isReportsTab
+                        ? 'Search Reports...'
+                        : 'Search Defects...',
                     showClear: _search.isNotEmpty,
                     onClear: () {
                       _searchController.clear();
@@ -821,12 +884,23 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                         Expanded(
                           child: DropdownButtonFormField<String>(
                             initialValue: _typeFilter,
-                            decoration:
-                                const InputDecoration(labelText: 'Type', border: InputBorder.none),
+                            decoration: const InputDecoration(
+                              labelText: 'Type',
+                              border: InputBorder.none,
+                            ),
                             items: const [
-                              DropdownMenuItem(value: 'all', child: Text('All Types')),
-                              DropdownMenuItem(value: 'pre-trip', child: Text('Pre-Trip')),
-                              DropdownMenuItem(value: 'post-trip', child: Text('Post-Trip')),
+                              DropdownMenuItem(
+                                value: 'all',
+                                child: Text('All Types'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'pre-trip',
+                                child: Text('Pre-Trip'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'post-trip',
+                                child: Text('Post-Trip'),
+                              ),
                             ],
                             onChanged: (v) {
                               setState(() => _typeFilter = v ?? 'all');
@@ -839,11 +913,26 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                           child: DropdownButtonFormField<String>(
                             initialValue: _statusFilter,
                             decoration: const InputDecoration(
-                                labelText: 'Status', border: InputBorder.none),
+                              labelText: 'Status',
+                              border: InputBorder.none,
+                            ),
                             items: const [
-                              DropdownMenuItem(value: 'all', child: Text('All Status')),
-                              DropdownMenuItem(value: 'safe', child: Text('Safe')),
-                              DropdownMenuItem(value: 'unsafe', child: Text('Unsafe')),
+                              DropdownMenuItem(
+                                value: 'all',
+                                child: Text('All Status'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'safe',
+                                child: Text('Safe'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'unsafe',
+                                child: Text('Unsafe'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'unknown',
+                                child: Text('Unknown'),
+                              ),
                             ],
                             onChanged: (v) {
                               setState(() => _statusFilter = v ?? 'all');
@@ -863,11 +952,22 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                           child: DropdownButtonFormField<String>(
                             initialValue: _severityFilter,
                             decoration: const InputDecoration(
-                                labelText: 'Severity', border: InputBorder.none),
+                              labelText: 'Severity',
+                              border: InputBorder.none,
+                            ),
                             items: const [
-                              DropdownMenuItem(value: 'all', child: Text('All Severities')),
-                              DropdownMenuItem(value: 'major', child: Text('Major')),
-                              DropdownMenuItem(value: 'minor', child: Text('Minor')),
+                              DropdownMenuItem(
+                                value: 'all',
+                                child: Text('All Severities'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'major',
+                                child: Text('Major'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'minor',
+                                child: Text('Minor'),
+                              ),
                             ],
                             onChanged: (v) {
                               setState(() => _severityFilter = v ?? 'all');
@@ -880,11 +980,26 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                           child: DropdownButtonFormField<String>(
                             initialValue: _defectStatusFilter,
                             decoration: const InputDecoration(
-                                labelText: 'Status', border: InputBorder.none),
+                              labelText: 'Status',
+                              border: InputBorder.none,
+                            ),
                             items: const [
-                              DropdownMenuItem(value: 'all', child: Text('All Status')),
-                              DropdownMenuItem(value: 'open', child: Text('Open')),
-                              DropdownMenuItem(value: 'resolved', child: Text('Resolved')),
+                              DropdownMenuItem(
+                                value: 'all',
+                                child: Text('All Status'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'open',
+                                child: Text('Open'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'resolved',
+                                child: Text('Resolved'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'unresolved',
+                                child: Text('Unresolved'),
+                              ),
                             ],
                             onChanged: (v) {
                               setState(() => _defectStatusFilter = v ?? 'all');
@@ -905,58 +1020,126 @@ class _DvirScreenState extends State<DvirScreen> with SingleTickerProviderStateM
                       _reportsLoading
                           ? const Center(child: CircularProgressIndicator())
                           : _reportsError != null
-                              ? ApiErrorBanner(message: _reportsError!, onRetry: _loadReports)
-                              : _reports.isEmpty
-                                  ? ListEmptyState(
-                                      message: 'No reports found',
-                                      icon: Icons.description_outlined,
-                                    )
-                                  : ListView.builder(
-                                      controller: _reportsScrollController,
-                                      padding:
-                                          const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                      itemCount: _reports.length + 1,
-                                      itemBuilder: (context, i) {
-                                        if (i == _reports.length) {
-                                          return _reportsLoadingMore
-                                              ? const Padding(
-                                                  padding: EdgeInsets.all(16),
-                                                  child:
-                                                      Center(child: CircularProgressIndicator()),
-                                                )
-                                              : const SizedBox();
-                                        }
-                                        return _buildReportCard(_reports[i]);
-                                      },
+                          ? ApiErrorBanner(
+                              message: _reportsError!,
+                              onRetry: _loadReports,
+                            )
+                          : _reports.isEmpty
+                          ? ListEmptyState(
+                              message: 'No reports found',
+                              icon: Icons.description_outlined,
+                            )
+                          : ListView(
+                              controller: _reportsScrollController,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              children: [
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    if (constraints.maxWidth < 600) {
+                                      return Column(
+                                        children: _reports
+                                            .map(
+                                              (r) => Padding(
+                                                padding: const EdgeInsets.only(
+                                                  bottom: 12,
+                                                ),
+                                                child: _buildReportCard(r),
+                                              ),
+                                            )
+                                            .toList(),
+                                      );
+                                    }
+                                    return GridView.builder(
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      itemCount: _reports.length,
+                                      gridDelegate:
+                                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                                            maxCrossAxisExtent: 500,
+                                            mainAxisExtent: 400,
+                                            crossAxisSpacing: 16,
+                                            mainAxisSpacing: 16,
+                                          ),
+                                      itemBuilder: (context, i) =>
+                                          _buildReportCard(_reports[i]),
+                                    );
+                                  },
+                                ),
+                                if (_reportsLoadingMore)
+                                  const Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
                                     ),
+                                  ),
+                              ],
+                            ),
                       // Defects list
                       _defectsLoading
                           ? const Center(child: CircularProgressIndicator())
                           : _defectsError != null
-                              ? ApiErrorBanner(message: _defectsError!, onRetry: _loadDefects)
-                              : _defects.isEmpty
-                                  ? ListEmptyState(
-                                      message: 'No defects found',
-                                      icon: Icons.report_problem_outlined,
-                                    )
-                                  : ListView.builder(
-                                      controller: _defectsScrollController,
-                                      padding:
-                                          const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                      itemCount: _defects.length + 1,
-                                      itemBuilder: (context, i) {
-                                        if (i == _defects.length) {
-                                          return _defectsLoadingMore
-                                              ? const Padding(
-                                                  padding: EdgeInsets.all(16),
-                                                  child:
-                                                      Center(child: CircularProgressIndicator()),
-                                                )
-                                              : const SizedBox();
-                                        }
-                                        return _buildDefectCard(_defects[i]);
-                                      },
+                          ? ApiErrorBanner(
+                              message: _defectsError!,
+                              onRetry: _loadDefects,
+                            )
+                          : _defects.isEmpty
+                          ? ListEmptyState(
+                              message: 'No defects found',
+                              icon: Icons.report_problem_outlined,
+                            )
+                          : ListView(
+                              controller: _defectsScrollController,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              children: [
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    if (constraints.maxWidth < 600) {
+                                      return Column(
+                                        children: _defects
+                                            .map(
+                                              (d) => Padding(
+                                                padding: const EdgeInsets.only(
+                                                  bottom: 12,
+                                                ),
+                                                child: _buildDefectCard(d),
+                                              ),
+                                            )
+                                            .toList(),
+                                      );
+                                    }
+                                    return GridView.builder(
+                                      shrinkWrap: true,
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
+                                      itemCount: _defects.length,
+                                      gridDelegate:
+                                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                                            maxCrossAxisExtent: 500,
+                                            mainAxisExtent: 460,
+                                            crossAxisSpacing: 16,
+                                            mainAxisSpacing: 16,
+                                          ),
+                                      itemBuilder: (context, i) =>
+                                          _buildDefectCard(_defects[i]),
+                                    );
+                                  },
+                                ),
+                                if (_defectsLoadingMore)
+                                  const Padding(
+                                    padding: EdgeInsets.all(16),
+                                    child: Center(
+                                      child: CircularProgressIndicator(),
                                     ),
+                                  ),
+                              ],
+                            ),
                     ],
                   ),
                 ),
@@ -987,8 +1170,14 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 10, vertical: compact ? 3 : 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 3 : 4,
+      ),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Text(
         label,
         style: TextStyle(
@@ -1034,7 +1223,11 @@ class _GridText extends StatelessWidget {
 }
 
 class _GridCell extends StatelessWidget {
-  const _GridCell({required this.icon, required this.label, required this.child});
+  const _GridCell({
+    required this.icon,
+    required this.label,
+    required this.child,
+  });
 
   final IconData icon;
   final String label;
@@ -1083,7 +1276,9 @@ class _DvirDateField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = value != null ? DateFormat('MM-dd-yyyy').format(value!) : label;
+    final text = value != null
+        ? DateFormat('MM-dd-yyyy').format(value!)
+        : label;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
@@ -1096,21 +1291,31 @@ class _DvirDateField extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.calendar_month_outlined, size: 16, color: AppColors.textSecondary),
+            Icon(
+              Icons.calendar_month_outlined,
+              size: 16,
+              color: AppColors.textSecondary,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 text,
                 style: TextStyle(
                   fontSize: 13,
-                  color: value != null ? AppColors.textPrimary : AppColors.textSecondary,
+                  color: value != null
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary,
                 ),
               ),
             ),
             if (value != null && onClear != null)
               InkWell(
                 onTap: onClear,
-                child: Icon(Icons.close, size: 16, color: AppColors.textSecondary),
+                child: Icon(
+                  Icons.close,
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
               ),
           ],
         ),

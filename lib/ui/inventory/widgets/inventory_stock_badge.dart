@@ -1,37 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/models/inventory_item_model.dart';
+import 'package:rapide_nforce/ui/widgets/status_badge.dart';
 
+BadgeTone stockLevelTone(StockLevel level) {
+  return switch (level) {
+    StockLevel.inStock => BadgeTone.success,
+    StockLevel.low => BadgeTone.warning,
+    StockLevel.outOfStock => BadgeTone.danger,
+  };
+}
+
+String stockLevelLabel(StockLevel level) {
+  return switch (level) {
+    StockLevel.inStock => 'In Stock',
+    StockLevel.low => 'Low Stock',
+    StockLevel.outOfStock => 'Out of Stock',
+  };
+}
+
+/// Stock-level pill — routed through [MiniStatusBadge] so it uses the same
+/// color system as the Work Orders / Power Unit card badges.
 class InventoryStockBadge extends StatelessWidget {
-  const InventoryStockBadge({super.key, required this.level, this.compact = false});
+  const InventoryStockBadge({
+    super.key,
+    required this.level,
+    this.compact = false,
+  });
 
   final StockLevel level;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final (label, bg, fg) = switch (level) {
-      StockLevel.inStock => ('In Stock', const Color(0xFFDCFCE7), const Color(0xFF008236)),
-      StockLevel.low => ('Low Stock', const Color(0xFFFEF3C7), const Color(0xFFEA580C)),
-      StockLevel.outOfStock => ('Out of Stock', const Color(0xFFFEE2E2), const Color(0xFFDC2626)),
-    };
-
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 3 : 4,
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: compact ? 11 : 12,
-          fontWeight: FontWeight.w600,
-          color: fg,
-        ),
-      ),
+    return MiniStatusBadge(
+      label: stockLevelLabel(level),
+      tone: stockLevelTone(level),
+      dense: compact,
     );
   }
 }

@@ -7,6 +7,7 @@ import 'package:rapide_nforce/models/fault_code_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/fault_codes_service.dart';
 import 'package:rapide_nforce/ui/widgets/api_error_banner.dart';
+import 'package:rapide_nforce/ui/widgets/status_badge.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class FaultCodesScreen extends StatefulWidget {
@@ -34,6 +35,13 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
   String _searchTerm = '';
   String _statusFilter = 'all';
   String _severityFilter = 'all';
+
+  // Counts across the *entire* search-matched set (not just the loaded
+  // page) — fetched separately via lightweight limit:1 requests that read
+  // the total from pagination metadata.
+  int _activeTotal = 0;
+  int _criticalTotal = 0;
+  int _clearedTotal = 0;
 
   @override
   void initState() {
@@ -116,6 +124,53 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
       _totalPages = data.totalPages;
       _page = data.page;
     });
+    unawaited(_loadStats());
+  }
+
+  /// Refreshes the Active/Critical/Cleared stat tiles against the full
+  /// search-matched set (independent of the status/severity dropdowns, so
+  /// all three tiles stay meaningful together), using cheap limit:1 requests
+  /// that only need the `total` from pagination metadata.
+  Future<void> _loadStats() async {
+    final search = _searchTerm.isEmpty ? null : _searchTerm;
+    final companyId = AuthService.instance.selectedCompanyIdInt;
+    final results = await Future.wait([
+      FaultCodesService.instance.fetchFaultCodes(
+        page: 1,
+        limit: 1,
+        search: search,
+        faultStatus: 'active',
+        companyId: companyId,
+      ),
+      FaultCodesService.instance.fetchFaultCodes(
+        page: 1,
+        limit: 1,
+        search: search,
+        faultStatus: 'cleared',
+        companyId: companyId,
+      ),
+      FaultCodesService.instance.fetchFaultCodes(
+        page: 1,
+        limit: 1,
+        search: search,
+        severity: 'critical',
+        companyId: companyId,
+      ),
+      FaultCodesService.instance.fetchFaultCodes(
+        page: 1,
+        limit: 1,
+        search: search,
+        severity: 'high',
+        companyId: companyId,
+      ),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _activeTotal = results[0].data?.total ?? 0;
+      _clearedTotal = results[1].data?.total ?? 0;
+      _criticalTotal =
+          (results[2].data?.total ?? 0) + (results[3].data?.total ?? 0);
+    });
   }
 
   Future<void> _loadMore() async {
@@ -150,31 +205,6 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
     });
   }
 
-  int get _activeOnPage =>
-      _items.where((i) => _isActiveStatus(i.faultStatus)).length;
-
-  int get _criticalOnPage => _items
-      .where((i) => _isCriticalSeverity(i.severity))
-      .length;
-
-  int get _clearedOnPage =>
-      _items.where((i) => _isClearedStatus(i.faultStatus)).length;
-
-  bool _isActiveStatus(String status) {
-    final n = status.toLowerCase();
-    return n == 'active' || n == 'open';
-  }
-
-  bool _isClearedStatus(String status) {
-    final n = status.toLowerCase();
-    return n == 'cleared' || n == 'resolved' || n == 'closed';
-  }
-
-  bool _isCriticalSeverity(String? severity) {
-    final n = (severity ?? '').toLowerCase();
-    return n == 'critical' || n == 'high';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -194,9 +224,9 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
         delegate: SliverChildListDelegate([
           _StatsRow(
             total: _totalItems,
-            active: _activeOnPage,
-            critical: _criticalOnPage,
-            cleared: _clearedOnPage,
+            active: _activeTotal,
+            critical: _criticalTotal,
+            cleared: _clearedTotal,
           ),
           const SizedBox(height: 16),
           _FiltersBar(
@@ -213,8 +243,7 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
             },
           ),
           const SizedBox(height: 16),
-          if (_error != null)
-            ApiErrorBanner(message: _error!, onRetry: _load),
+          if (_error != null) ApiErrorBanner(message: _error!, onRetry: _load),
           WebSectionCard(
             title: 'Fault codes',
             action: _totalItems > 0
@@ -243,62 +272,82 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
                     child: Center(child: CircularProgressIndicator()),
                   )
                 : _items.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.search_off_rounded,
-                                size: 32,
-                                color: AppColors.textSecondary,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _error != null
-                                    ? 'No fault codes available'
-                                    : 'No fault codes found',
-                                style: TextStyle(
-                                  color: AppColors.textSecondary,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
+                ? Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.search_off_rounded,
+                            size: 32,
+                            color: AppColors.textSecondary,
                           ),
-                        ),
-                      )
-                    : Padding(
-                        padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
-                        child: Column(
-                          children: [
-                            for (final item in _items) _FaultCodeRow(item: item),
-                            if (_loadingMore)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 16),
-                                child: Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              )
-                            else if (_page >= _totalPages)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    'All $_totalItems fault codes loaded',
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      color: AppColors.textSecondary,
-                                      fontWeight: FontWeight.w500,
-                                    ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _error != null
+                                ? 'No fault codes available'
+                                : 'No fault codes found',
+                            style: TextStyle(color: AppColors.textSecondary),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+                    child: Column(
+                      children: [
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            if (constraints.maxWidth < 600) {
+                              return Column(
+                                children: [
+                                  for (final item in _items)
+                                    _FaultCodeRow(item: item),
+                                ],
+                              );
+                            }
+                            return GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              padding: EdgeInsets.zero,
+                              itemCount: _items.length,
+                              gridDelegate:
+                                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                                    maxCrossAxisExtent: 500,
+                                    mainAxisExtent: 200,
+                                    crossAxisSpacing: 4,
+                                    mainAxisSpacing: 4,
                                   ),
+                              itemBuilder: (context, i) =>
+                                  _FaultCodeRow(item: _items[i]),
+                            );
+                          },
+                        ),
+                        if (_loadingMore)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Center(child: CircularProgressIndicator()),
+                          )
+                        else if (_page >= _totalPages)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: Center(
+                              child: Text(
+                                'All $_totalItems fault codes loaded',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
-                          ],
-                        ),
-                      ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
           ),
         ]),
       ),
@@ -333,23 +382,23 @@ class _StatsRow extends StatelessWidget {
             accentColor: AppColors.primary,
           ),
           _SimpleStatCard(
-            label: 'Active on page',
+            label: 'Active',
             value: '$active',
-            hint: 'Open / active in current view',
+            hint: 'Open / active, matching search',
             icon: Icons.bolt_outlined,
             accentColor: const Color(0xFF16A34A),
           ),
           _SimpleStatCard(
             label: 'Critical / high',
             value: '$critical',
-            hint: 'High-priority in current view',
+            hint: 'High-priority, matching search',
             icon: Icons.warning_amber_rounded,
             accentColor: const Color(0xFFD97706),
           ),
           _SimpleStatCard(
-            label: 'Cleared on page',
+            label: 'Cleared',
             value: '$cleared',
-            hint: 'Resolved in current view',
+            hint: 'Resolved, matching search',
             icon: Icons.check_circle_outline,
             accentColor: const Color(0xFF2563EB),
           ),
@@ -583,9 +632,7 @@ class _FilterDropdown extends StatelessWidget {
           isExpanded: true,
           value: value,
           items: items.entries
-              .map(
-                (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
-              )
+              .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
               .toList(),
           onChanged: (v) {
             if (v != null) onChanged(v);
@@ -604,7 +651,7 @@ class _FaultCodeRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final severityTone = _severityTone(item.severity);
-    final accent = _toneColors(severityTone).$2;
+    final accent = StatusBadgeColors.accent(severityTone);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
@@ -662,6 +709,8 @@ class _FaultCodeRow extends StatelessWidget {
                     const SizedBox(height: 8),
                     Text(
                       item.faultDescription,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 13,
                         color: AppColors.textSecondary,
@@ -673,8 +722,11 @@ class _FaultCodeRow extends StatelessWidget {
                       runSpacing: 6,
                       children: [
                         if (item.severity != null && item.severity!.isNotEmpty)
-                          _Pill(label: item.severity!, tone: severityTone),
-                        _Pill(
+                          MiniStatusBadge(
+                            label: item.severity!,
+                            tone: severityTone,
+                          ),
+                        MiniStatusBadge(
                           label: _formatStatus(item.faultStatus),
                           tone: _statusTone(item.faultStatus),
                         ),
@@ -720,81 +772,20 @@ class _FaultCodeRow extends StatelessWidget {
     return status[0].toUpperCase() + status.substring(1);
   }
 
-  _PillTone _severityTone(String? severity) {
+  BadgeTone _severityTone(String? severity) {
     final n = (severity ?? '').toLowerCase();
-    if (n == 'critical' || n == 'high') return _PillTone.danger;
-    if (n == 'medium') return _PillTone.warning;
-    if (n == 'low') return _PillTone.info;
-    return _PillTone.neutral;
+    if (n == 'critical' || n == 'high') return BadgeTone.danger;
+    if (n == 'medium') return BadgeTone.warning;
+    if (n == 'low') return BadgeTone.info;
+    return BadgeTone.neutral;
   }
 
-  _PillTone _statusTone(String status) {
+  BadgeTone _statusTone(String status) {
     final n = status.toLowerCase();
-    if (n == 'active' || n == 'open') return _PillTone.success;
+    if (n == 'active' || n == 'open') return BadgeTone.success;
     if (n == 'cleared' || n == 'resolved' || n == 'closed') {
-      return _PillTone.success;
+      return BadgeTone.success;
     }
-    return _PillTone.neutral;
-  }
-}
-
-enum _PillTone { danger, warning, success, info, neutral }
-
-(Color, Color, Color) _toneColors(_PillTone tone) {
-  return switch (tone) {
-    _PillTone.danger => (
-        const Color(0xFFFEF2F2),
-        const Color(0xFFDC2626),
-        const Color(0xFFFECACA),
-      ),
-    _PillTone.warning => (
-        const Color(0xFFFFFBEB),
-        const Color(0xFFD97706),
-        const Color(0xFFFDE68A),
-      ),
-    _PillTone.success => (
-        const Color(0xFFF0FDF4),
-        const Color(0xFF16A34A),
-        const Color(0xFFBBF7D0),
-      ),
-    _PillTone.info => (
-        const Color(0xFFEFF6FF),
-        const Color(0xFF2563EB),
-        const Color(0xFFBFDBFE),
-      ),
-    _PillTone.neutral => (
-        const Color(0xFFF8FAFC),
-        const Color(0xFF475569),
-        const Color(0xFFE2E8F0),
-      ),
-  };
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.label, required this.tone});
-
-  final String label;
-  final _PillTone tone;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = _toneColors(tone);
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: colors.$1,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: colors.$3),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: colors.$2,
-        ),
-      ),
-    );
+    return BadgeTone.neutral;
   }
 }

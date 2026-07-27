@@ -5,6 +5,7 @@ import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/date_format.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
+import 'package:rapide_nforce/models/maintenance_policy_model.dart';
 import 'package:rapide_nforce/models/power_unit_model.dart';
 import 'package:rapide_nforce/models/truck_permit_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
@@ -64,6 +65,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   int? _stateId;
   int? _cityId;
   String _ownershipType = '';
+  // Odometer captured when an existing unit was loaded — current odometer
+  // can't be edited to a value below this (mirrors web's Initial Odometer
+  // sanity check).
+  int? _initialOdometer;
 
   // Step 2
   final _maintenancePolicy = TextEditingController();
@@ -83,6 +88,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   final _permitNumber = TextEditingController();
   final _permitIssue = TextEditingController();
   final _permitExpiry = TextEditingController();
+  final _customPermitType = TextEditingController();
+  static const _kOtherPermitType = '__OTHER__';
 
   // Step 3
   final _certificateNumber = TextEditingController();
@@ -106,6 +113,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   List<LookupOption> _cities = [];
   List<LookupOption> _fuelTypes = [];
   List<LookupOption> _policies = [];
+  List<MaintenancePolicyModel> _policyConfigs = [];
   List<LookupOption> _permitTypes = [];
 
   bool get _isSuperAdmin =>
@@ -161,6 +169,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _permitNumber,
     _permitIssue,
     _permitExpiry,
+    _customPermitType,
     _certificateNumber,
     _inspectionDate,
     _expiryDate,
@@ -183,6 +192,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     super.initState();
     _startDate.text = DateTime.now().toIso8601String().split('T').first;
     _inspectionDate.addListener(_recalculateCvipExpiry);
+    _startDate.addListener(_applyMaintenancePolicyDefaults);
+    _currentOdometer.addListener(_applyMaintenancePolicyDefaults);
     for (final c in _allControllers) {
       c.addListener(_onFormChanged);
     }
@@ -190,12 +201,17 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   }
 
   Future<void> _bootstrap() async {
+    // Started before the Future.wait group below so it fetches in parallel
+    // with the others despite having a different result type.
+    final policyConfigsFuture = FleetLookupService.instance
+        .fetchMaintenancePolicyConfigs();
     final lookups = await Future.wait([
       FleetLookupService.instance.fetchCountries(),
       FleetLookupService.instance.fetchFuelTypes(),
       FleetLookupService.instance.fetchMaintenancePolicies(),
       FleetLookupService.instance.fetchPermitTypes(),
     ]);
+    final policyConfigsResult = await policyConfigsFuture;
     if (widget.isEdit) {
       final unit = await PowerUnitService.instance.fetchPowerUnitById(
         widget.powerUnitId!,
@@ -212,6 +228,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       _fuelTypes = lookups[1].data ?? [];
       _policies = lookups[2].data ?? [];
       _permitTypes = lookups[3].data ?? [];
+      _policyConfigs = policyConfigsResult.data ?? [];
     });
     if (_countryId != null) await _loadStates(_countryId!);
     if (_stateId != null) await _loadCities(_stateId!);
@@ -230,6 +247,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       }
     }
     _recalculateCvipExpiry();
+    _applyMaintenancePolicyDefaults();
     if (mounted) _bootstrapped = true;
   }
 
@@ -271,6 +289,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _selectedPolicy = u.maintenancePolicy;
     _cviExpiry.text = u.cviExpiry ?? '';
     _currentOdometer.text = u.odometer?.toString() ?? '';
+    _initialOdometer = u.odometer;
     _annualInspectionDue.text = u.annualInspectionDue ?? '';
     _lastInspection.text = u.lastInspection ?? '';
     _pmInterval.text = u.pmInterval ?? '';
@@ -351,6 +370,58 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     }
   }
 
+  static const Map<String, int> _inspectionDaysByFrequency = {
+    'Monthly': 30,
+    'Quarterly': 90,
+    'Semi Annual': 180,
+    'Annual': 365,
+  };
+
+  String _isoDate(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  /// Auto-fills PM Interval / Next PM Due / Next PM Odometer / Annual
+  /// Inspection Due / CVIP Due from the selected Maintenance Policy's
+  /// configuration, anchored to Start Date and Current Odometer — mirrors
+  /// the web app's reactive recalculation (`AddTruckPage.tsx`), so these
+  /// fields always reflect the backend-configured policy the same way on
+  /// both platforms. Always overwrites, same as [_recalculateCvipExpiry].
+  void _applyMaintenancePolicyDefaults() {
+    if (_selectedPolicy == null || _selectedPolicy!.isEmpty) return;
+    final policy = _policyConfigs
+        .where((p) => p.name == _selectedPolicy)
+        .firstOrNull;
+    if (policy == null) return;
+
+    final annualInspectionDays =
+        _inspectionDaysByFrequency[policy.inspectionFrequency] ?? 365;
+    final anchorDate =
+        DateTime.tryParse(_startDate.text.trim()) ?? DateTime.now();
+    final baseOdometer = int.tryParse(_currentOdometer.text.trim());
+
+    setState(() {
+      if (policy.pmIntervalKm != null) {
+        _pmInterval.text = policy.pmIntervalKm.toString();
+        if (baseOdometer != null) {
+          _nextPmOdometer.text = (baseOdometer + policy.pmIntervalKm!)
+              .toString();
+        }
+      }
+      if (policy.pmIntervalDays != null) {
+        _nextPmDue.text = _isoDate(
+          anchorDate.add(Duration(days: policy.pmIntervalDays!)),
+        );
+      }
+      final annualDueIso = _isoDate(
+        anchorDate.add(Duration(days: annualInspectionDays)),
+      );
+      _annualInspectionDue.text = annualDueIso;
+      _cviExpiry.text = annualDueIso;
+    });
+  }
+
   @override
   void dispose() {
     for (final c in [
@@ -389,6 +460,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       _permitNumber,
       _permitIssue,
       _permitExpiry,
+      _customPermitType,
       _certificateNumber,
       _inspectionDate,
       _expiryDate,
@@ -560,6 +632,19 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           _req(_telematicsProvider.text, 'Telematics Provider') != null ||
           _req(_eldProvider.text, 'ELD Provider') != null) {
         AppToast.showError('Complete all required Step 2 fields');
+        return false;
+      }
+      final currentOdometer = int.tryParse(_currentOdometer.text.trim());
+      if (_initialOdometer != null &&
+          currentOdometer != null &&
+          currentOdometer < _initialOdometer!) {
+        AppToast.showError(
+          'Current Odometer cannot be less than the Initial Odometer ($_initialOdometer)',
+        );
+        return false;
+      }
+      if (_permits.isEmpty) {
+        AppToast.showError('Add at least one permit before continuing');
         return false;
       }
     }
@@ -766,18 +851,40 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     }
   }
 
-  void _addPermit() {
-    if ((_selectedPermitType ?? '').isEmpty ||
+  Future<void> _addPermit() async {
+    final isOther = _selectedPermitType == _kOtherPermitType;
+    final resolvedType = isOther
+        ? _customPermitType.text.trim().toUpperCase()
+        : (_selectedPermitType ?? '');
+    if (resolvedType.isEmpty ||
         _permitNumber.text.trim().isEmpty ||
         _permitIssue.text.trim().isEmpty ||
         _permitExpiry.text.trim().isEmpty) {
       AppToast.showError('Fill all permit fields');
       return;
     }
+
+    if (isOther) {
+      final exists = _permitTypes.any(
+        (p) => p.name.toLowerCase() == resolvedType.toLowerCase(),
+      );
+      if (!exists) {
+        // Non-blocking: the permit itself is still added below even if this
+        // fails to persist — matches web's behavior.
+        final created = await FleetLookupService.instance.createPermitType(
+          resolvedType,
+        );
+        if (created.isSuccess && created.data != null && mounted) {
+          setState(() => _permitTypes = [..._permitTypes, created.data!]);
+        }
+      }
+    }
+
+    if (!mounted) return;
     setState(() {
       _permits.add(
         TruckPermitModel(
-          permitType: _selectedPermitType!,
+          permitType: resolvedType,
           permitNumber: _permitNumber.text.trim(),
           issueDate: _permitIssue.text.trim(),
           expiryDate: _permitExpiry.text.trim(),
@@ -787,6 +894,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       _permitIssue.clear();
       _permitExpiry.clear();
       _selectedPermitType = null;
+      _customPermitType.clear();
     });
   }
 
@@ -1118,6 +1226,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
               _maintenancePolicy.text = v ?? '';
             });
             _onFormChanged();
+            _applyMaintenancePolicyDefaults();
           },
           validator: (v) => _req(v, 'Maintenance Policy'),
         ),
@@ -1203,13 +1312,19 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         WebDropdownField<String>(
           label: 'Permit Type *',
           value: _selectedPermitType,
-          items: _permitTypes.map((p) => p.name).toList(),
-          itemLabel: (v) => v,
+          items: [..._permitTypes.map((p) => p.name), _kOtherPermitType],
+          itemLabel: (v) => v == _kOtherPermitType ? 'Other' : v,
           onChanged: (v) {
             setState(() => _selectedPermitType = v);
             _onFormChanged();
           },
         ),
+        if (_selectedPermitType == _kOtherPermitType)
+          WebTextFormField(
+            controller: _customPermitType,
+            label: 'Custom Permit Type *',
+            hint: 'Enter a new permit type name',
+          ),
         WebTextFormField(controller: _permitNumber, label: 'Permit Number *'),
         WebDateField(
           controller: _permitIssue,

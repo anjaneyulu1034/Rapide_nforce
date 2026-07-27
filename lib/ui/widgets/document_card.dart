@@ -3,7 +3,9 @@ import 'package:rapide_nforce/core/constants/api_constants.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
 import 'package:rapide_nforce/core/utils/document_download_service.dart';
+import 'package:rapide_nforce/models/document_history_model.dart';
 import 'package:rapide_nforce/models/truck_document_model.dart';
+import 'package:rapide_nforce/services/document_service.dart';
 
 /// Shared "documents tab" building blocks — used by both the Power Unit and
 /// Trailer detail screens so the two stay in sync instead of drifting.
@@ -144,28 +146,28 @@ class DocActionBtn extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Document card with action buttons (View / Download / Replace / History / Delete)
+// Document card with action buttons (View / Download / Edit / History / Delete)
 // ---------------------------------------------------------------------------
 
 class DocCard extends StatelessWidget {
   const DocCard({
     super.key,
     required this.doc,
-    required this.canReplace,
+    required this.canEdit,
     required this.canDelete,
     required this.onView,
     required this.onDelete,
-    required this.onReplace,
+    required this.onEdit,
     required this.onVersionHistory,
     required this.onDownload,
   });
 
   final TruckDocumentModel doc;
-  final bool canReplace;
+  final bool canEdit;
   final bool canDelete;
   final VoidCallback onView;
   final VoidCallback onDelete;
-  final VoidCallback onReplace;
+  final VoidCallback onEdit;
   final VoidCallback onVersionHistory;
   final VoidCallback onDownload;
 
@@ -316,11 +318,11 @@ class DocCard extends StatelessWidget {
                   tooltip: 'Download',
                   onTap: onDownload,
                 ),
-                if (canReplace)
+                if (canEdit)
                   DocActionBtn(
-                    icon: Icons.upload_file_outlined,
-                    tooltip: 'Replace',
-                    onTap: onReplace,
+                    icon: Icons.edit_outlined,
+                    tooltip: 'Edit',
+                    onTap: onEdit,
                   ),
                 DocActionBtn(
                   icon: Icons.history_outlined,
@@ -421,7 +423,12 @@ class SheetRow extends StatelessWidget {
 }
 
 class VTag extends StatelessWidget {
-  const VTag({super.key, required this.label, required this.color, required this.bg});
+  const VTag({
+    super.key,
+    required this.label,
+    required this.color,
+    required this.bg,
+  });
 
   final String label;
   final Color color;
@@ -759,7 +766,7 @@ class DocumentDetailsSheet extends StatelessWidget {
 // Version History bottom sheet
 // ---------------------------------------------------------------------------
 
-class VersionHistorySheet extends StatelessWidget {
+class VersionHistorySheet extends StatefulWidget {
   const VersionHistorySheet({
     super.key,
     required this.doc,
@@ -772,9 +779,47 @@ class VersionHistorySheet extends StatelessWidget {
   final String entityBasePath;
 
   @override
+  State<VersionHistorySheet> createState() => _VersionHistorySheetState();
+}
+
+class _VersionHistorySheetState extends State<VersionHistorySheet> {
+  bool _loading = true;
+  List<DocumentHistoryModel> _versions = [];
+
+  TruckDocumentModel get doc => widget.doc;
+  String get unitNumber => widget.unitNumber;
+  String get entityBasePath => widget.entityBasePath;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final result = await DocumentService.instance.getDocumentHistory(doc.id);
+    if (!mounted) return;
+    setState(() {
+      _loading = false;
+      _versions = result.data ?? [];
+    });
+  }
+
+  DocumentHistoryModel? get _currentVersion {
+    for (final v in _versions) {
+      if (v.isCurrent) return v;
+    }
+    return _versions.isNotEmpty ? _versions.first : null;
+  }
+
+  List<DocumentHistoryModel> get _olderVersions =>
+      _versions.where((v) => v != _currentVersion).toList();
+
+  @override
   Widget build(BuildContext context) {
     final status = documentStatus(doc);
     final (textColor, bgColor) = documentStatusColors(status);
+    final current = _currentVersion;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.72,
@@ -833,191 +878,287 @@ class VersionHistorySheet extends StatelessWidget {
             ),
             Divider(height: 1, color: AppColors.border),
             Expanded(
-              child: ListView(
-                controller: scrollCtrl,
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Column(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      controller: scrollCtrl,
+                      padding: const EdgeInsets.all(16),
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.all(14),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.border),
+                          ),
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                children: [
-                                  VTag(
-                                    label: 'Current',
-                                    color: const Color(0xFF1A56DB),
-                                    bg: const Color(0xFFE8F0FE),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Version 1',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  VTag(
-                                    label: 'Latest',
-                                    color: AppColors.textSecondary,
-                                    bg: AppColors.border.withValues(alpha: 0.4),
-                                  ),
-                                  const Spacer(),
-                                  InkWell(
-                                    onTap: () {},
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(6),
-                                      child: Icon(
-                                        Icons.visibility_outlined,
-                                        size: 18,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  InkWell(
-                                    onTap: () => DocumentDownloadService
-                                        .instance
-                                        .downloadAndOpen(
-                                          context: context,
-                                          truckId: doc.truckId,
-                                          documentId: doc.id,
-                                          displayFileName: doc.fileName,
-                                          entityBasePath: entityBasePath,
-                                        ),
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(6),
-                                      child: Icon(
-                                        Icons.download_outlined,
-                                        size: 18,
-                                        color: AppColors.textSecondary,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 14),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: SheetRow(
-                                      label: 'DOCUMENT NUMBER',
-                                      value: doc.documentNumber ?? AppStrings.noData,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                              Padding(
+                                padding: const EdgeInsets.all(14),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
                                       children: [
-                                        SheetLabel(label: 'DOCUMENT STATUS'),
-                                        const SizedBox(height: 3),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 3,
+                                        VTag(
+                                          label: 'Current',
+                                          color: const Color(0xFF1A56DB),
+                                          bg: const Color(0xFFE8F0FE),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Version ${current?.versionNumber ?? 1}',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 15,
+                                            color: AppColors.textPrimary,
                                           ),
-                                          decoration: BoxDecoration(
-                                            color: bgColor,
-                                            borderRadius: BorderRadius.circular(
-                                              20,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        VTag(
+                                          label: 'Latest',
+                                          color: AppColors.textSecondary,
+                                          bg: AppColors.border.withValues(
+                                            alpha: 0.4,
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        InkWell(
+                                          onTap: () {},
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(6),
+                                            child: Icon(
+                                              Icons.visibility_outlined,
+                                              size: 18,
+                                              color: AppColors.textSecondary,
                                             ),
                                           ),
-                                          child: Text(
-                                            documentStatusLabel(status),
-                                            style: TextStyle(
-                                              color: textColor,
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w600,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        InkWell(
+                                          onTap: () => DocumentDownloadService
+                                              .instance
+                                              .downloadAndOpen(
+                                                context: context,
+                                                truckId: doc.truckId,
+                                                documentId: doc.id,
+                                                displayFileName: doc.fileName,
+                                                entityBasePath: entityBasePath,
+                                              ),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(6),
+                                            child: Icon(
+                                              Icons.download_outlined,
+                                              size: 18,
+                                              color: AppColors.textSecondary,
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
-                                  ),
-                                ],
+                                    const SizedBox(height: 14),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: SheetRow(
+                                            label: 'DOCUMENT NUMBER',
+                                            value:
+                                                doc.documentNumber ??
+                                                AppStrings.noData,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              SheetLabel(
+                                                label: 'DOCUMENT STATUS',
+                                              ),
+                                              const SizedBox(height: 3),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 3,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: bgColor,
+                                                  borderRadius:
+                                                      BorderRadius.circular(20),
+                                                ),
+                                                child: Text(
+                                                  documentStatusLabel(status),
+                                                  style: TextStyle(
+                                                    color: textColor,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: SheetRow(
+                                            label: 'ISSUE DATE',
+                                            value:
+                                                doc.issueDate ??
+                                                AppStrings.noData,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Expanded(
+                                          child: SheetRow(
+                                            label: 'EXPIRY DATE',
+                                            value:
+                                                doc.expiryDate ??
+                                                AppStrings.noData,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.person_outline,
+                                          size: 14,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: SheetRow(
+                                            label: 'UPLOADED BY',
+                                            value:
+                                                current?.uploadedByName ??
+                                                AppStrings.noData,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 16),
+                                        Icon(
+                                          Icons.calendar_today_outlined,
+                                          size: 14,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: SheetRow(
+                                            label: 'UPLOADED DATE',
+                                            value:
+                                                doc.updatedOn ??
+                                                AppStrings.noData,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: SheetRow(
-                                      label: 'ISSUE DATE',
-                                      value: doc.issueDate ?? AppStrings.noData,
+                              Divider(height: 1, color: AppColors.border),
+                              if (_olderVersions.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Text(
+                                    'No older versions',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: AppColors.textSecondary,
                                     ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                  const SizedBox(width: 16),
-                                  Expanded(
-                                    child: SheetRow(
-                                      label: 'EXPIRY DATE',
-                                      value: doc.expiryDate ?? AppStrings.noData,
-                                    ),
+                                )
+                              else
+                                Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    children: [
+                                      for (final v in _olderVersions)
+                                        Container(
+                                          margin: const EdgeInsets.only(
+                                            bottom: 8,
+                                          ),
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.surfaceTertiary,
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            border: Border.all(
+                                              color: AppColors.border,
+                                            ),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Text(
+                                                    'Version ${v.versionNumber}',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      fontSize: 13,
+                                                      color:
+                                                          AppColors.textPrimary,
+                                                    ),
+                                                  ),
+                                                  const Spacer(),
+                                                  Text(
+                                                    v.formattedUploadedAt,
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      color: AppColors
+                                                          .textSecondary,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'By ${v.uploadedByName ?? '—'} · '
+                                                '${v.changeType ?? '—'}',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  color:
+                                                      AppColors.textSecondary,
+                                                ),
+                                              ),
+                                              if ((v.notes ?? '')
+                                                  .isNotEmpty) ...[
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  v.notes!,
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    color:
+                                                        AppColors.textSecondary,
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
+                                    ],
                                   ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.person_outline,
-                                    size: 14,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: SheetRow(
-                                      label: 'UPLOADED BY',
-                                      value: AppStrings.noData,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 16),
-                                  Icon(
-                                    Icons.calendar_today_outlined,
-                                    size: 14,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: SheetRow(
-                                      label: 'UPLOADED DATE',
-                                      value: doc.updatedOn ?? AppStrings.noData,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                ),
                             ],
-                          ),
-                        ),
-                        Divider(height: 1, color: AppColors.border),
-                        Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            'No older versions',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textSecondary,
-                            ),
-                            textAlign: TextAlign.center,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
-              ),
             ),
             Padding(
               padding: EdgeInsets.fromLTRB(
@@ -1030,21 +1171,21 @@ class VersionHistorySheet extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Total: 1',
+                    'Total: ${_versions.isEmpty ? 1 : _versions.length}',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,
                     ),
                   ),
                   Text(
-                    'Current: 1',
+                    'Current: ${current?.versionNumber ?? 1}',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,
                     ),
                   ),
                   Text(
-                    'Updated: ${doc.updatedOn ?? 'N/A'}',
+                    'Updated: ${current?.formattedUploadedAt ?? doc.updatedOn ?? 'N/A'}',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppColors.textSecondary,

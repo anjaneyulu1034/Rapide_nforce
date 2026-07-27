@@ -12,7 +12,9 @@ import 'package:rapide_nforce/ui/inventory/part_detail_screen.dart';
 import 'package:rapide_nforce/ui/inventory/part_form_screen.dart';
 import 'package:rapide_nforce/ui/inventory/part_type_form_screen.dart';
 import 'package:rapide_nforce/ui/inventory/widgets/inventory_stock_badge.dart';
+import 'package:rapide_nforce/ui/widgets/icon_only_button.dart';
 import 'package:rapide_nforce/ui/widgets/list_empty_state.dart';
+import 'package:rapide_nforce/ui/widgets/status_badge.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class InventoryScreen extends StatefulWidget {
@@ -417,7 +419,10 @@ class _PartTypesTabState extends State<_PartTypesTab> {
     final company = item.companyName?.trim().isNotEmpty == true
         ? item.companyName!
         : _companyFallback;
+    final tone = stockLevelTone(item.stockLevel);
+
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(16),
@@ -431,6 +436,36 @@ class _PartTypesTabState extends State<_PartTypesTab> {
           ),
         ],
       ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PartTypeDetailScreen(
+                  partType: item,
+                  onChanged: _load,
+                  canDelete: _canDelete,
+                ),
+              ),
+            );
+          },
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 5, color: StatusBadgeColors.accent(tone)),
+                Expanded(child: _partTypeCardBody(item, company)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _partTypeCardBody(PartTypeModel item, String company) {
+    return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -458,7 +493,25 @@ class _PartTypesTabState extends State<_PartTypesTab> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 8),
+              IconOnlyButton(
+                icon: Icons.edit,
+                color: AppColors.chromeBlue,
+                onTap: () async {
+                  final ok = await Navigator.of(context).push<bool>(
+                    MaterialPageRoute(
+                      builder: (_) => PartTypeFormScreen(partType: item),
+                    ),
+                  );
+                  if (ok == true) _load();
+                },
+              ),
+              if (_canDelete)
+                IconOnlyButton(
+                  icon: Icons.delete_outline,
+                  danger: true,
+                  onTap: () => _delete(item),
+                ),
+              const SizedBox(width: 4),
               InventoryStockBadge(level: item.stockLevel, compact: true),
             ],
           ),
@@ -711,105 +764,6 @@ class _PartTypesTabState extends State<_PartTypesTab> {
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => PartTypeDetailScreen(
-                          partType: item,
-                          onChanged: _load,
-                          canDelete: _canDelete,
-                        ),
-                      ),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: BorderSide(
-                      color: AppColors.textSecondary.withValues(alpha: 0.3),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    minimumSize: const Size(0, 36),
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Text(
-                    'View',
-                    style: TextStyle(
-                      letterSpacing: 0.8,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () async {
-                    final ok = await Navigator.of(context).push<bool>(
-                      MaterialPageRoute(
-                        builder: (_) => PartTypeFormScreen(partType: item),
-                      ),
-                    );
-                    if (ok == true) _load();
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: BorderSide(
-                      color: AppColors.textSecondary.withValues(alpha: 0.3),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    minimumSize: const Size(0, 36),
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Text(
-                    'Edit',
-                    style: TextStyle(
-                      letterSpacing: 0.8,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-              if (_canDelete) ...[
-                const SizedBox(width: 6),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => _delete(item),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.danger,
-                      backgroundColor: Colors.transparent,
-                      side: BorderSide(
-                        color: AppColors.danger.withValues(alpha: 0.4),
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      minimumSize: const Size(0, 36),
-                      padding: EdgeInsets.zero,
-                    ),
-                    child: const Text(
-                      'Delete',
-                      style: TextStyle(
-                        letterSpacing: 0.8,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ],
@@ -1315,7 +1269,10 @@ class _PartsTabState extends State<_PartsTab> {
   }
 
   Widget _buildCard(PartModel part) {
+    final tone = stockLevelTone(part.stockLevel);
+
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(16),
@@ -1329,6 +1286,36 @@ class _PartsTabState extends State<_PartsTab> {
           ),
         ],
       ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PartDetailScreen(
+                  part: part,
+                  onChanged: _load,
+                  canDelete: _canDelete,
+                ),
+              ),
+            );
+          },
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 5, color: StatusBadgeColors.accent(tone)),
+                Expanded(child: _partCardBody(part)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _partCardBody(PartModel part) {
+    return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1356,7 +1343,29 @@ class _PartsTabState extends State<_PartsTab> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: 8),
+              IconOnlyButton(
+                icon: Icons.edit,
+                color: AppColors.chromeBlue,
+                onTap: !part.isProtected
+                    ? () async {
+                        final ok = await Navigator.of(context).push<bool>(
+                          MaterialPageRoute(
+                            builder: (_) => PartFormScreen(part: part),
+                          ),
+                        );
+                        if (ok == true) _load();
+                      }
+                    : null,
+              ),
+              if (_canDelete)
+                IconOnlyButton(
+                  icon: Icons.delete_outline,
+                  danger: true,
+                  onTap: (!part.isProtected && !part.isUsedInWorkOrder)
+                      ? () => _delete(part)
+                      : null,
+                ),
+              const SizedBox(width: 4),
               InventoryStockBadge(level: part.stockLevel, compact: true),
             ],
           ),
@@ -1684,114 +1693,6 @@ class _PartsTabState extends State<_PartsTab> {
                   ],
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => PartDetailScreen(
-                          part: part,
-                          onChanged: _load,
-                          canDelete: _canDelete,
-                        ),
-                      ),
-                    );
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: BorderSide(
-                      color: AppColors.textSecondary.withValues(alpha: 0.3),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    minimumSize: const Size(0, 36),
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Text(
-                    'View',
-                    style: TextStyle(
-                      letterSpacing: 0.8,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: !part.isProtected
-                      ? () async {
-                          final ok = await Navigator.of(context).push<bool>(
-                            MaterialPageRoute(
-                              builder: (_) => PartFormScreen(part: part),
-                            ),
-                          );
-                          if (ok == true) _load();
-                        }
-                      : null,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.textPrimary,
-                    side: BorderSide(
-                      color: AppColors.textSecondary.withValues(alpha: 0.3),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    minimumSize: const Size(0, 36),
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Text(
-                    'Edit',
-                    style: TextStyle(
-                      letterSpacing: 0.8,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-              if (_canDelete) ...[
-                const SizedBox(width: 6),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: (!part.isProtected && !part.isUsedInWorkOrder)
-                        ? () => _delete(part)
-                        : null,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor:
-                          (!part.isProtected && !part.isUsedInWorkOrder)
-                          ? AppColors.danger
-                          : AppColors.textSecondary.withValues(alpha: 0.3),
-                      backgroundColor: Colors.transparent,
-                      side: BorderSide(
-                        color: (!part.isProtected && !part.isUsedInWorkOrder)
-                            ? AppColors.danger.withValues(alpha: 0.4)
-                            : AppColors.textSecondary.withValues(alpha: 0.3),
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      minimumSize: const Size(0, 36),
-                      padding: EdgeInsets.zero,
-                    ),
-                    child: const Text(
-                      'Delete',
-                      style: TextStyle(
-                        letterSpacing: 0.8,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ],

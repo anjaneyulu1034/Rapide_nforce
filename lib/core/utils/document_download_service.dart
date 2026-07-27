@@ -11,6 +11,12 @@ class DocumentDownloadService {
   DocumentDownloadService._();
   static final instance = DocumentDownloadService._();
 
+  /// Matches the web app's binder-empty message (see `VehicleDetail.tsx`
+  /// `handleDownloadPdfPacket`/`handleGenerateQrCode`) so both platforms
+  /// give the same guidance when a unit has no uploaded documents.
+  static const String noDocumentsMessage =
+      'There are no files available in the binder. Please upload documents first.';
+
   final _dio = Dio();
 
   Map<String, String> get _authHeaders {
@@ -29,9 +35,7 @@ class DocumentDownloadService {
     String entityBasePath = ApiConstants.trucks,
   }) async {
     late OverlayEntry overlay;
-    overlay = OverlayEntry(
-      builder: (_) => const _DownloadingOverlay(),
-    );
+    overlay = OverlayEntry(builder: (_) => const _DownloadingOverlay());
     Overlay.of(context).insert(overlay);
 
     try {
@@ -56,11 +60,7 @@ class DocumentDownloadService {
         headers['X-Company-Id'] = companyId;
       }
 
-      await _dio.download(
-        url,
-        savePath,
-        options: Options(headers: headers),
-      );
+      await _dio.download(url, savePath, options: Options(headers: headers));
 
       overlay.remove();
 
@@ -92,8 +92,9 @@ class DocumentDownloadService {
 
     try {
       final tempDir = await getTemporaryDirectory();
-      String safeName =
-          displayFileName.replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_').trim();
+      String safeName = displayFileName
+          .replaceAll(RegExp(r'[<>:"/\\|?*\x00-\x1F]'), '_')
+          .trim();
       if (safeName.isEmpty) safeName = 'attachment';
       if (!safeName.contains('.')) safeName = '$safeName.pdf';
 
@@ -130,19 +131,18 @@ class DocumentDownloadService {
     String entityBasePath = ApiConstants.trucks,
   }) async {
     if (!hasDocuments) {
-      _showError(context, 'No documents available to download');
+      _showError(context, noDocumentsMessage);
       return;
     }
     late OverlayEntry overlay;
-    overlay = OverlayEntry(
-      builder: (_) => const _DownloadingOverlay(),
-    );
+    overlay = OverlayEntry(builder: (_) => const _DownloadingOverlay());
     Overlay.of(context).insert(overlay);
 
     try {
       final tempDir = await getTemporaryDirectory();
-      final entityLabel =
-          entityBasePath == ApiConstants.trailers ? 'trailer' : 'truck';
+      final entityLabel = entityBasePath == ApiConstants.trailers
+          ? 'trailer'
+          : 'truck';
       final savePath =
           '${tempDir.path}/$entityLabel-$truckId-roadside-packet-${DateTime.now().millisecondsSinceEpoch}.pdf';
 
@@ -169,6 +169,13 @@ class DocumentDownloadService {
         _showError(context, 'Download failed: ${_readableError(e)}');
       }
     }
+  }
+
+  /// Shows the shared "no documents" message — call before generating a QR
+  /// code (or any other binder-dependent action) when the unit has no
+  /// uploaded documents yet.
+  void showNoDocumentsError(BuildContext context) {
+    _showError(context, noDocumentsMessage);
   }
 
   String _readableError(Object e) {

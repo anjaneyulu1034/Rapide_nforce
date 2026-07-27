@@ -7,6 +7,7 @@ import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
+import 'package:rapide_nforce/core/utils/compact_date_picker.dart';
 import 'package:rapide_nforce/core/utils/document_download_service.dart';
 import 'package:rapide_nforce/models/trailer_model.dart';
 import 'package:rapide_nforce/models/truck_document_model.dart';
@@ -948,6 +949,10 @@ class _ComplianceTabState extends State<_ComplianceTab> {
       );
 
   Future<void> _generateQrCode() async {
+    if (widget.documents.isEmpty) {
+      DocumentDownloadService.instance.showNoDocumentsError(context);
+      return;
+    }
     setState(() => _generatingQr = true);
     final result = await TrailerService.instance.generateQrCode(
       widget.trailer.id,
@@ -1248,8 +1253,8 @@ class _ComplianceTabState extends State<_ComplianceTab> {
                   DocActionBtn(
                     icon: Icons.download_outlined,
                     tooltip: 'Download',
-                    onTap: () => DocumentDownloadService.instance
-                        .downloadAndOpen(
+                    onTap: () =>
+                        DocumentDownloadService.instance.downloadAndOpen(
                           context: context,
                           truckId: d.truckId,
                           documentId: d.id,
@@ -1520,11 +1525,11 @@ class _DocumentsTabState extends State<_DocumentsTab> {
           ...filtered.map(
             (d) => DocCard(
               doc: d,
-              canReplace: _canReplace,
+              canEdit: _canReplace,
               canDelete: _canDelete,
               onView: () => _showDetails(d),
               onDelete: () => widget.onDelete(d),
-              onReplace: () => widget.onReplace(d),
+              onEdit: () => widget.onReplace(d),
               onVersionHistory: () => _showVersionHistory(d),
               onDownload: () =>
                   DocumentDownloadService.instance.downloadAndOpen(
@@ -1557,6 +1562,9 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
   final _searchCtrl = TextEditingController();
   String _search = '';
   WorkOrderStatus? _filterStatus;
+  bool _sortNewestFirst = true;
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
 
   @override
   void dispose() {
@@ -1566,6 +1574,9 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
 
   int _count(WorkOrderStatus s) =>
       widget.workOrders.where((wo) => wo.status == s).length;
+
+  DateTime? _createdOn(WorkOrderModel wo) =>
+      DateTime.tryParse(wo.createdOn ?? '');
 
   List<WorkOrderModel> get _filtered {
     var list = widget.workOrders;
@@ -1583,12 +1594,191 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
           )
           .toList();
     }
+    if (_dateFrom != null || _dateTo != null) {
+      list = list.where((wo) {
+        final created = _createdOn(wo);
+        if (created == null) return false;
+        if (_dateFrom != null && created.isBefore(_dateFrom!)) return false;
+        if (_dateTo != null &&
+            created.isAfter(_dateTo!.add(const Duration(days: 1)))) {
+          return false;
+        }
+        return true;
+      }).toList();
+    }
+    list = [...list]
+      ..sort((a, b) {
+        final da = _createdOn(a) ?? DateTime(1970);
+        final db = _createdOn(b) ?? DateTime(1970);
+        return _sortNewestFirst ? db.compareTo(da) : da.compareTo(db);
+      });
     return list;
   }
 
   void _setFilter(WorkOrderStatus s) => setState(() {
     _filterStatus = _filterStatus == s ? null : s;
   });
+
+  Future<void> _openDateFilterSheet() async {
+    DateTime? tempFrom = _dateFrom;
+    DateTime? tempTo = _dateTo;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            Future<void> pickDate({required bool isFrom}) async {
+              final now = DateTime.now();
+              final picked = await showCompactDatePicker(
+                context: sheetContext,
+                initialDate: (isFrom ? tempFrom : tempTo) ?? now,
+                firstDate: DateTime(2015),
+                lastDate: DateTime(now.year + 1),
+              );
+              if (picked == null) return;
+              setSheetState(() {
+                if (isFrom) {
+                  tempFrom = picked;
+                } else {
+                  tempTo = picked;
+                }
+              });
+            }
+
+            Widget dateField(String label, DateTime? value, bool isFrom) {
+              return Expanded(
+                child: InkWell(
+                  onTap: () => pickDate(isFrom: isFrom),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.inputFill,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_month_outlined,
+                          size: 16,
+                          color: AppColors.textSecondary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            value != null
+                                ? '${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}-${value.year}'
+                                : label,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: value != null
+                                  ? AppColors.textPrimary
+                                  : AppColors.textSecondary,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: 20,
+                  right: 20,
+                  top: 20,
+                  bottom: 20 + MediaQuery.of(sheetContext).viewInsets.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Filter by Created Date',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        dateField('From', tempFrom, true),
+                        const SizedBox(width: 12),
+                        dateField('To', tempTo, false),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              setSheetState(() {
+                                tempFrom = null;
+                                tempTo = null;
+                              });
+                            },
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.textPrimary,
+                              side: BorderSide(color: AppColors.border),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text('Clear'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            onPressed: () {
+                              setState(() {
+                                _dateFrom = tempFrom;
+                                _dateTo = tempTo;
+                              });
+                              Navigator.pop(sheetContext);
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF4B633D),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            child: const Text(
+                              'Apply',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1753,9 +1943,36 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
               ),
             ),
             const SizedBox(width: 8),
-            _TIconBtn(icon: Icons.tune_outlined, onTap: () {}),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                _TIconBtn(
+                  icon: Icons.tune_outlined,
+                  onTap: _openDateFilterSheet,
+                ),
+                if (_dateFrom != null || _dateTo != null)
+                  Positioned(
+                    top: -2,
+                    right: -2,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.card, width: 2),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(width: 8),
-            _TIconBtn(icon: Icons.swap_vert_outlined, onTap: () {}),
+            _TIconBtn(
+              icon: _sortNewestFirst
+                  ? Icons.arrow_downward_rounded
+                  : Icons.arrow_upward_rounded,
+              onTap: () => setState(() => _sortNewestFirst = !_sortNewestFirst),
+            ),
           ],
         ),
         const SizedBox(height: 12),

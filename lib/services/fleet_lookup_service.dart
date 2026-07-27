@@ -1,6 +1,7 @@
 import 'package:rapide_nforce/core/constants/api_constants.dart';
 import 'package:rapide_nforce/core/models/api_result.dart';
 import 'package:rapide_nforce/core/utils/api_parse.dart';
+import 'package:rapide_nforce/models/maintenance_policy_model.dart';
 import 'package:rapide_nforce/models/truck_permit_model.dart';
 import 'package:rapide_nforce/services/api_client.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
@@ -44,17 +45,68 @@ class FleetLookupService {
     );
   }
 
+  /// Full maintenance-policy records (including PM interval / inspection
+  /// frequency configuration), unlike [fetchMaintenancePolicies] which only
+  /// keeps the id/name needed for a plain dropdown.
+  Future<ApiResult<List<MaintenancePolicyModel>>>
+  fetchMaintenancePolicyConfigs({int? companyId}) async {
+    final cid = companyId ?? AuthService.instance.selectedCompanyIdInt;
+    try {
+      final body = await _api.parseJson(
+        () => _api.get(
+          ApiConstants.maintenancePolicies,
+          params: {'isActive': true, 'companyId': ?cid},
+          companyId: cid?.toString(),
+        ),
+        onSuccess: (b) => b,
+      );
+      final items = ApiParse.listItems(body)
+          .map(MaintenancePolicyModel.fromJson)
+          .where((p) => p.id > 0 && p.name.isNotEmpty)
+          .toList();
+      return ApiResult.ok(items);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to load maintenance policies.');
+    }
+  }
+
   Future<ApiResult<List<LookupOption>>> fetchPermitTypes() async {
     return _fetchList(ApiConstants.permitTypes, params: {'isActive': true});
+  }
+
+  /// Persists a custom permit type name typed via the "Other" option on the
+  /// permit-type dropdown, so it's available for future records — mirrors
+  /// web's `permitTypesService.createPermitType`.
+  Future<ApiResult<LookupOption>> createPermitType(String name) async {
+    try {
+      final body = await _api.parseJson(
+        () => _api.post(
+          ApiConstants.permitTypes,
+          body: {'name': name, 'isActive': true},
+        ),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.asMap(ApiParse.unwrapData(body)) ?? {};
+      return ApiResult.ok(
+        LookupOption(
+          id: data['id'] as int? ?? 0,
+          name: (data['name'] as String? ?? name).trim(),
+        ),
+      );
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to create permit type.');
+    }
   }
 
   Future<ApiResult<List<String>>> fetchComplianceDocumentCategories({
     bool isVehicle = true,
   }) async {
     // API name → display name (matches web VEHICLE_COMPLIANCE_CATEGORY_API_TO_DISPLAY)
-    const apiToDisplay = <String, String>{
-      'Unit-Specific Permits': 'Permits',
-    };
+    const apiToDisplay = <String, String>{'Unit-Specific Permits': 'Permits'};
     const truckAllowed = {
       'Carrier Authority Documents',
       'Lease & Ownership Documents',
@@ -69,14 +121,15 @@ class FleetLookupService {
         ),
         onSuccess: (b) => b,
       );
-      final items = ApiParse.listItems(body)
-          .map((e) => (e['name'] as String? ?? '').trim())
-          .where((n) => n.isNotEmpty)
-          .map((n) => apiToDisplay[n] ?? n)
-          .where((n) => !isVehicle || truckAllowed.contains(n))
-          .toSet() // deduplicate in case two API names map to the same display name
-          .toList()
-        ..sort((a, b) => a.compareTo(b));
+      final items =
+          ApiParse.listItems(body)
+              .map((e) => (e['name'] as String? ?? '').trim())
+              .where((n) => n.isNotEmpty)
+              .map((n) => apiToDisplay[n] ?? n)
+              .where((n) => !isVehicle || truckAllowed.contains(n))
+              .toSet() // deduplicate in case two API names map to the same display name
+              .toList()
+            ..sort((a, b) => a.compareTo(b));
       return ApiResult.ok(items);
     } on ApiClientException catch (e) {
       return ApiResult.fail(e.message, statusCode: e.statusCode);
@@ -100,12 +153,13 @@ class FleetLookupService {
         () => _api.get(ApiConstants.complianceDocumentTypes, params: params),
         onSuccess: (b) => b,
       );
-      final items = ApiParse.listItems(body)
-          .map((e) => (e['name'] as String? ?? '').trim())
-          .where((n) => n.isNotEmpty)
-          .where((n) => n != 'Other')
-          .toList()
-        ..sort((a, b) => a.compareTo(b));
+      final items =
+          ApiParse.listItems(body)
+              .map((e) => (e['name'] as String? ?? '').trim())
+              .where((n) => n.isNotEmpty)
+              .where((n) => n != 'Other')
+              .toList()
+            ..sort((a, b) => a.compareTo(b));
       items.add('Other');
       return ApiResult.ok(items);
     } on ApiClientException catch (e) {
@@ -133,11 +187,12 @@ class FleetLookupService {
         () => _api.get(ApiConstants.complianceDocumentTypes, params: params),
         onSuccess: (b) => b,
       );
-      final items = ApiParse.listItems(body)
-          .map((e) => (e['name'] as String? ?? '').trim())
-          .where((n) => n.isNotEmpty && !excluded.contains(n))
-          .toList()
-        ..sort((a, b) => a.compareTo(b));
+      final items =
+          ApiParse.listItems(body)
+              .map((e) => (e['name'] as String? ?? '').trim())
+              .where((n) => n.isNotEmpty && !excluded.contains(n))
+              .toList()
+            ..sort((a, b) => a.compareTo(b));
       return ApiResult.ok(items);
     } on ApiClientException catch (e) {
       return ApiResult.fail(e.message, statusCode: e.statusCode);

@@ -8,12 +8,14 @@ import 'package:rapide_nforce/core/utils/compact_date_picker.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/power_unit_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
+import 'package:rapide_nforce/services/permission_service.dart';
 import 'package:rapide_nforce/services/power_unit_service.dart';
 import 'package:rapide_nforce/ui/power_unit_detail_screen.dart';
 import 'package:rapide_nforce/ui/power_unit_form_screen.dart';
 import 'package:rapide_nforce/ui/widgets/api_error_banner.dart';
+import 'package:rapide_nforce/ui/widgets/icon_only_button.dart';
 import 'package:rapide_nforce/ui/widgets/list_empty_state.dart';
-import 'package:rapide_nforce/ui/widgets/status_chip.dart';
+import 'package:rapide_nforce/ui/widgets/status_badge.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class PowerUnitScreen extends StatefulWidget {
@@ -32,7 +34,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
   bool _loadingMore = false;
   String? _error;
   List<PowerUnitModel> _items = [];
-  int? _selectedId;
   int _page = 1;
   final int _limit = 10;
   int _total = 0;
@@ -46,14 +47,37 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
   DateTime? _startDateTo;
   String _sortOrder = 'newest'; // newest | oldest
 
+  // Column sort — applied client-side over the fetched batch, mirroring the
+  // web list's clickable-column-header sort (which is also client-side).
+  // null = no column selected, falls back to _sortOrder (newest/oldest).
+  String? _sortColumn;
+  bool _sortAscending = true;
+
+  static const Map<String, String> _sortColumns = {
+    'unitNumber': 'Unit #',
+    'companyName': 'Company Name',
+    'startDate': 'Start Date',
+    'vinNumber': 'VIN',
+    'licensePlate': 'Plate',
+    'registrationExpiry': 'Registration Expiry',
+    'status': 'Status',
+  };
+
   bool get _isSuperAdmin =>
       isSuperAdminRole(AuthService.instance.currentUser?.role);
+  bool get _isAdminOrAbove =>
+      isAdminRole(AuthService.instance.currentUser?.role);
+
+  MenuPermissions _permissions = const MenuPermissions();
+  bool get _canUpdate => _isAdminOrAbove || _permissions.canUpdate;
+  bool get _canDelete => _isAdminOrAbove || _permissions.canDelete;
 
   bool get _hasActiveFilters =>
       _statusFilter != 'all' ||
       _startDateFrom != null ||
       _startDateTo != null ||
-      _sortOrder != 'newest';
+      _sortOrder != 'newest' ||
+      _sortColumn != null;
 
   int get _effectiveLimit => _hasActiveFilters ? 500 : _limit;
 
@@ -73,7 +97,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
 
   List<PowerUnitModel> get _visibleItems {
     if (!_hasActiveFilters) return _items;
-    return _items.where((u) {
+    final filtered = _items.where((u) {
       if (_statusFilter == 'active' && !u.isActive) return false;
       if (_statusFilter == 'inactive' && u.isActive) return false;
       final start = _parseDate(u.startDate);
@@ -88,6 +112,46 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
       }
       return true;
     }).toList();
+    return _applyColumnSort(filtered);
+  }
+
+  /// Client-side multi-column sort (mirrors the web list's sortable column
+  /// headers, which also sort in-memory rather than via a backend param).
+  List<PowerUnitModel> _applyColumnSort(List<PowerUnitModel> list) {
+    final column = _sortColumn;
+    if (column == null) return list;
+    int compareStrings(String? a, String? b) =>
+        (a ?? '').toLowerCase().compareTo((b ?? '').toLowerCase());
+    int compareDates(String? a, String? b) {
+      final da = _parseDate(a)?.millisecondsSinceEpoch ?? 0;
+      final db = _parseDate(b)?.millisecondsSinceEpoch ?? 0;
+      return da.compareTo(db);
+    }
+
+    int cmp(PowerUnitModel a, PowerUnitModel b) {
+      switch (column) {
+        case 'unitNumber':
+          return compareStrings(a.unitNumber, b.unitNumber);
+        case 'companyName':
+          return compareStrings(a.companyName, b.companyName);
+        case 'startDate':
+          return compareDates(a.startDate, b.startDate);
+        case 'vinNumber':
+          return compareStrings(a.vinNumber, b.vinNumber);
+        case 'licensePlate':
+          return compareStrings(a.licensePlate, b.licensePlate);
+        case 'registrationExpiry':
+          return compareDates(a.registrationExpiry, b.registrationExpiry);
+        case 'status':
+          return (a.isActive ? 1 : 0).compareTo(b.isActive ? 1 : 0);
+        default:
+          return 0;
+      }
+    }
+
+    final sorted = [...list];
+    sorted.sort((a, b) => _sortAscending ? cmp(a, b) : cmp(b, a));
+    return sorted;
   }
 
   @override
@@ -96,6 +160,18 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     _searchController.addListener(_onSearchChanged);
     _scrollController.addListener(_onScroll);
     _load();
+    _loadPermissions();
+  }
+
+  Future<void> _loadPermissions() async {
+    final result = await PermissionService.instance.getMenuPermissions(
+      menuUrl: '/powerunit',
+      menuName: 'Power Unit',
+    );
+    if (!mounted) return;
+    if (result.isSuccess && result.data != null) {
+      setState(() => _permissions = result.data!);
+    }
   }
 
   @override
@@ -133,6 +209,8 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     DateTime? tempFrom = _startDateFrom;
     DateTime? tempTo = _startDateTo;
     String tempSort = _sortOrder;
+    String? tempColumn = _sortColumn;
+    bool tempAscending = _sortAscending;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -259,6 +337,26 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
               );
             }
 
+            Widget columnChip(String value, String label) {
+              final selected = tempColumn == value;
+              return ChoiceChip(
+                label: Text(label),
+                selected: selected,
+                onSelected: (_) =>
+                    setSheetState(() => tempColumn = selected ? null : value),
+                selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                labelStyle: TextStyle(
+                  color: selected ? AppColors.primary : AppColors.textPrimary,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  fontSize: 13,
+                ),
+                side: BorderSide(
+                  color: selected ? AppColors.primary : AppColors.border,
+                ),
+                backgroundColor: AppColors.inputFill,
+              );
+            }
+
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.only(
@@ -336,6 +434,83 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                         sortChip('oldest', 'Oldest'),
                       ],
                     ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'SORT BY COLUMN',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final entry in _sortColumns.entries)
+                          if (entry.key != 'companyName' || _isSuperAdmin)
+                            columnChip(entry.key, entry.value),
+                      ],
+                    ),
+                    if (tempColumn != null) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('Ascending'),
+                            selected: tempAscending,
+                            onSelected: (_) =>
+                                setSheetState(() => tempAscending = true),
+                            selectedColor: AppColors.primary.withValues(
+                              alpha: 0.15,
+                            ),
+                            labelStyle: TextStyle(
+                              color: tempAscending
+                                  ? AppColors.primary
+                                  : AppColors.textPrimary,
+                              fontWeight: tempAscending
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              fontSize: 13,
+                            ),
+                            side: BorderSide(
+                              color: tempAscending
+                                  ? AppColors.primary
+                                  : AppColors.border,
+                            ),
+                            backgroundColor: AppColors.inputFill,
+                          ),
+                          ChoiceChip(
+                            label: const Text('Descending'),
+                            selected: !tempAscending,
+                            onSelected: (_) =>
+                                setSheetState(() => tempAscending = false),
+                            selectedColor: AppColors.primary.withValues(
+                              alpha: 0.15,
+                            ),
+                            labelStyle: TextStyle(
+                              color: !tempAscending
+                                  ? AppColors.primary
+                                  : AppColors.textPrimary,
+                              fontWeight: !tempAscending
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              fontSize: 13,
+                            ),
+                            side: BorderSide(
+                              color: !tempAscending
+                                  ? AppColors.primary
+                                  : AppColors.border,
+                            ),
+                            backgroundColor: AppColors.inputFill,
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     Row(
                       children: [
@@ -347,6 +522,8 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                                 tempFrom = null;
                                 tempTo = null;
                                 tempSort = 'newest';
+                                tempColumn = null;
+                                tempAscending = true;
                               });
                             },
                             style: OutlinedButton.styleFrom(
@@ -369,6 +546,8 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                                 _startDateFrom = tempFrom;
                                 _startDateTo = tempTo;
                                 _sortOrder = tempSort;
+                                _sortColumn = tempColumn;
+                                _sortAscending = tempAscending;
                               });
                               Navigator.pop(sheetContext);
                               _load();
@@ -664,8 +843,8 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
       expiry.month,
       expiry.day,
     ).difference(DateTime(today.year, today.month, today.day)).inDays;
-    if (days < 0) return const Color(0xFFBA1A1A);
-    if (days <= 30) return const Color(0xFFEA580C);
+    if (days < 0) return StatusBadgeColors.text(BadgeTone.danger);
+    if (days <= 30) return StatusBadgeColors.text(BadgeTone.warning);
     return null;
   }
 
@@ -693,7 +872,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
 
   Widget _buildCard(PowerUnitModel u) {
     final bool isMaintenance = u.isMaintenance;
-    final bool isSelected = _selectedId == u.id;
 
     final subtitleStr = u.vinNumber ?? '';
 
@@ -703,24 +881,31 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     }
 
     final expiryDays = _daysUntilExpiry(u.registrationExpiry);
+    final bool isOverdue = expiryDays != null && expiryDays < 0;
     String? badgeLabel;
-    Color? badgeBg;
-    Color? badgeText;
+    BadgeTone? badgeTone;
     if (expiryDays != null && expiryDays <= 30) {
       if (expiryDays < 0) {
         badgeLabel = 'OVERDUE';
-        badgeBg = const Color(0xFFBA1A1A).withValues(alpha: 0.14);
-        badgeText = const Color(0xFFBA1A1A);
+        badgeTone = BadgeTone.danger;
       } else if (expiryDays == 0) {
         badgeLabel = 'DUE TODAY';
-        badgeBg = const Color(0xFFBA1A1A).withValues(alpha: 0.14);
-        badgeText = const Color(0xFFBA1A1A);
+        badgeTone = BadgeTone.danger;
       } else {
         badgeLabel = '$expiryDays DAYS';
-        badgeBg = const Color(0xFFEA580C).withValues(alpha: 0.14);
-        badgeText = const Color(0xFFC2410C);
+        badgeTone = BadgeTone.warning;
       }
     }
+
+    final BadgeTone cardTone = isOverdue
+        ? BadgeTone.danger
+        : u.isOos
+        ? BadgeTone.danger
+        : isMaintenance
+        ? BadgeTone.warning
+        : u.isActive
+        ? BadgeTone.success
+        : BadgeTone.danger;
 
     Widget dataRow(String label, String? value, {Color? valueColor}) {
       return Padding(
@@ -749,224 +934,169 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
       );
     }
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(16),
-        splashColor: AppColors.danger.withValues(alpha: 0.06),
-        highlightColor: AppColors.danger.withValues(alpha: 0.03),
-        onTap: () => setState(() {
-          _selectedId = isSelected ? null : u.id;
-        }),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          splashColor: AppColors.danger.withValues(alpha: 0.06),
+          highlightColor: AppColors.danger.withValues(alpha: 0.03),
+          onTap: () => _openDetail(u),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── Header ──
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            u.unitNumber,
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if (subtitleStr.isNotEmpty) ...[
-                            const SizedBox(height: 2),
-                            Text(
-                              subtitleStr,
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: AppColors.textSecondary,
-                                letterSpacing: 0.5,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                Container(width: 5, color: StatusBadgeColors.accent(cardTone)),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (u.isOos)
-                          const StatusChip(
-                            label: 'OOS',
-                            tone: StatusChipTone.danger,
-                          )
-                        else if (isMaintenance)
-                          const StatusChip(
-                            label: 'MAINTENANCE',
-                            tone: StatusChipTone.warning,
-                          )
-                        else if (u.isActive)
-                          Text(
-                            'ACTIVE',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.statusCompleted,
-                            ),
-                          )
-                        else
-                          StatusChip.inactive('INACTIVE'),
-                        if (contextText != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            contextText,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFFEA580C),
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                        if (badgeLabel != null) ...[
-                          const SizedBox(height: 5),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: badgeBg,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: Text(
-                              badgeLabel,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                                color: badgeText,
+                        // ── Header ──
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    u.unitNumber,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (subtitleStr.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      subtitleStr,
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: AppColors.textSecondary,
+                                        letterSpacing: 0.5,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ],
                               ),
                             ),
+                            const SizedBox(width: 8),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_canUpdate)
+                                      IconOnlyButton(
+                                        icon: Icons.edit,
+                                        color: AppColors.chromeBlue,
+                                        onTap: () => _openEdit(u),
+                                      ),
+                                    if (_canDelete)
+                                      IconOnlyButton(
+                                        icon: Icons.delete_outline,
+                                        danger: true,
+                                        onTap: () => _confirmDelete(u),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Wrap(
+                                  alignment: WrapAlignment.end,
+                                  crossAxisAlignment: WrapCrossAlignment.end,
+                                  spacing: 4,
+                                  runSpacing: 4,
+                                  children: [
+                                    if (u.isOos)
+                                      const MiniStatusBadge(
+                                        label: 'OOS',
+                                        tone: BadgeTone.danger,
+                                        dense: true,
+                                      )
+                                    else if (isMaintenance)
+                                      const MiniStatusBadge(
+                                        label: 'MAINTENANCE',
+                                        tone: BadgeTone.warning,
+                                        dense: true,
+                                      )
+                                    else if (u.isActive)
+                                      const MiniStatusBadge(
+                                        label: 'ACTIVE',
+                                        tone: BadgeTone.success,
+                                        dense: true,
+                                      )
+                                    else
+                                      const MiniStatusBadge(
+                                        label: 'INACTIVE',
+                                        tone: BadgeTone.danger,
+                                        dense: true,
+                                      ),
+                                    if (badgeLabel != null && badgeTone != null)
+                                      MiniStatusBadge(
+                                        label: badgeLabel,
+                                        tone: badgeTone,
+                                        dense: true,
+                                        borderColor:
+                                            badgeTone == BadgeTone.danger
+                                            ? StatusBadgeColors
+                                                  .dangerBorderLight
+                                            : null,
+                                      ),
+                                  ],
+                                ),
+                                if (contextText != null) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    contextText,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: StatusBadgeColors.text(
+                                        BadgeTone.warning,
+                                      ),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: AppColors.textSecondary.withValues(
+                            alpha: 0.12,
                           ),
-                        ],
+                        ),
+                        const SizedBox(height: 10),
+                        // ── Data rows ──
+                        dataRow(
+                          _isSuperAdmin ? 'Company' : 'License Plate',
+                          _isSuperAdmin ? u.companyName : u.licensePlate,
+                        ),
+                        dataRow(
+                          'Registration Expiry',
+                          u.registrationExpiry,
+                          valueColor: _expiryColor(u.registrationExpiry),
+                        ),
                       ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: AppColors.textSecondary.withValues(alpha: 0.12),
-                ),
-                const SizedBox(height: 10),
-                // ── Data rows ──
-                dataRow(
-                  _isSuperAdmin ? 'Company' : 'License Plate',
-                  _isSuperAdmin ? u.companyName : u.licensePlate,
-                ),
-                dataRow(
-                  'Registration Expiry',
-                  u.registrationExpiry,
-                  valueColor: _expiryColor(u.registrationExpiry),
-                ),
-                const SizedBox(height: 6),
-                // ── Action row: View | Edit | Delete ──
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _openDetail(u),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          side: BorderSide(
-                            color: AppColors.textSecondary.withValues(
-                              alpha: 0.3,
-                            ),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(0, 36),
-                          padding: EdgeInsets.zero,
-                        ),
-                        child: const Text(
-                          'View',
-                          style: TextStyle(
-                            letterSpacing: 0.8,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _openEdit(u),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          side: BorderSide(
-                            color: AppColors.textSecondary.withValues(
-                              alpha: 0.3,
-                            ),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(0, 36),
-                          padding: EdgeInsets.zero,
-                        ),
-                        child: const Text(
-                          'Edit',
-                          style: TextStyle(
-                            letterSpacing: 0.8,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _confirmDelete(u),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.danger,
-                          backgroundColor: Colors.transparent,
-                          overlayColor: Colors.transparent,
-                          side: BorderSide(
-                            color: AppColors.danger.withValues(alpha: 0.4),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(0, 36),
-                          padding: EdgeInsets.zero,
-                        ),
-                        child: const Text(
-                          'Delete',
-                          style: TextStyle(
-                            letterSpacing: 0.8,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ],
             ),
@@ -1051,50 +1181,55 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
             ),
             const SizedBox(height: 12),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   _hasActiveFilters ? 'Filtered Results' : 'Total Power Units',
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  _hasActiveFilters ? '${_visibleItems.length}' : '$_total',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
                     color: AppColors.textPrimary,
                   ),
                 ),
-                if (_hasActiveFilters) ...[
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _statusFilter = 'all';
-                        _startDateFrom = null;
-                        _startDateTo = null;
-                        _sortOrder = 'newest';
-                      });
-                      _load();
-                    },
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(0, 0),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                    child: const Text(
-                      'Clear filters',
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _hasActiveFilters ? '${_visibleItems.length}' : '$_total',
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.chromeBlue,
                       ),
                     ),
-                  ),
-                ],
+                    if (_hasActiveFilters) ...[
+                      const SizedBox(width: 8),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _statusFilter = 'all';
+                            _startDateFrom = null;
+                            _startDateTo = null;
+                            _sortOrder = 'newest';
+                          });
+                          _load();
+                        },
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(0, 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          'Clear filters',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 16),

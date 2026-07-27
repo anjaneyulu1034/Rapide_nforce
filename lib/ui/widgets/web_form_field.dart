@@ -287,10 +287,7 @@ class WebTextFormField extends StatelessWidget {
           label: buildFieldLabel(label, fontSize),
           hintText: hint,
           suffixIcon: suffix,
-          hintStyle: TextStyle(
-            color: Colors.black,
-            fontSize: fontSize - 1,
-          ),
+          hintStyle: TextStyle(color: Colors.black, fontSize: fontSize - 1),
           filled: true,
           fillColor: isLight ? Colors.white : AppColors.inputFill,
           border: OutlineInputBorder(
@@ -659,7 +656,12 @@ class _SearchableListSheetState<T> extends State<_SearchableListSheet<T>> {
   }
 }
 
-class WebDateField extends StatelessWidget {
+/// Date input whose on-screen value is always shown as `MM-DD-YYYY` (matching
+/// the format used everywhere else in the app), while the underlying
+/// [controller] keeps holding the `yyyy-MM-dd` ISO text the API expects —
+/// callers, validators and [onChanged] all keep seeing that ISO value
+/// unchanged, only the rendered text differs.
+class WebDateField extends StatefulWidget {
   const WebDateField({
     super.key,
     required this.controller,
@@ -675,19 +677,62 @@ class WebDateField extends StatelessWidget {
   final String label;
   final String? Function(String?)? validator;
   final bool required;
+
   /// Defaults to 1980 / now+20y. Pass [lastDate]: today for fields that
   /// can't be a future date (e.g. Purchase Date).
   final DateTime? firstDate;
   final DateTime? lastDate;
+
   /// Called with the new `yyyy-MM-dd` text after a date is picked — use
   /// this to react to the change (e.g. re-validate a dependent field).
   final ValueChanged<String>? onChanged;
 
+  @override
+  State<WebDateField> createState() => _WebDateFieldState();
+}
+
+class _WebDateFieldState extends State<WebDateField> {
+  late final TextEditingController _display;
+
+  @override
+  void initState() {
+    super.initState();
+    _display = TextEditingController(text: _format(widget.controller.text));
+    widget.controller.addListener(_syncDisplay);
+  }
+
+  @override
+  void didUpdateWidget(covariant WebDateField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_syncDisplay);
+      widget.controller.addListener(_syncDisplay);
+      _syncDisplay();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_syncDisplay);
+    _display.dispose();
+    super.dispose();
+  }
+
+  String _format(String iso) {
+    final parsed = DateTime.tryParse(iso.trim());
+    return parsed == null ? '' : DateFormat('MM-dd-yyyy').format(parsed);
+  }
+
+  void _syncDisplay() {
+    final formatted = _format(widget.controller.text);
+    if (_display.text != formatted) _display.text = formatted;
+  }
+
   Future<void> _pick(BuildContext context) async {
     final now = DateTime.now();
-    final minDate = firstDate ?? DateTime(1980);
-    final maxDate = lastDate ?? DateTime(now.year + 20);
-    var initial = DateTime.tryParse(controller.text) ?? now;
+    final minDate = widget.firstDate ?? DateTime(1980);
+    final maxDate = widget.lastDate ?? DateTime(now.year + 20);
+    var initial = DateTime.tryParse(widget.controller.text) ?? now;
     if (initial.isAfter(maxDate)) initial = maxDate;
     if (initial.isBefore(minDate)) initial = minDate;
     final picked = await showCompactDatePicker(
@@ -697,22 +742,22 @@ class WebDateField extends StatelessWidget {
       lastDate: maxDate,
     );
     if (picked != null) {
-      final text = DateFormat('yyyy-MM-dd').format(picked);
-      controller.text = text;
-      onChanged?.call(text);
+      final iso = DateFormat('yyyy-MM-dd').format(picked);
+      widget.controller.text = iso;
+      widget.onChanged?.call(iso);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return WebTextFormField(
-      controller: controller,
-      label: required ? '$label *' : label,
-      hint: 'YYYY-MM-DD',
+      controller: _display,
+      label: widget.required ? '${widget.label} *' : widget.label,
+      hint: 'MM-DD-YYYY',
       readOnly: true,
       onTap: () => _pick(context),
       suffix: const Icon(Icons.calendar_today_outlined, size: 18),
-      validator: validator,
+      validator: (_) => widget.validator?.call(widget.controller.text),
     );
   }
 }
