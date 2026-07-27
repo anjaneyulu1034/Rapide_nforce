@@ -327,14 +327,37 @@ class _AppShellState extends State<AppShell> {
       backgroundColor: AppColors.surface,
       extendBody: true,
       appBar: AppBar(
+        backgroundColor: AppColors.chromeBlue,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
+        elevation: 0,
         centerTitle: false,
         titleSpacing: 0,
-        title: const Text(
-          'RAPIDÉnforce',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 16,
-          ),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _currentRoute.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                color: Colors.white,
+              ),
+            ),
+            Text(
+              'Hi, ${AuthService.instance.currentUser?.name ?? ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: AppColors.chromeBlueMuted,
+              ),
+            ),
+          ],
         ),
 
         actions: [

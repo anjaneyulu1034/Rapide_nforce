@@ -1,7 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
-import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/enums/app_route.dart';
 
 class AppBottomNav extends StatelessWidget {
@@ -56,7 +55,7 @@ class AppBottomNav extends StatelessWidget {
             color: AppColors.bottomNavBg.withValues(alpha: 0.85),
             border: Border(
               top: BorderSide(
-                color: AppColors.gold.withValues(alpha: 0.15),
+                color: AppColors.chromeBlue.withValues(alpha: 0.15),
                 width: 1.5,
               ),
             ),
@@ -116,31 +115,13 @@ class _NavItem extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               AnimatedScale(
-                scale: selected ? 1.12 : 1.0,
+                scale: selected ? 1.1 : 1.0,
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  width: 44,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    gradient: selected ? AppGradients.goldAccent : null,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: selected
-                        ? [
-                            BoxShadow(
-                              color: AppColors.gold.withValues(alpha: 0.35),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 22,
-                    color: selected ? AppColors.black : AppColors.textSecondary,
-                  ),
+                child: Icon(
+                  icon,
+                  size: 24,
+                  color: selected ? AppColors.chromeBlue : AppColors.textSecondary,
                 ),
               ),
               const SizedBox(height: 4),
@@ -149,7 +130,7 @@ class _NavItem extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected ? AppColors.black : AppColors.textSecondary,
+                  color: selected ? AppColors.chromeBlue : AppColors.textSecondary,
                 ),
                 child: Text(
                   label,

@@ -19,9 +19,14 @@ import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/services/maintenance_service.dart';
 
 class WorkOrderFormScreen extends StatefulWidget {
-  const WorkOrderFormScreen({super.key, this.existing});
+  const WorkOrderFormScreen({
+    super.key,
+    this.existing,
+    this.initialIssueDescription,
+  });
 
   final WorkOrderModel? existing;
+  final String? initialIssueDescription;
 
   bool get isEdit => existing != null;
 
@@ -97,6 +102,10 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     _startDate = DateTime.now();
     _dueDate = DateTime.now().add(const Duration(days: 7));
     _prefillFromExisting();
+    if (widget.existing == null &&
+        (widget.initialIssueDescription?.trim().isNotEmpty ?? false)) {
+      _issueController.text = widget.initialIssueDescription!.trim();
+    }
     _loadMeta();
   }
 

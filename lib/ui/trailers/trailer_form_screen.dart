@@ -925,11 +925,12 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           },
           validator: (v) => v == null ? 'Country is required' : null,
         ),
-        WebDropdownField<int>(
+        WebSearchableDropdownField<int>(
           label: 'State / Province *',
           value: _stateId,
           items: _states.map((s) => s.id).toList(),
           itemLabel: (id) => _states.firstWhere((s) => s.id == id).name,
+          searchHint: 'Search state/province...',
           onChanged: (v) async {
             setState(() {
               _stateId = v;
@@ -943,11 +944,12 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
               ? 'State/Province is required'
               : null,
         ),
-        WebDropdownField<int>(
+        WebSearchableDropdownField<int>(
           label: 'City',
           value: _cityId,
           items: _cities.map((c) => c.id).toList(),
           itemLabel: (id) => _cities.firstWhere((c) => c.id == id).name,
+          searchHint: 'Search city...',
           onChanged: (v) {
             setState(() => _cityId = v);
             _onFormChanged();

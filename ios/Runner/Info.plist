@@ -49,5 +49,9 @@
 	<string>RAPIDÉnforce uses the camera to capture and scan vehicle documents.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>RAPIDÉnforce needs photo library access to attach existing images as documents.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>RAPIDÉnforce uses the microphone to let you create work orders by voice.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>RAPIDÉnforce uses speech recognition to transcribe work order details you dictate.</string>
 </dict>
 </plist>

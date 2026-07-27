@@ -19,6 +19,12 @@ class AppColors {
   static const Color gold = Color(0xFFE22D2D);
   static Color get goldLight => gold.withValues(alpha: 0.2);
 
+  // App chrome (top AppBar + bottom nav) — a fixed blue regardless of the
+  // light/dark content theme, matching the app-wide header/nav redesign.
+  static const Color chromeBlue = Color(0xFF1D4ED8);
+  static const Color chromeBlueDark = Color(0xFF1E3A8A);
+  static Color get chromeBlueMuted => Colors.white.withValues(alpha: 0.7);
+
   static Color get accent => primary;
   static Color get accentLight => accent.withValues(alpha: 0.2);
 

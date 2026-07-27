@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
+import 'package:rapide_nforce/core/utils/date_format.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/maintenance_service.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_detail_screen.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_form_screen.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_pdf_export.dart';
-import 'package:rapide_nforce/ui/work_orders/widgets/work_order_status_chip.dart';
 
 class WorkOrdersScreen extends StatefulWidget {
   const WorkOrdersScreen({super.key});
@@ -31,7 +31,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
   int _page = 1;
   int _totalPages = 1;
   int _totalItems = 0;
-  int? _statusFilter;
+  final Set<int> _statusFilters = {};
   String _searchTerm = '';
   String? _sortKey;
   String? _sortOrder;
@@ -67,32 +67,123 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
 
   Future<void> _loadMore() async {
     setState(() => _loadingMore = true);
+    await _fetch(page: _page + 1, append: true);
+  }
 
-    final result = await MaintenanceService.instance.getWorkOrders(
-      page: _page + 1,
-      limit: _pageSize,
-      search: _searchTerm.isEmpty ? null : _searchTerm,
-      status: _statusFilter,
-      companyId: AuthService.instance.selectedCompanyIdInt,
-      sortKey: _sortKey ?? 'createdOn',
-      sortOrder: _sortOrder ?? 'desc',
-    );
+  /// The list endpoint only accepts a single `status` value per request. With
+  /// 0 or 1 statuses checked in the filter sheet, this is a normal
+  /// server-paginated fetch. With 2+ statuses checked, there's no server-side
+  /// OR, so each selected status is fetched in full (capped, single page) and
+  /// merged/sorted client-side — infinite scroll is not available in that
+  /// mode since everything up to the cap is already loaded.
+  Future<void> _fetch({required int page, required bool append}) async {
+    final effectiveFilters = _statusFilters.length == WorkOrderStatus.values.length
+        ? const <int>{}
+        : _statusFilters;
 
-    if (!mounted) return;
+    if (effectiveFilters.length <= 1) {
+      final result = await MaintenanceService.instance.getWorkOrders(
+        page: page,
+        limit: _pageSize,
+        search: _searchTerm.isEmpty ? null : _searchTerm,
+        status: effectiveFilters.isEmpty ? null : effectiveFilters.first,
+        companyId: AuthService.instance.selectedCompanyIdInt,
+        sortKey: _sortKey ?? 'createdOn',
+        sortOrder: _sortOrder ?? 'desc',
+      );
 
-    if (!result.isSuccess) {
+      if (!mounted) return;
+
+      if (!result.isSuccess) {
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+          if (!append) {
+            _error = ApiFeedback.errorMessage(
+              result,
+              fallback: 'Failed to load work orders',
+            );
+          }
+        });
+        return;
+      }
+
+      final data = result.data!;
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+        _error = null;
+        _page = data.page;
+        _totalPages = data.totalPages;
+        _totalItems = data.total;
+        _items = append ? [..._items, ...data.items] : data.items;
+      });
+      return;
+    }
+
+    // Multi-status mode: nothing further to page through, everything was
+    // already fetched up front.
+    if (append) {
       setState(() => _loadingMore = false);
       return;
     }
 
-    final data = result.data!;
+    final results = await Future.wait(
+      effectiveFilters.map(
+        (status) => MaintenanceService.instance.getWorkOrders(
+          page: 1,
+          limit: 100,
+          search: _searchTerm.isEmpty ? null : _searchTerm,
+          status: status,
+          companyId: AuthService.instance.selectedCompanyIdInt,
+          sortKey: _sortKey ?? 'createdOn',
+          sortOrder: _sortOrder ?? 'desc',
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    final succeeded = results.where((r) => r.isSuccess).toList();
+    if (succeeded.isEmpty) {
+      setState(() {
+        _loading = false;
+        _error = ApiFeedback.errorMessage(
+          results.first,
+          fallback: 'Failed to load work orders',
+        );
+      });
+      return;
+    }
+
+    final merged = <WorkOrderModel>[
+      for (final r in succeeded) ...r.data!.items,
+    ]..sort(_compareForSort);
+
     setState(() {
-      _loadingMore = false;
-      _page = data.page;
-      _totalPages = data.totalPages;
-      _totalItems = data.total;
-      _items = [..._items, ...data.items];
+      _loading = false;
+      _error = null;
+      _page = 1;
+      _totalPages = 1;
+      _totalItems = merged.length;
+      _items = merged;
     });
+  }
+
+  int _compareForSort(WorkOrderModel a, WorkOrderModel b) {
+    final desc = (_sortOrder ?? 'desc') == 'desc';
+    int cmp;
+    switch (_sortKey ?? 'createdOn') {
+      case 'workOrderNumber':
+        cmp = a.workOrderNumber.compareTo(b.workOrderNumber);
+        break;
+      case 'status':
+        cmp = a.status.code.compareTo(b.status.code);
+        break;
+      default:
+        cmp = (a.createdOn ?? '').compareTo(b.createdOn ?? '');
+    }
+    return desc ? -cmp : cmp;
   }
 
   void _onSearchChanged() {
@@ -111,40 +202,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
       _loading = true;
       _error = null;
     });
-
-    final result = await MaintenanceService.instance.getWorkOrders(
-      page: targetPage,
-      limit: _pageSize,
-      search: _searchTerm.isEmpty ? null : _searchTerm,
-      status: _statusFilter,
-      companyId: AuthService.instance.selectedCompanyIdInt,
-      sortKey: _sortKey ?? 'createdOn',
-      sortOrder: _sortOrder ?? 'desc',
-    );
-
-    if (!mounted) return;
-
-    if (!result.isSuccess) {
-      final message = ApiFeedback.errorMessage(
-        result,
-        fallback: 'Failed to load work orders',
-      );
-      setState(() {
-        _loading = false;
-        _error = message;
-      });
-      return;
-    }
-
-    final data = result.data!;
-    setState(() {
-      _loading = false;
-      _error = null;
-      _page = data.page;
-      _totalPages = data.totalPages;
-      _totalItems = data.total;
-      _items = data.items;
-    });
+    await _fetch(page: targetPage, append: false);
   }
 
   Future<void> _openDetail(WorkOrderModel order) async {
@@ -225,21 +283,42 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
     await exportWorkOrderPdf(context: context, order: result.data!);
   }
 
-  void _setStatusFilter(int? status) {
-    _statusFilter = _statusFilter == status ? null : status;
-    _load(page: 1);
-  }
-
   void _clearSearch() {
     _searchController.clear();
     _searchTerm = '';
     _load(page: 1);
   }
 
+  /// Filter-sheet chip with a light-blue selected state, shared by the
+  /// Status / Order / Sort By sections.
+  Widget _filterChip({
+    required String label,
+    required bool selected,
+    required ValueChanged<bool> onSelected,
+  }) {
+    return FilterChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: onSelected,
+      showCheckmark: true,
+      checkmarkColor: AppColors.chromeBlue,
+      backgroundColor: AppColors.surfaceTertiary,
+      selectedColor: AppColors.chromeBlue.withValues(alpha: 0.15),
+      side: BorderSide(
+        color: selected ? AppColors.chromeBlue : AppColors.border,
+      ),
+      labelStyle: TextStyle(
+        color: selected ? AppColors.chromeBlue : AppColors.textPrimary,
+        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+      ),
+    );
+  }
+
   void _showFiltersBottomSheet() {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.card,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -247,8 +326,14 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
         return StatefulBuilder(
           builder: (context, setSheetState) {
             return Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-              child: Column(
+              padding: EdgeInsets.fromLTRB(
+                24,
+                20,
+                24,
+                32 + MediaQuery.of(context).viewInsets.bottom,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -268,6 +353,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                           setSheetState(() {
                             _sortKey = null;
                             _sortOrder = null;
+                            _statusFilters.clear();
                           });
                           setState(() {});
                           Navigator.pop(context);
@@ -278,6 +364,43 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                     ],
                   ),
                   const SizedBox(height: 16),
+                  Text(
+                    'Status',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _filterChip(
+                        label: 'All',
+                        selected: _statusFilters.isEmpty,
+                        onSelected: (_) {
+                          setSheetState(() => _statusFilters.clear());
+                        },
+                      ),
+                      for (final s in WorkOrderStatus.values)
+                        _filterChip(
+                          label: s.label,
+                          selected: _statusFilters.contains(s.code),
+                          onSelected: (checked) {
+                            setSheetState(() {
+                              if (checked) {
+                                _statusFilters.add(s.code);
+                              } else {
+                                _statusFilters.remove(s.code);
+                              }
+                            });
+                          },
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
                   Text(
                     'Order',
                     style: TextStyle(
@@ -290,8 +413,8 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                   Wrap(
                     spacing: 8,
                     children: [
-                      ChoiceChip(
-                        label: const Text('Newest First'),
+                      _filterChip(
+                        label: 'Newest First',
                         selected: _sortOrder == 'desc',
                         onSelected: (val) {
                           setSheetState(() {
@@ -299,54 +422,12 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                           });
                         },
                       ),
-                      ChoiceChip(
-                        label: const Text('Oldest First'),
+                      _filterChip(
+                        label: 'Oldest First',
                         selected: _sortOrder == 'asc',
                         onSelected: (val) {
                           setSheetState(() {
                             _sortOrder = val ? 'asc' : null;
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Sort By',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: const Text('Created Date'),
-                        selected: _sortKey == 'createdOn',
-                        onSelected: (val) {
-                          setSheetState(() {
-                            _sortKey = val ? 'createdOn' : null;
-                          });
-                        },
-                      ),
-                      ChoiceChip(
-                        label: const Text('Work Order #'),
-                        selected: _sortKey == 'workOrderNumber',
-                        onSelected: (val) {
-                          setSheetState(() {
-                            _sortKey = val ? 'workOrderNumber' : null;
-                          });
-                        },
-                      ),
-                      ChoiceChip(
-                        label: const Text('Status'),
-                        selected: _sortKey == 'status',
-                        onSelected: (val) {
-                          setSheetState(() {
-                            _sortKey = val ? 'status' : null;
                           });
                         },
                       ),
@@ -376,6 +457,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                     ),
                   ),
                 ],
+                ),
               ),
             );
           },
@@ -394,82 +476,46 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
           controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'Work Orders',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 20,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '$_totalItems',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 20,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              height: 44,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  _StatusFilterChip(
-                    label: 'ALL',
-                    textColor: const Color(0xFF1A1A1A),
-                    bgColor: const Color(0xFFF3F4F6),
-                    selected: _statusFilter == null,
-                    onTap: () => _setStatusFilter(null),
-                  ),
-                  const SizedBox(width: 8),
-                  ...WorkOrderStatus.values.map(
-                    (s) => Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: _StatusFilterChip(
-                        label: s.label.toUpperCase(),
-                        textColor: s.textColor,
-                        bgColor: s.backgroundColor,
-                        selected: _statusFilter == s.code,
-                        onTap: () => _setStatusFilter(s.code),
-                      ),
-                    ),
-                  ),
-                ],
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.border),
               ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: AppColors.card,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppColors.border),
-                    ),
+              child: Row(
+                children: [
+                  Expanded(
                     child: TextField(
                       controller: _searchController,
+                      style: const TextStyle(fontSize: 13.5),
                       decoration: InputDecoration(
-                        hintText: 'Search work orders...',
-                        prefixIcon: const Icon(Icons.search, size: 20),
+                        isDense: true,
+                        hintText: 'Search Work Order or Vehicle...',
+                        hintStyle: TextStyle(
+                          fontSize: 13.5,
+                          color: AppColors.textTertiary,
+                        ),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          size: 18,
+                          color: AppColors.textSecondary,
+                        ),
+                        prefixIconConstraints: const BoxConstraints(
+                          minWidth: 36,
+                          minHeight: 0,
+                        ),
                         suffixIcon: _searchTerm.isNotEmpty
                             ? IconButton(
-                                icon: const Icon(Icons.clear, size: 20),
+                                icon: const Icon(Icons.clear, size: 18),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
                                 onPressed: _clearSearch,
                               )
                             : null,
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
+                          horizontal: 12,
+                          vertical: 10,
                         ),
                       ),
                       onSubmitted: (val) {
@@ -478,18 +524,66 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                       },
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.filter_list),
-                  onPressed: _showFiltersBottomSheet,
-                  style: IconButton.styleFrom(
-                    backgroundColor: AppColors.card,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(color: AppColors.border),
+                  Container(
+                    height: 20,
+                    width: 1,
+                    color: AppColors.border,
+                  ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _showFiltersBottomSheet,
+                      borderRadius: const BorderRadius.horizontal(
+                        right: Radius.circular(14),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.tune_rounded,
+                              size: 16,
+                              color: AppColors.chromeBlue,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Filter',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.chromeBlue,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    padding: const EdgeInsets.all(12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'My Work Orders',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 19,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                Text(
+                  '$_totalItems Total',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: AppColors.chromeBlue,
                   ),
                 ),
               ],
@@ -542,7 +636,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
                   border: Border.all(color: AppColors.border),
                 ),
                 child: Text(
-                  _searchTerm.isNotEmpty || _statusFilter != null
+                  _searchTerm.isNotEmpty || _statusFilters.isNotEmpty
                       ? 'No work orders match your filters'
                       : 'No work orders yet',
                   style: TextStyle(color: AppColors.textSecondary),
@@ -589,56 +683,8 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
 }
 
 // ---------------------------------------------------------------------------
-// Status filter chip (colored, no count — matches Power Unit palette)
-// ---------------------------------------------------------------------------
-
-class _StatusFilterChip extends StatelessWidget {
-  const _StatusFilterChip({
-    required this.label,
-    required this.textColor,
-    required this.bgColor,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final Color textColor;
-  final Color bgColor;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: selected ? textColor : Colors.transparent,
-            width: 1.8,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: textColor,
-            letterSpacing: 0.4,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Work order card — matches Power Unit maintenance-history card style
+// Work order card — compact style: colored left stripe by priority, status +
+// priority badges, tap to open full detail (Edit/Delete/PDF live there).
 // ---------------------------------------------------------------------------
 
 class _WorkOrderCard extends StatelessWidget {
@@ -656,46 +702,26 @@ class _WorkOrderCard extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onExport;
 
-  static String _initials(String? name) {
-    if (name == null || name.trim().isEmpty) return '?';
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length == 1) return parts[0][0].toUpperCase();
-    return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-  }
-
-  static String _fmtDate(String? s) {
-    if (s == null || s.isEmpty) return '—';
-    final d = DateTime.tryParse(s);
-    if (d == null) return s;
-    return '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}-${d.year}';
-  }
-
-  static String _fmtCost(double? v) =>
-      v == null ? '—' : '\$${v.toStringAsFixed(2)}';
-
-  static String _fmtOdo(String? v) => (v == null || v.isEmpty) ? '—' : '$v km';
-
   @override
   Widget build(BuildContext context) {
-    final details = order.workOrderDetails;
-    final tech = details?.technicianName;
-    final initials = _initials(tech);
+    final priority = order.priority ?? WorkOrderPriority.medium;
     final displayNum = order.workOrderNumber.isNotEmpty
         ? order.workOrderNumber
         : 'WO #${order.id}';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: AppColors.cardShadow.withValues(alpha: 0.35),
-            blurRadius: 16,
+            color: AppColors.cardShadow.withValues(alpha: 0.3),
+            blurRadius: 12,
             spreadRadius: 1,
-            offset: const Offset(0, 3),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -703,270 +729,151 @@ class _WorkOrderCard extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── Header ──
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        displayNum,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: AppColors.textPrimary,
+                Container(width: 5, color: priority.accentColor),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 10, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            _PriorityBadge(priority: priority),
+                            const Spacer(),
+                            if (order.status == WorkOrderStatus.completed)
+                              _IconOnlyButton(
+                                icon: Icons.picture_as_pdf_outlined,
+                                onTap: onExport,
+                              )
+                            else ...[
+                              _IconOnlyButton(
+                                icon: Icons.edit,
+                                color: AppColors.chromeBlue,
+                                onTap: onEdit,
+                              ),
+                              const SizedBox(width: 2),
+                              _IconOnlyButton(
+                                icon: Icons.delete_outline,
+                                onTap: onDelete,
+                                danger: true,
+                              ),
+                            ],
+                          ],
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceTertiary,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        order.isPreventativeMaintenance ? 'PM' : 'REPAIR',
-                        style: TextStyle(
-                          color: AppColors.textMuted,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
+                        const SizedBox(height: 8),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                        Expanded(
+                          flex: 4,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                displayNum,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              RichText(
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                text: TextSpan(
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  children: [
+                                    const TextSpan(text: 'Vehicle: '),
+                                    TextSpan(
+                                      text: order.unitNumber.isNotEmpty
+                                          ? order.unitNumber
+                                          : '—',
+                                      style: TextStyle(
+                                        color: AppColors.chromeBlue,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                order.entityTypeName ?? '—',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: order.status.backgroundColor,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        order.status.label,
-                        style: TextStyle(
-                          color: order.status.textColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                        Expanded(
+                          flex: 6,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: _GridCell(
+                                  label: 'Status',
+                                  child: _MiniBadge(
+                                    label: order.status.label,
+                                    bgColor: order.status.backgroundColor,
+                                    textColor: order.status.textColor,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: _GridCell(
+                                  label: order.status == WorkOrderStatus.completed
+                                      ? 'End Date'
+                                      : 'ETA',
+                                  child: Text(
+                                    formatDateMMDDYYYY(
+                                          order.status ==
+                                                  WorkOrderStatus.completed
+                                              ? order.workOrderDetails?.endDate
+                                              : order.workOrderDetails?.dueDate,
+                                        ) ??
+                                        '—',
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    overflow: TextOverflow.visible,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 2),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 20,
+                          color: AppColors.textSecondary,
+                        ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  [
-                    'Unit: ${order.unitNumber}',
-                    order.issueDescription,
-                  ].where((s) => s.isNotEmpty).join(' · '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
                   ),
-                ),
-                const SizedBox(height: 12),
-                Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: AppColors.textSecondary.withValues(alpha: 0.12),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _InfoCell(
-                        label: 'COST',
-                        value: _fmtCost(details?.estimatedCost),
-                      ),
-                    ),
-                    Expanded(
-                      child: _InfoCell(
-                        label: 'ODOMETER',
-                        value: _fmtOdo(
-                          details?.odometer ?? details?.startOdometer,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _InfoCell(
-                        label: 'START DATE',
-                        value: _fmtDate(details?.startDate),
-                      ),
-                    ),
-                    Expanded(
-                      child: _InfoCell(
-                        label: 'DUE DATE',
-                        value: _fmtDate(details?.dueDate),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Divider(
-                  height: 1,
-                  thickness: 1,
-                  color: AppColors.textSecondary.withValues(alpha: 0.12),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Container(
-                      width: 26,
-                      height: 26,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF1A1A1A),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          initials,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        tech ?? 'Unassigned',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                    if (order.priority != null) ...[
-                      WorkOrderPriorityChip(priority: order.priority!),
-                    ],
-                  ],
-                ),
-                const SizedBox(height: 14),
-                // ── Action Buttons ──
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: onTap,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          side: BorderSide(
-                            color: AppColors.textSecondary.withValues(alpha: 0.3),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(0, 36),
-                          padding: EdgeInsets.zero,
-                        ),
-                        child: const Text(
-                          'View',
-                          style: TextStyle(
-                            letterSpacing: 0.8,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: order.status.canEdit ? onEdit : null,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          side: BorderSide(
-                            color: AppColors.textSecondary.withValues(alpha: 0.3),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(0, 36),
-                          padding: EdgeInsets.zero,
-                        ),
-                        child: const Text(
-                          'Edit',
-                          style: TextStyle(
-                            letterSpacing: 0.8,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: order.status.canEdit ? onDelete : null,
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: order.status.canEdit ? AppColors.danger : AppColors.textSecondary.withValues(alpha: 0.3),
-                          backgroundColor: Colors.transparent,
-                          side: BorderSide(
-                            color: order.status.canEdit ? AppColors.danger.withValues(alpha: 0.4) : AppColors.textSecondary.withValues(alpha: 0.3),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          minimumSize: const Size(0, 36),
-                          padding: EdgeInsets.zero,
-                        ),
-                        child: const Text(
-                          'Delete',
-                          style: TextStyle(
-                            letterSpacing: 0.8,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (order.status == WorkOrderStatus.completed) ...[
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: onExport,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF0E7490),
-                            side: const BorderSide(
-                              color: Color(0xFF0E7490),
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            minimumSize: const Size(0, 36),
-                            padding: EdgeInsets.zero,
-                          ),
-                          child: const Text(
-                            'PDF',
-                            style: TextStyle(
-                              letterSpacing: 0.8,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
                 ),
               ],
             ),
@@ -977,36 +884,142 @@ class _WorkOrderCard extends StatelessWidget {
   }
 }
 
-class _InfoCell extends StatelessWidget {
-  const _InfoCell({required this.label, required this.value});
+class _IconOnlyButton extends StatelessWidget {
+  const _IconOnlyButton({
+    required this.icon,
+    required this.onTap,
+    this.danger = false,
+    this.color,
+  });
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool danger;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    final resolvedColor = !enabled
+        ? AppColors.textSecondary.withValues(alpha: 0.3)
+        : danger
+        ? AppColors.danger
+        : color ?? AppColors.textSecondary;
+
+    return Material(
+      color: Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(icon, size: 19, color: resolvedColor),
+        ),
+      ),
+    );
+  }
+}
+
+class _PriorityBadge extends StatelessWidget {
+  const _PriorityBadge({required this.priority});
+
+  final WorkOrderPriority priority;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.only(left: 4, right: 9, top: 4, bottom: 4),
+      decoration: BoxDecoration(
+        color: priority.backgroundColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 15,
+            height: 15,
+            decoration: BoxDecoration(
+              color: priority.accentColor,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(priority.trendIcon, size: 9, color: Colors.white),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            priority.label.toUpperCase(),
+            style: TextStyle(
+              color: priority.textColor,
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GridCell extends StatelessWidget {
+  const _GridCell({required this.label, required this.child});
 
   final String label;
-  final String value;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 10,
+            fontSize: 10.5,
             fontWeight: FontWeight.w600,
             color: AppColors.textSecondary,
-            letterSpacing: 0.3,
           ),
         ),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
-        ),
+        const SizedBox(height: 5),
+        child,
       ],
+    );
+  }
+}
+
+class _MiniBadge extends StatelessWidget {
+  const _MiniBadge({
+    required this.label,
+    required this.bgColor,
+    required this.textColor,
+  });
+
+  final String label;
+  final Color bgColor;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }

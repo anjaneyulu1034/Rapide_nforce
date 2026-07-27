@@ -125,6 +125,29 @@ enum WorkOrderPriority {
         return const Color(0xFF374151);
     }
   }
+
+  /// Solid accent used for the work order card's left priority stripe.
+  Color get accentColor {
+    switch (this) {
+      case WorkOrderPriority.high:
+        return const Color(0xFFDC2626);
+      case WorkOrderPriority.medium:
+        return const Color(0xFFF59E0B);
+      case WorkOrderPriority.low:
+        return const Color(0xFF3B82F6);
+    }
+  }
+
+  IconData get trendIcon {
+    switch (this) {
+      case WorkOrderPriority.high:
+        return Icons.keyboard_double_arrow_up_rounded;
+      case WorkOrderPriority.medium:
+        return Icons.drag_handle_rounded;
+      case WorkOrderPriority.low:
+        return Icons.keyboard_double_arrow_down_rounded;
+    }
+  }
 }
 
 class WorkOrderDetails {

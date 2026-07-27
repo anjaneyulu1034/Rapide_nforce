@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
-import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
 import 'package:rapide_nforce/core/enums/app_route.dart';
 import 'package:rapide_nforce/models/company_model.dart';
@@ -43,7 +42,10 @@ class AppHeaderActions extends StatelessWidget {
             child: SizedBox(
               width: 18,
               height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
             ),
           )
         else if (companies.isNotEmpty)
@@ -52,19 +54,47 @@ class AppHeaderActions extends StatelessWidget {
               value: hasSelection ? selectedCompanyId : null,
               hint: const Text(
                 'Company',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
               ),
-              icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+              icon: const Icon(
+                Icons.keyboard_arrow_down,
+                size: 18,
+                color: Colors.white,
+              ),
+              dropdownColor: AppColors.card,
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
+                color: Colors.white,
               ),
+              selectedItemBuilder: (context) => companies
+                  .map(
+                    (c) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        c.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
               items: companies
                   .map(
                     (c) => DropdownMenuItem(
                       value: c.id.toString(),
-                      child: Text(c.name),
+                      child: Text(
+                        c.name,
+                        style: TextStyle(color: AppColors.textPrimary),
+                      ),
                     ),
                   )
                   .toList(),
@@ -78,7 +108,7 @@ class AppHeaderActions extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           constraints: const BoxConstraints(maxWidth: 84),
           decoration: BoxDecoration(
-            gradient: AppGradients.goldAccent,
+            color: Colors.white.withValues(alpha: 0.16),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Text(
@@ -86,13 +116,22 @@ class AppHeaderActions extends StatelessWidget {
             style: const TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.w700,
-              color: AppColors.black,
+              color: Colors.white,
             ),
             textAlign: TextAlign.center,
             softWrap: true,
           ),
         ),
         NotificationBell(reloadKey: selectedCompanyId, onNavigate: onNavigate),
+        IconButton(
+          onPressed: () => onNavigate?.call(AppRoute.profile),
+          tooltip: 'Profile',
+          icon: const CircleAvatar(
+            radius: 15,
+            backgroundColor: Colors.white,
+            child: Icon(Icons.person, color: AppColors.chromeBlue, size: 18),
+          ),
+        ),
       ],
     );
   }

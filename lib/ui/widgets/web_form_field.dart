@@ -409,17 +409,54 @@ class WebDropdownField<T> extends StatelessWidget {
 }
 
 /// A dropdown-styled field that opens a searchable, scrollable bottom sheet
-/// instead of the native dropdown menu — better for long option lists.
-class WebSearchableDropdownField<T> extends StatelessWidget {
-  const WebSearchableDropdownField({
+/// instead of the native dropdown menu — better for long option lists (web
+/// shows a search box once a dropdown has more than ~7 options; this is the
+/// mobile equivalent). Behaves like a real form field: `validator` and
+/// `autovalidateMode` work the same as [WebDropdownField].
+class WebSearchableDropdownField<T> extends FormField<T> {
+  WebSearchableDropdownField({
     super.key,
+    required String label,
+    required T? value,
+    required List<T> items,
+    required String Function(T) itemLabel,
+    required ValueChanged<T?> onChanged,
+    String hint = 'Select',
+    String searchHint = 'Search...',
+    String? Function(T?)? validator,
+    AutovalidateMode? autovalidateMode = AutovalidateMode.onUserInteraction,
+  }) : super(
+         initialValue: value,
+         validator: validator,
+         autovalidateMode: autovalidateMode,
+         builder: (field) {
+           return _SearchableDropdownContent<T>(
+             label: label,
+             value: value,
+             items: items,
+             itemLabel: itemLabel,
+             hint: hint,
+             searchHint: searchHint,
+             errorText: field.errorText,
+             onChanged: (v) {
+               field.didChange(v);
+               onChanged(v);
+             },
+           );
+         },
+       );
+}
+
+class _SearchableDropdownContent<T> extends StatelessWidget {
+  const _SearchableDropdownContent({
     required this.label,
     required this.value,
     required this.items,
     required this.itemLabel,
     required this.onChanged,
-    this.hint = 'Select',
-    this.searchHint = 'Search...',
+    required this.hint,
+    required this.searchHint,
+    required this.errorText,
   });
 
   final String label;
@@ -429,6 +466,7 @@ class WebSearchableDropdownField<T> extends StatelessWidget {
   final ValueChanged<T?> onChanged;
   final String hint;
   final String searchHint;
+  final String? errorText;
 
   Future<void> _open(BuildContext context) async {
     final selected = await showModalBottomSheet<T>(
@@ -471,6 +509,24 @@ class WebSearchableDropdownField<T> extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: Colors.black),
             ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Colors.black, width: 1.5),
+            ),
+            errorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.danger, width: 1.5),
+            ),
+            focusedErrorBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.danger, width: 2),
+            ),
+            errorStyle: const TextStyle(
+              color: AppColors.danger,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+            errorText: errorText,
             suffixIcon: Icon(
               Icons.keyboard_arrow_down_rounded,
               color: AppColors.textSecondary,
