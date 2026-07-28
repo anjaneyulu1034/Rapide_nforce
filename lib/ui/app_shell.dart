@@ -97,7 +97,10 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    _selectedCompanyId = AuthService.instance.selectedCompanyId;
+    final userCompanyId =
+        AuthService.instance.currentUser?.companyId?.toString();
+    _selectedCompanyId =
+        AuthService.instance.selectedCompanyId ?? userCompanyId;
     if (_isLoggedIn) {
       _bootstrapping = true;
       WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrapSession());
@@ -191,8 +194,11 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onLoginSuccess() {
+    final userCompanyId =
+        AuthService.instance.currentUser?.companyId?.toString();
     setState(() {
-      _selectedCompanyId = AuthService.instance.selectedCompanyId;
+      _selectedCompanyId =
+          AuthService.instance.selectedCompanyId ?? userCompanyId;
       _bootstrapping = true;
       _screenCache.clear();
     });
@@ -262,6 +268,9 @@ class _AppShellState extends State<AppShell> {
           key: ValueKey(_workOrderRefreshKey),
         );
 
+      case AppRoute.dvir:
+        return const DvirScreen();
+
       case AppRoute.inventory:
         return const InventoryScreen();
 
@@ -288,9 +297,6 @@ class _AppShellState extends State<AppShell> {
 
       case AppRoute.drivers:
         return const DriversScreen();
-
-      case AppRoute.dvir:
-        return const DvirScreen();
     }
   }
 

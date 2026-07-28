@@ -231,7 +231,7 @@ class MenuService {
   List<NavMenuItem> _fallbackMenus() {
     return const [
       NavMenuItem(id: 'dashboard', label: 'Dashboard', path: '/dashboard'),
-      NavMenuItem(id: 'carriers', label: 'Carrier', path: '/carriers'),
+      // NavMenuItem(id: 'carriers', label: 'Carrier', path: '/carriers'),
       NavMenuItem(id: 'powerunit', label: 'Power Unit', path: '/powerunit'),
       NavMenuItem(id: 'trailers', label: 'My Trailers', path: '/trailers'),
       NavMenuItem(

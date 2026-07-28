@@ -1175,36 +1175,43 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      child: Row(
-        children: [
-          TextButton(
-            onPressed: saving ? null : onCancel,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-            ),
-            child: const Text('Cancel'),
+      color: AppColors.card,
+      child: SafeArea(
+        top: false,
+        bottom: true,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            border: Border(top: BorderSide(color: AppColors.border)),
           ),
-          const Spacer(),
-          onContinue != null
-              ? WebPrimaryButton(
-                  label: 'Continue',
-                  onPressed: onContinue,
-                  expand: false,
-                  dense: true,
-                )
-              : WebPrimaryButton(
-                  label: 'Save Trailer',
-                  loading: saving,
-                  onPressed: saving ? null : onSave,
-                  expand: false,
-                  dense: true,
+          child: Row(
+            children: [
+              TextButton(
+                onPressed: saving ? null : onCancel,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                 ),
-        ],
+                child: const Text('Cancel'),
+              ),
+              const Spacer(),
+              onContinue != null
+                  ? WebPrimaryButton(
+                      label: 'Continue',
+                      onPressed: onContinue,
+                      expand: false,
+                      dense: true,
+                    )
+                  : WebPrimaryButton(
+                      label: 'Save Trailer',
+                      loading: saving,
+                      onPressed: saving ? null : onSave,
+                      expand: false,
+                      dense: true,
+                    ),
+            ],
+          ),
+        ),
       ),
     );
   }

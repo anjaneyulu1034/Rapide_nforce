@@ -14,26 +14,36 @@ class FaultCodesService {
 
   Future<ApiResult<PaginatedResult<FaultCodeModel>>> fetchFaultCodes({
     int page = 1,
-    int limit = 10,
+    int limit = 100,
     String? search,
     String? faultStatus,
     String? severity,
     int? companyId,
   }) async {
     final cid = companyId ?? AuthService.instance.selectedCompanyIdInt;
+    final Map<String, dynamic> params = {
+      'page': page,
+      'limit': limit,
+    };
+
+    if (search != null && search.trim().isNotEmpty) {
+      params['search'] = search.trim();
+    }
+    if (cid != null) {
+      params['companyId'] = cid;
+    }
+    if (faultStatus != null && faultStatus.trim().isNotEmpty && faultStatus != 'all') {
+      params['faultStatus'] = faultStatus.trim();
+    }
+    if (severity != null && severity.trim().isNotEmpty && severity != 'all') {
+      params['severity'] = severity.trim();
+    }
+
     try {
       final body = await _api.parseJson(
         () => _api.get(
           ApiConstants.syncedFaultCodes,
-          params: {
-            'page': page,
-            'limit': limit,
-            if (search != null && search.isNotEmpty) 'search': search,
-            'companyId': ?cid,
-            if (faultStatus != null && faultStatus.isNotEmpty)
-              'faultStatus': faultStatus,
-            if (severity != null && severity.isNotEmpty) 'severity': severity,
-          },
+          params: params,
           companyId: cid?.toString(),
         ),
         onSuccess: (b) => b,
@@ -43,7 +53,7 @@ class FaultCodesService {
       return ApiResult.ok(parsed);
     } on ApiClientException catch (e) {
       return ApiResult.fail(e.message, statusCode: e.statusCode);
-    } catch (_) {
+    } catch (e) {
       return ApiResult.fail('Failed to load fault codes.');
     }
   }
@@ -55,7 +65,7 @@ class FaultCodesService {
   ) {
     final rows = ApiParse.listItems(body);
     if (rows.isNotEmpty) {
-      final items = rows.map(FaultCodeModel.fromJson).toList();
+      final items = rows.map((r) => FaultCodeModel.fromJson(Map<String, dynamic>.from(r as Map))).toList();
       return PaginatedResult(
         items: items,
         total: items.length,

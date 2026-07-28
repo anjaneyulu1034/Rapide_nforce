@@ -8,6 +8,8 @@ import 'package:rapide_nforce/ui/inventory/part_type_form_screen.dart';
 import 'package:rapide_nforce/ui/inventory/widgets/inventory_stock_badge.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
+import 'package:rapide_nforce/ui/work_orders/work_order_detail_screen.dart';
+
 class PartTypeDetailScreen extends StatelessWidget {
   const PartTypeDetailScreen({
     super.key,
@@ -208,14 +210,116 @@ class PartDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'INVENTORY PART',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        part.partTypeName.isNotEmpty ? part.partTypeName : part.code,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.card,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          'TOTAL COST',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        Text(
+                          formatInventoryMoney(
+                            part.totalCost ??
+                                ((part.quantity ?? 0) * (part.cost ?? 0.0)),
+                          ),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
             _DetailCard(
               children: [
                 _Row('Part code', part.code),
                 _Row('Part type', part.partTypeName),
                 _Row('Quantity', '${part.quantity ?? 0}'),
                 _Row('Unit cost', formatInventoryMoney(part.cost)),
-                _Row('Total cost', formatInventoryMoney(part.totalCost)),
+                _Row(
+                  'Total cost',
+                  formatInventoryMoney(
+                    part.totalCost ??
+                        ((part.quantity ?? 0) * (part.cost ?? 0.0)),
+                  ),
+                ),
+                _Row(
+                  'Used in WOs',
+                  null,
+                  child: _buildUsedInRow(context, part),
+                ),
                 _Row('Invoice #', part.invoiceNumber ?? '—'),
+                if (part.hasInvoiceFile)
+                  _Row(
+                    'Invoice file',
+                    null,
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.insert_drive_file_outlined,
+                          size: 16,
+                          color: AppColors.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'View Document',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.bold,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 _Row('Created by', part.createdByUsername ?? '—'),
                 _Row('Created on', formatInventoryDate(part.createdOn)),
               ],
@@ -223,6 +327,62 @@ class PartDetailScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildUsedInRow(BuildContext context, PartModel part) {
+    final list = part.usedInWorkOrders;
+    if (list.isEmpty &&
+        (part.usedInWorkOrder == null || part.usedInWorkOrder == 0)) {
+      return Text(
+        '—',
+        style: TextStyle(
+          fontWeight: FontWeight.w600,
+          color: AppColors.textSecondary,
+        ),
+      );
+    }
+    final displayList = list.isNotEmpty
+        ? list
+        : [
+            PartUsedInWorkOrder(
+              id: part.usedInWorkOrder!,
+              number: 'WO-${part.usedInWorkOrder!.toString().padLeft(4, '0')}',
+            )
+          ];
+
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: displayList.map((wo) {
+        return InkWell(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => WorkOrderDetailScreen(workOrderId: wo.id),
+              ),
+            );
+          },
+          borderRadius: BorderRadius.circular(6),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+            ),
+            child: Text(
+              wo.number,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }

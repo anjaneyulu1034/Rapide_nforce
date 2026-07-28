@@ -14,7 +14,7 @@ class DvirService {
 
   Future<ApiResult<PaginatedResult<DvirReportModel>>> fetchReports({
     int page = 1,
-    int limit = 10,
+    int limit = 100,
     String? search,
     String? reportedFrom,
     String? reportedTo,
@@ -23,29 +23,41 @@ class DvirService {
     int? companyId,
   }) async {
     final cid = companyId ?? AuthService.instance.selectedCompanyIdInt;
+    final Map<String, dynamic> params = {
+      'page': page,
+      'limit': limit,
+    };
+    if (search != null && search.trim().isNotEmpty) {
+      params['search'] = search.trim();
+    }
+    if (reportedFrom != null && reportedFrom.isNotEmpty) {
+      params['reportedFrom'] = reportedFrom;
+    }
+    if (reportedTo != null && reportedTo.isNotEmpty) {
+      params['reportedTo'] = reportedTo;
+    }
+    if (inspectionType != null && inspectionType.isNotEmpty) {
+      params['inspectionType'] = inspectionType;
+    }
+    if (reportStatus != null && reportStatus.isNotEmpty) {
+      params['reportStatus'] = reportStatus;
+    }
+    if (cid != null) {
+      params['companyId'] = cid;
+    }
+
     try {
       final body = await _api.parseJson(
         () => _api.get(
           '/synced-dvir-reports',
-          params: {
-            'page': page,
-            'limit': limit,
-            if (search != null && search.trim().isNotEmpty) 'search': search,
-            if (reportedFrom != null && reportedFrom.isNotEmpty) 'reportedFrom': reportedFrom,
-            if (reportedTo != null && reportedTo.isNotEmpty) 'reportedTo': reportedTo,
-            if (inspectionType != null && inspectionType.isNotEmpty)
-              'inspectionType': inspectionType,
-            if (reportStatus != null && reportStatus.isNotEmpty)
-              'reportStatus': reportStatus,
-            'companyId': ?cid,
-          },
+          params: params,
           companyId: cid?.toString(),
         ),
         onSuccess: (b) => b,
       );
 
       final items = ApiParse.listItems(body)
-          .map(DvirReportModel.fromJson)
+          .map((m) => DvirReportModel.fromJson(Map<String, dynamic>.from(m as Map)))
           .toList();
       final pagination = ApiParse.pagination(body);
 
@@ -85,33 +97,42 @@ class DvirService {
 
   Future<ApiResult<PaginatedResult<DvirDefectModel>>> fetchDefects({
     int page = 1,
-    int limit = 10,
+    int limit = 100,
     String? search,
     String? defectStatus,
     String? severity,
     int? companyId,
   }) async {
     final cid = companyId ?? AuthService.instance.selectedCompanyIdInt;
+    final Map<String, dynamic> params = {
+      'page': page,
+      'limit': limit,
+    };
+    if (search != null && search.trim().isNotEmpty) {
+      params['search'] = search.trim();
+    }
+    if (defectStatus != null && defectStatus.isNotEmpty) {
+      params['defectStatus'] = defectStatus;
+    }
+    if (severity != null && severity.isNotEmpty) {
+      params['severity'] = severity;
+    }
+    if (cid != null) {
+      params['companyId'] = cid;
+    }
+
     try {
       final body = await _api.parseJson(
         () => _api.get(
           '/synced-dvir-defects',
-          params: {
-            'page': page,
-            'limit': limit,
-            if (search != null && search.trim().isNotEmpty) 'search': search,
-            if (defectStatus != null && defectStatus.isNotEmpty)
-              'defectStatus': defectStatus,
-            if (severity != null && severity.isNotEmpty) 'severity': severity,
-            'companyId': ?cid,
-          },
+          params: params,
           companyId: cid?.toString(),
         ),
         onSuccess: (b) => b,
       );
 
       final items = ApiParse.listItems(body)
-          .map(DvirDefectModel.fromJson)
+          .map((m) => DvirDefectModel.fromJson(Map<String, dynamic>.from(m as Map)))
           .toList();
       final pagination = ApiParse.pagination(body);
 
@@ -146,6 +167,35 @@ class DvirService {
       return ApiResult.fail(e.message, statusCode: e.statusCode);
     } catch (_) {
       return ApiResult.fail('Failed to load DVIR defect.');
+    }
+  }
+
+  Future<ApiResult<void>> resolveDefect(
+    String id, {
+    String? mechanicNote,
+    String? mechanicName,
+    String? status,
+  }) async {
+    try {
+      await _api.parseJson(
+        () => _api.post(
+          '/synced-dvir-defects/$id/resolve',
+          body: {
+            if (mechanicNote != null && mechanicNote.isNotEmpty)
+              'mechanicNote': mechanicNote,
+            if (mechanicName != null && mechanicName.isNotEmpty)
+              'mechanicName': mechanicName,
+            if (status != null && status.isNotEmpty) 'status': status,
+            'resolvedAtTime': DateTime.now().toUtc().toIso8601String(),
+          },
+        ),
+        onSuccess: (b) => b,
+      );
+      return ApiResult.ok(null);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to resolve DVIR defect.');
     }
   }
 }

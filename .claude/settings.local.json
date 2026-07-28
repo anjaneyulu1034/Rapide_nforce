@@ -43,7 +43,8 @@
       "Bash(ls -la \"/c/Users/anjik/Downloads/\" | grep -i rapidenforce)",
       "Bash(dart format *)",
       "Bash(cd \"C:\\\\Users\\\\anjik\\\\Downloads\\\\rapidenforce-ui \\(1\\)\\\\src\" && find . -iname \"*workorder*\" -o -iname \"*work-order*\" -o -iname \"*work_order*\" 2>/dev/null)",
-      "Read(//c/Users/anjik/Downloads/rapidenforce-ui \\\\\\(1\\\\\\)/**)"
+      "Read(//c/Users/anjik/Downloads/rapidenforce-ui \\\\\\(1\\\\\\)/**)",
+      "Bash(ls \"/c/Users/anjik/Downloads/\" | grep -i rapidenforce)"
     ]
   }
 }

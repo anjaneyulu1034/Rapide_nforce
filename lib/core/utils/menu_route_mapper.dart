@@ -14,10 +14,9 @@ class MenuRouteMapper {
       case '/dashboard':
       case '/superadmin_dashboard':
         return AppRoute.dashboard;
-      case '/carriers':
-      case '/carrier-management':
-      case '/compliance':
-        return AppRoute.carriers;
+      // case '/carriers':
+      // case '/carrier-management':
+      //   return AppRoute.carriers;
       case '/powerunit':
       case '/trucks':
         return AppRoute.powerUnit;
@@ -26,26 +25,19 @@ class MenuRouteMapper {
       case '/maintenance':
       case '/work-orders':
       case '/work-orders-review':
-      case '/maintenance/work-orders':
         return AppRoute.maintenance;
+      case '/dvir':
+      case '/dvir-reports':
+      case '/synced-dvir-reports':
+        return AppRoute.dvir;
       case '/fault-codes':
-      case '/maintenance/fault-codes':
         return AppRoute.faultCodes;
       case '/inventory':
-      case '/maintenance/inventory':
         return AppRoute.inventory;
       case '/logs':
-      case '/maintenance/logs':
         return AppRoute.logs;
       case '/documents':
         return AppRoute.documents;
-      case '/dvir-reports':
-      case '/dvir':
-        return AppRoute.dvir;
-      case '/drivers':
-        return AppRoute.drivers;
-      case '/consent-document-approvals':
-        return AppRoute.approvals;
       case '/reports':
       case '/reports/ocr-audit-logs':
         return AppRoute.reports;
@@ -72,7 +64,7 @@ class MenuRouteMapper {
 
   static bool isMaintenanceLabel(String label) {
     final name = label.trim().toLowerCase();
-    return name.contains('maintenance');
+    return name == 'maintenance';
   }
 
   static bool isStandaloneMaintenanceChild(String label) {
@@ -80,6 +72,9 @@ class MenuRouteMapper {
     return name == 'inventory' ||
         name == 'work orders' ||
         name == 'work-orders' ||
+        name == 'dvir' ||
+        name == 'dvir-reports' ||
+        name == 'fault-codes' ||
         name == 'logs';
   }
 }

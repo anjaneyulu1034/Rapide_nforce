@@ -59,6 +59,25 @@ class PartTypeModel {
   }
 }
 
+class PartUsedInWorkOrder {
+  const PartUsedInWorkOrder({
+    required this.id,
+    required this.number,
+  });
+
+  final int id;
+  final String number;
+
+  factory PartUsedInWorkOrder.fromJson(Map<String, dynamic> json) {
+    final idVal = (json['id'] as num?)?.toInt() ?? 0;
+    final numVal = json['number'] as String? ??
+        json['work_order_number'] as String? ??
+        json['wo_number'] as String? ??
+        (idVal > 0 ? 'WO-${idVal.toString().padLeft(4, '0')}' : '—');
+    return PartUsedInWorkOrder(id: idVal, number: numVal);
+  }
+}
+
 class PartModel {
   const PartModel({
     required this.id,
@@ -71,6 +90,7 @@ class PartModel {
     this.invoiceNumber,
     this.invoiceLink,
     this.usedInWorkOrder,
+    this.usedInWorkOrders = const [],
     this.createdOn,
     this.createdByUsername,
     this.lowStockTrigger = 0,
@@ -87,6 +107,7 @@ class PartModel {
   final String? invoiceNumber;
   final String? invoiceLink;
   final int? usedInWorkOrder;
+  final List<PartUsedInWorkOrder> usedInWorkOrders;
   final String? createdOn;
   final String? createdByUsername;
   final int lowStockTrigger;
@@ -99,7 +120,8 @@ class PartModel {
       );
 
   bool get isUsedInWorkOrder =>
-      usedInWorkOrder != null && usedInWorkOrder! > 0;
+      usedInWorkOrders.isNotEmpty ||
+      (usedInWorkOrder != null && usedInWorkOrder! > 0);
 
   bool get hasInvoiceFile =>
       invoiceLink != null && invoiceLink!.trim().isNotEmpty;
@@ -121,6 +143,28 @@ class PartModel {
         (partType is Map ? partType['name'] as String? : null) ??
         '';
 
+    final rawIsUsed = json['isUsed'] ?? json['usedInWorkOrders'] ?? json['used_in_work_orders'];
+    final List<PartUsedInWorkOrder> usedInList = [];
+    if (rawIsUsed is List) {
+      for (final item in rawIsUsed) {
+        if (item is Map<String, dynamic>) {
+          usedInList.add(PartUsedInWorkOrder.fromJson(item));
+        } else if (item is Map) {
+          usedInList.add(
+            PartUsedInWorkOrder.fromJson(Map<String, dynamic>.from(item)),
+          );
+        } else if (item is num) {
+          final idVal = item.toInt();
+          usedInList.add(
+            PartUsedInWorkOrder(
+              id: idVal,
+              number: 'WO-${idVal.toString().padLeft(4, '0')}',
+            ),
+          );
+        }
+      }
+    }
+
     return PartModel(
       id: json['id'] as int? ?? 0,
       typeId: (json['typeId'] as num?)?.toInt() ??
@@ -135,6 +179,7 @@ class PartModel {
           json['invoice_number'] as String?,
       invoiceLink: json['invoiceLink'] as String? ?? json['invoice_url'] as String?,
       usedInWorkOrder: (json['usedInWorkOrder'] as num?)?.toInt(),
+      usedInWorkOrders: usedInList,
       createdOn: json['createdOn'] as String?,
       createdByUsername: json['createdByUsername'] as String? ??
           (json['creator'] is Map

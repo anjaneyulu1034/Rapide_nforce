@@ -420,12 +420,10 @@ class WebSearchableDropdownField<T> extends FormField<T> {
     required ValueChanged<T?> onChanged,
     String hint = 'Select',
     String searchHint = 'Search...',
-    String? Function(T?)? validator,
-    AutovalidateMode? autovalidateMode = AutovalidateMode.onUserInteraction,
+    super.validator,
+    super.autovalidateMode = AutovalidateMode.onUserInteraction,
   }) : super(
          initialValue: value,
-         validator: validator,
-         autovalidateMode: autovalidateMode,
          builder: (field) {
            return _SearchableDropdownContent<T>(
              label: label,

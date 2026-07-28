@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_gradients.dart';
-import 'package:rapide_nforce/core/constants/app_strings.dart';
 import 'package:rapide_nforce/core/enums/app_route.dart';
 import 'package:rapide_nforce/core/utils/menu_route_mapper.dart';
 import 'package:rapide_nforce/models/nav_menu_item.dart';
@@ -14,14 +13,14 @@ class AppDrawer extends StatefulWidget {
     super.key,
     required this.currentRoute,
     required this.onRouteSelected,
-    required this.onLogout,
+    this.onLogout,
     this.menuItems = const [],
     this.menusLoading = false,
   });
 
   final AppRoute currentRoute;
   final ValueChanged<AppRoute> onRouteSelected;
-  final VoidCallback onLogout;
+  final VoidCallback? onLogout;
   final List<NavMenuItem> menuItems;
   final bool menusLoading;
 
@@ -56,16 +55,14 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   List<NavMenuItem> _menuSource() {
-    final items = widget.menuItems.isNotEmpty
+    final raw = widget.menuItems.isNotEmpty
         ? widget.menuItems
         : _staticMenus();
-    // Carrier Compliance hidden for now — not needed yet. Remove this
-    // filter to bring it back in the drawer.
-    return items
-        .where(
-          (item) =>
-              MenuRouteMapper.routeFromPath(item.path) != AppRoute.carriers,
-        )
+    return raw
+        .where((item) =>
+            item.path != '/carriers' &&
+            item.path != '/carrier-management' &&
+            item.id != 'carriers')
         .toList();
   }
 
@@ -77,10 +74,10 @@ class _AppDrawerState extends State<AppDrawer> {
     }
     if (MenuRouteMapper.isMaintenanceLabel(item.label)) {
       return widget.currentRoute == AppRoute.maintenance ||
+          widget.currentRoute == AppRoute.dvir ||
           widget.currentRoute == AppRoute.inventory ||
           widget.currentRoute == AppRoute.logs ||
-          widget.currentRoute == AppRoute.faultCodes ||
-          widget.currentRoute == AppRoute.dvir;
+          widget.currentRoute == AppRoute.faultCodes;
     }
     return false;
   }
@@ -94,127 +91,9 @@ class _AppDrawerState extends State<AppDrawer> {
     widget.onRouteSelected(route);
   }
 
-  Future<void> _confirmLogout(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.45),
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 36),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 280),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 32,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: AppColors.danger.withValues(alpha: 0.10),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.logout,
-                    color: AppColors.danger,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Log Out',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Are you sure you want to log out?',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    color: AppColors.textSecondary,
-                    height: 1.4,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(ctx, false),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.textPrimary,
-                          side: BorderSide(color: AppColors.border, width: 1.5),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: const Text(
-                          'Cancel',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () => Navigator.pop(ctx, true),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.danger,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        icon: const Icon(Icons.logout, size: 16),
-                        label: const Text(
-                          AppStrings.logout,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    if (confirmed != true || !context.mounted) return;
-
-    Navigator.pop(context);
-    widget.onLogout();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final user =
-        AuthService.instance.currentUser ??
+    final user = AuthService.instance.currentUser ??
         const UserModel(
           id: 0,
           employeeId: '',
@@ -222,152 +101,107 @@ class _AppDrawerState extends State<AppDrawer> {
           role: 'Technician',
         );
     final items = _menuSource();
-
-    final isLight = Theme.of(context).brightness == Brightness.light;
+    final isDrawerDark = AppColors.drawerBg.computeLuminance() < 0.5;
 
     return Drawer(
-      backgroundColor: isLight ? Colors.transparent : AppColors.drawerBg,
-      child: Container(
-        decoration: BoxDecoration(
-          color: isLight ? null : AppColors.drawerBg,
-          gradient: isLight
-              ? const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFFFFF3EC), Color(0xFFFFFFFF)],
-                )
-              : null,
-          border: Border(
-            left: BorderSide(color: AppColors.gold, width: 3),
-            top: BorderSide(color: AppColors.gold, width: 3),
-            bottom: BorderSide(color: AppColors.gold, width: 3),
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: const BrandLogo(height: 72, maxWidth: 180),
-                ),
+      backgroundColor: AppColors.drawerBg,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: const BrandLogo(height: 72, maxWidth: 180),
               ),
-              Expanded(
-                child: widget.menusLoading
-                    ? const Center(child: CircularProgressIndicator())
-                    : ListView(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        children: [
-                          for (final item in items)
-                            if (item.hasChildren)
-                              _DrawerGroup(
-                                item: item,
-                                expanded: _expandedId == item.id,
-                                currentRoute: widget.currentRoute,
-                                onToggle: () => setState(() {
-                                  _expandedId = _expandedId == item.id
-                                      ? null
-                                      : item.id;
-                                }),
-                                onSelect: (route) => _select(context, route),
-                              )
-                            else if (MenuRouteMapper.routeFromPath(item.path) !=
-                                null)
-                              _DrawerTile(
-                                label: item.label,
-                                menuIcon: item.label,
-                                route: MenuRouteMapper.routeFromPath(
-                                  item.path,
-                                )!,
-                                selected: _routeMatches(
-                                  item.path,
-                                  widget.currentRoute,
-                                ),
-                                onTap: () => _select(
-                                  context,
-                                  MenuRouteMapper.routeFromPath(item.path)!,
-                                ),
+            ),
+            Expanded(
+              child: widget.menusLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      children: [
+                        for (final item in items)
+                          if (item.hasChildren)
+                            _DrawerGroup(
+                              item: item,
+                              expanded: _expandedId == item.id,
+                              currentRoute: widget.currentRoute,
+                              onToggle: () => setState(() {
+                                _expandedId =
+                                    _expandedId == item.id ? null : item.id;
+                              }),
+                              onSelect: (route) => _select(context, route),
+                            )
+                          else if (MenuRouteMapper.routeFromPath(item.path) !=
+                              null)
+                            _DrawerTile(
+                              label: item.label,
+                              menuIcon: item.label,
+                              route: MenuRouteMapper.routeFromPath(item.path)!,
+                              selected: _routeMatches(
+                                item.path,
+                                widget.currentRoute,
                               ),
+                              onTap: () => _select(
+                                context,
+                                MenuRouteMapper.routeFromPath(item.path)!,
+                              ),
+                            ),
+                      ],
+                    ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDrawerDark ? const Color(0xFF1F2937) : null,
+                  gradient: isDrawerDark ? null : AppGradients.card,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isDrawerDark ? const Color(0xFF374151) : AppColors.border,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: isDrawerDark ? const Color(0x30BC1504) : AppColors.goldLight,
+                      child: Icon(
+                        Icons.person_outline,
+                        color: isDrawerDark ? AppColors.primary : AppColors.gold,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            user.name,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                              color: isDrawerDark ? const Color(0xFFFFFFFF) : AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            user.role,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDrawerDark ? const Color(0xFF9CA3AF) : AppColors.textSecondary,
+                            ),
+                          ),
                         ],
                       ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: isLight ? const Color(0xFFFDE9E0) : null,
-                    gradient: isLight ? null : AppGradients.card,
-                    borderRadius: BorderRadius.circular(12),
-                    border: isLight
-                        ? null
-                        : Border.all(color: AppColors.border),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 20,
-                        backgroundColor: AppColors.goldLight,
-                        child: const Icon(
-                          Icons.person_outline,
-                          color: AppColors.gold,
-                          size: 22,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              user.name,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                              ),
-                            ),
-                            Text(
-                              user.role,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: OutlinedButton.icon(
-                  onPressed: () => _confirmLogout(context),
-                  icon: const Icon(
-                    Icons.logout,
-                    color: AppColors.danger,
-                    size: 18,
-                  ),
-                  label: const Text(
-                    AppStrings.logout,
-                    style: TextStyle(
-                      color: AppColors.danger,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(46),
-                    side: const BorderSide(color: AppColors.danger),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -376,22 +210,24 @@ class _AppDrawerState extends State<AppDrawer> {
   List<NavMenuItem> _staticMenus() {
     return const [
       NavMenuItem(id: 'dashboard', label: 'Dashboard', path: '/dashboard'),
-      NavMenuItem(id: 'carriers', label: 'Carrier', path: '/carriers'),
-      NavMenuItem(id: 'drivers', label: 'Drivers', path: '/drivers'),
+      // NavMenuItem(id: 'carriers', label: 'Carrier', path: '/carriers'),
       NavMenuItem(id: 'powerunit', label: 'Power Unit', path: '/powerunit'),
       NavMenuItem(id: 'trailers', label: 'My Trailers', path: '/trailers'),
       NavMenuItem(
         id: 'maintenance',
-        label: 'Service Maintenance',
+        label: 'Maintenance',
         path: '/maintenance',
         children: [
-          NavMenuItem(id: 'inventory', label: 'Inventory', path: '/inventory'),
           NavMenuItem(
             id: 'maintenance-hub',
-            label: 'Work Orders',
+            label: 'Maintenance',
             path: '/maintenance',
           ),
-          NavMenuItem(id: 'dvir', label: 'DVIR', path: '/dvir-reports'),
+          NavMenuItem(
+            id: 'dvir-reports',
+            label: 'DVIR Reports',
+            path: '/dvir-reports',
+          ),
           NavMenuItem(
             id: 'fault-codes',
             label: 'Fault Codes',
@@ -432,6 +268,7 @@ class _DrawerGroup extends StatelessWidget {
     }
     if (MenuRouteMapper.isMaintenanceLabel(item.label)) {
       return currentRoute == AppRoute.maintenance ||
+          currentRoute == AppRoute.dvir ||
           currentRoute == AppRoute.inventory ||
           currentRoute == AppRoute.logs ||
           currentRoute == AppRoute.faultCodes;
@@ -441,7 +278,10 @@ class _DrawerGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tint = _active ? AppColors.gold : AppColors.textSecondary;
+    final isDrawerDark = AppColors.drawerBg.computeLuminance() < 0.5;
+    final inactiveTextColor = isDrawerDark ? const Color(0xFFE5E7EB) : AppColors.textPrimary;
+    final inactiveIconColor = isDrawerDark ? const Color(0xFF9CA3AF) : AppColors.textSecondary;
+    final tint = _active ? AppColors.gold : inactiveIconColor;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -454,10 +294,8 @@ class _DrawerGroup extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               onTap: onToggle,
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 child: Row(
                   children: [
                     AppMenuIcon(
@@ -472,12 +310,9 @@ class _DrawerGroup extends StatelessWidget {
                         item.label,
                         style: TextStyle(
                           fontSize: 14,
-                          fontWeight: _active
-                              ? FontWeight.w600
-                              : FontWeight.w500,
-                          color: _active
-                              ? AppColors.gold
-                              : AppColors.textPrimary,
+                          fontWeight:
+                              _active ? FontWeight.w600 : FontWeight.w500,
+                          color: _active ? AppColors.gold : inactiveTextColor,
                         ),
                       ),
                     ),
@@ -504,13 +339,11 @@ class _DrawerGroup extends StatelessWidget {
                         label: child.label,
                         menuIcon: child.label,
                         route: MenuRouteMapper.routeFromPath(child.path)!,
-                        selected:
-                            MenuRouteMapper.routeFromPath(child.path) ==
+                        selected: MenuRouteMapper.routeFromPath(child.path) ==
                             currentRoute,
                         dense: true,
-                        onTap: () => onSelect(
-                          MenuRouteMapper.routeFromPath(child.path)!,
-                        ),
+                        onTap: () =>
+                            onSelect(MenuRouteMapper.routeFromPath(child.path)!),
                       ),
                 ],
               ),
@@ -549,13 +382,13 @@ class _DrawerTile extends StatelessWidget {
       case AppRoute.myTrailers:
         return Icons.inventory_2_outlined;
       case AppRoute.maintenance:
-        return Icons.build_outlined;
       case AppRoute.inventory:
-        return Icons.inventory_2_outlined;
       case AppRoute.logs:
-        return Icons.receipt_long_outlined;
+        return Icons.build_outlined;
+      case AppRoute.dvir:
+        return Icons.assignment_outlined;
       case AppRoute.faultCodes:
-        return Icons.info_outline;
+        return Icons.warning_amber_outlined;
       case AppRoute.documents:
         return Icons.description_outlined;
       case AppRoute.reports:
@@ -568,14 +401,15 @@ class _DrawerTile extends StatelessWidget {
         return Icons.settings_outlined;
       case AppRoute.drivers:
         return Icons.people_outline;
-      case AppRoute.dvir:
-        return Icons.description_outlined;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final tint = selected ? AppColors.gold : AppColors.textSecondary;
+    final isDrawerDark = AppColors.drawerBg.computeLuminance() < 0.5;
+    final inactiveTextColor = isDrawerDark ? const Color(0xFFE5E7EB) : AppColors.textPrimary;
+    final inactiveIconColor = isDrawerDark ? const Color(0xFF9CA3AF) : AppColors.textSecondary;
+    final tint = selected ? AppColors.gold : inactiveIconColor;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
@@ -592,22 +426,21 @@ class _DrawerTile extends StatelessWidget {
             ),
             child: Row(
               children: [
-                if (dense) const SizedBox(width: 16),
-                AppMenuIcon(
-                  fallback: _fallbackIcon,
-                  menuIcon: menuIcon,
-                  label: label,
-                  size: dense ? 16 : 20,
-                  color: tint,
-                ),
-                const SizedBox(width: 12),
+                if (!dense)
+                  AppMenuIcon(
+                    fallback: _fallbackIcon,
+                    menuIcon: menuIcon,
+                    label: label,
+                    color: tint,
+                  ),
+                if (!dense) const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     label,
                     style: TextStyle(
                       fontSize: dense ? 13 : 14,
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                      color: selected ? AppColors.gold : AppColors.textPrimary,
+                      color: selected ? AppColors.gold : inactiveTextColor,
                     ),
                   ),
                 ),

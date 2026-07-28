@@ -599,6 +599,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           _req(_plate.text, 'Plate Number') != null ||
           _req(_registrationExpiry.text, 'Registration Expiry') != null ||
           _req(_transmission.text, 'Transmission') != null ||
+          _nonNegativeIntValidator(_gvwr.text, 'GVWR', required: true) != null ||
           _ownershipType.isEmpty) {
         AppToast.showError('Complete all required Step 1 fields');
         return false;
@@ -736,7 +737,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       'advisoryItems': toInt(_advisoryItems.text) ?? 0,
       'inspectionSummary': _inspectionSummary.text.trim(),
       'permits': _permits.map((p) => p.toPayload()).toList(),
-      if (companyId != null) 'companyId': companyId,
+      'companyId': ?companyId,
     };
   }
 
@@ -1186,9 +1187,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       children: [
         WebTextFormField(
           controller: _gvwr,
-          label: 'GVWR',
+          label: 'GVWR *',
           keyboardType: TextInputType.number,
-          validator: (v) => _nonNegativeIntValidator(v, 'GVWR'),
+          validator: (v) => _nonNegativeIntValidator(v, 'GVWR', required: true),
         ),
         WebDropdownField<String>(
           label: 'Fuel Type',
@@ -1522,36 +1523,43 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      child: Row(
-        children: [
-          TextButton(
-            onPressed: saving ? null : onCancel,
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-            ),
-            child: const Text('Cancel'),
+      color: AppColors.card,
+      child: SafeArea(
+        top: false,
+        bottom: true,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            border: Border(top: BorderSide(color: AppColors.border)),
           ),
-          const Spacer(),
-          onContinue != null
-              ? WebPrimaryButton(
-                  label: 'Continue',
-                  onPressed: onContinue,
-                  expand: false,
-                  dense: true,
-                )
-              : WebPrimaryButton(
-                  label: 'Save Power Unit',
-                  loading: saving,
-                  onPressed: saving ? null : onSave,
-                  expand: false,
-                  dense: true,
+          child: Row(
+            children: [
+              TextButton(
+                onPressed: saving ? null : onCancel,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
                 ),
-        ],
+                child: const Text('Cancel'),
+              ),
+              const Spacer(),
+              onContinue != null
+                  ? WebPrimaryButton(
+                      label: 'Continue',
+                      onPressed: onContinue,
+                      expand: false,
+                      dense: true,
+                    )
+                  : WebPrimaryButton(
+                      label: 'Save Power Unit',
+                      loading: saving,
+                      onPressed: saving ? null : onSave,
+                      expand: false,
+                      dense: true,
+                    ),
+            ],
+          ),
+        ),
       ),
     );
   }

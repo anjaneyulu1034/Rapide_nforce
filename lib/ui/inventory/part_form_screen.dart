@@ -6,9 +6,10 @@ import 'package:rapide_nforce/services/inventory_service.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class PartFormScreen extends StatefulWidget {
-  const PartFormScreen({super.key, this.part});
+  const PartFormScreen({super.key, this.part, this.initialPartTypeId});
 
   final PartModel? part;
+  final int? initialPartTypeId;
 
   bool get isEdit => part != null;
 
@@ -38,7 +39,7 @@ class _PartFormScreenState extends State<PartFormScreen> {
       text: p?.cost != null ? p!.cost!.toStringAsFixed(2) : '',
     );
     _invoiceController = TextEditingController(text: p?.invoiceNumber ?? '');
-    _selectedTypeId = p?.typeId;
+    _selectedTypeId = p?.typeId ?? widget.initialPartTypeId;
     _loadTypes();
   }
 
@@ -170,8 +171,9 @@ class _PartFormScreenState extends State<PartFormScreen> {
                           controller: _qtyController,
                           keyboardType: TextInputType.number,
                           decoration: const InputDecoration(
-                            labelText: 'Quantity',
+                            labelText: 'Quantity *',
                           ),
+                          onChanged: (_) => setState(() {}),
                           validator: (v) {
                             final n = int.tryParse(v?.trim() ?? '');
                             if (n == null || n < 0) {
@@ -181,14 +183,117 @@ class _PartFormScreenState extends State<PartFormScreen> {
                           },
                         ),
                         const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _costController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: TextFormField(
+                                controller: _costController,
+                                keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                decoration: const InputDecoration(
+                                  labelText: 'Cost',
+                                  prefixText: '\$ ',
+                                ),
+                                onChanged: (_) => setState(() {}),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 3,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryLight.withValues(alpha: 0.3),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: AppColors.primary.withValues(alpha: 0.2),
+                                  ),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Total Cost',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '\$${(((int.tryParse(_qtyController.text.trim()) ?? 0) * (double.tryParse(_costController.text.trim()) ?? 0.0))).toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            IconButton(
+                              icon: const Icon(Icons.qr_code_scanner),
+                              tooltip: 'Scan barcode/OCR',
+                              style: IconButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                              onPressed: () {
+                                AppToast.showInfo('Ready to scan part barcode');
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        Text(
+                          'Upload Invoice',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
                           ),
-                          decoration: const InputDecoration(
-                            labelText: 'Unit cost (optional)',
-                            prefixText: '\$ ',
+                        ),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Row(
+                            children: [
+                              OutlinedButton.icon(
+                                onPressed: () {
+                                  AppToast.showInfo('Select JPEG, PNG, or PDF file');
+                                },
+                                icon: const Icon(Icons.upload_file, size: 18),
+                                label: const Text('Choose file'),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'No file chosen (JPEG, PNG, PDF)',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 16),
@@ -196,11 +301,12 @@ class _PartFormScreenState extends State<PartFormScreen> {
                           controller: _invoiceController,
                           decoration: const InputDecoration(
                             labelText: 'Invoice number (optional)',
+                            hintText: 'Enter invoice number',
                           ),
                         ),
                         const SizedBox(height: 28),
                         WebPrimaryButton(
-                          label: widget.isEdit ? 'Save changes' : 'Create part',
+                          label: widget.isEdit ? 'Save Changes' : 'Create Part',
                           loading: _saving,
                           onPressed: _save,
                         ),

@@ -33,6 +33,16 @@ class DvirDefectModel {
   final String? resolvedBy;
   final Map<String, dynamic>? raw;
 
+  bool get isOpen {
+    final s = defectStatus.trim().toLowerCase();
+    return s == 'open' || s == 'unresolved';
+  }
+
+  bool get isResolved {
+    final s = defectStatus.trim().toLowerCase();
+    return s == 'resolved' || s == 'corrected' || s == 'repaired' || s == 'closed';
+  }
+
   factory DvirDefectModel.fromJson(Map<String, dynamic> json) {
     return DvirDefectModel(
       id: json['id']?.toString() ?? '',

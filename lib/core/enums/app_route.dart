@@ -4,6 +4,7 @@ enum AppRoute {
   powerUnit,
   myTrailers,
   maintenance,
+  dvir,
   faultCodes,
   inventory,
   logs,
@@ -13,7 +14,6 @@ enum AppRoute {
   approvals,
   profile,
   drivers,
-  dvir,
 }
 
 extension AppRouteX on AppRoute {
@@ -29,6 +29,8 @@ extension AppRouteX on AppRoute {
         return 'My Trailers';
       case AppRoute.maintenance:
         return 'Work Orders';
+      case AppRoute.dvir:
+        return 'DVIR Inspection Reports';
       case AppRoute.faultCodes:
         return 'Fault Codes';
       case AppRoute.inventory:
@@ -47,8 +49,6 @@ extension AppRouteX on AppRoute {
         return 'Profile';
       case AppRoute.drivers:
         return 'Drivers';
-      case AppRoute.dvir:
-        return 'DVIR';
     }
   }
 }
@@ -56,11 +56,10 @@ extension AppRouteX on AppRoute {
 const List<AppRoute> kDrawerRoutes = [
   AppRoute.dashboard,
   AppRoute.carriers,
-  AppRoute.drivers,
   AppRoute.powerUnit,
   AppRoute.myTrailers,
-  AppRoute.dvir,
   AppRoute.maintenance,
+  AppRoute.dvir,
   AppRoute.inventory,
   AppRoute.logs,
   AppRoute.documents,
@@ -68,13 +67,14 @@ const List<AppRoute> kDrawerRoutes = [
   AppRoute.requests,
   AppRoute.approvals,
   AppRoute.profile,
+  AppRoute.drivers,
 ];
 
 /// Main bottom navigation tabs (4 icons).
 const List<AppRoute> kBottomNavRoutes = [
   AppRoute.dashboard,
   AppRoute.maintenance,
-  AppRoute.approvals,
+  AppRoute.requests,
   AppRoute.profile,
 ];
 
@@ -83,12 +83,10 @@ extension AppRouteNavX on AppRoute {
     switch (this) {
       case AppRoute.dashboard:
         return 'Home';
-      case AppRoute.powerUnit:
-        return 'Power Unit';
       case AppRoute.maintenance:
-        return 'Work Order';
-      case AppRoute.approvals:
-        return 'Approvals';
+        return 'Maintenance';
+      case AppRoute.requests:
+        return 'Requests';
       case AppRoute.profile:
         return 'Profile';
       default:
@@ -99,6 +97,8 @@ extension AppRouteNavX on AppRoute {
 
 const List<({String label, AppRoute route})> kMaintenanceSubRoutes = [
   (label: 'Work Orders', route: AppRoute.maintenance),
+  (label: 'DVIR', route: AppRoute.dvir),
+  (label: 'Fault Codes', route: AppRoute.faultCodes),
   (label: 'Inventory', route: AppRoute.inventory),
   (label: 'Logs', route: AppRoute.logs),
 ];

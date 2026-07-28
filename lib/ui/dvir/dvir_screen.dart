@@ -110,10 +110,8 @@ class _DvirScreenState extends State<DvirScreen>
   List<DvirReportModel> _reports = [];
   int _reportsPage = 1;
   int _reportsTotalPages = 1;
-  String _typeFilter = 'all';
-  String _statusFilter = 'all';
-  DateTime? _fromDate;
-  DateTime? _toDate;
+  final String _typeFilter = 'all';
+  final String _statusFilter = 'all';
 
   // State Defects
   bool _defectsLoading = true;
@@ -122,8 +120,8 @@ class _DvirScreenState extends State<DvirScreen>
   List<DvirDefectModel> _defects = [];
   int _defectsPage = 1;
   int _defectsTotalPages = 1;
-  String _severityFilter = 'all';
-  String _defectStatusFilter = 'all';
+  final String _severityFilter = 'all';
+  final String _defectStatusFilter = 'all';
 
   @override
   void initState() {
@@ -198,35 +196,6 @@ class _DvirScreenState extends State<DvirScreen>
     }
   }
 
-  String? get _isoFromDate =>
-      _fromDate == null ? null : DateFormat('yyyy-MM-dd').format(_fromDate!);
-  String? get _isoToDate =>
-      _toDate == null ? null : DateFormat('yyyy-MM-dd').format(_toDate!);
-
-  Future<void> _pickFromDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _fromDate ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-    );
-    if (picked == null) return;
-    setState(() => _fromDate = picked);
-    _loadReports();
-  }
-
-  Future<void> _pickToDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _toDate ?? DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-    );
-    if (picked == null) return;
-    setState(() => _toDate = picked);
-    _loadReports();
-  }
-
   Future<void> _loadReports() async {
     setState(() {
       _reportsLoading = true;
@@ -237,10 +206,8 @@ class _DvirScreenState extends State<DvirScreen>
 
     final result = await DvirService.instance.fetchReports(
       page: 1,
-      limit: 10,
+      limit: 100,
       search: _search.isEmpty ? null : _search,
-      reportedFrom: _isoFromDate,
-      reportedTo: _isoToDate,
       inspectionType: _typeFilter == 'all' ? null : _typeFilter,
       reportStatus: _statusFilter == 'all' ? null : _statusFilter,
     );
@@ -270,8 +237,9 @@ class _DvirScreenState extends State<DvirScreen>
   Future<void> _loadMoreReports() async {
     if (_reportsLoading ||
         _reportsLoadingMore ||
-        _reportsPage >= _reportsTotalPages)
+        _reportsPage >= _reportsTotalPages) {
       return;
+    }
 
     setState(() {
       _reportsLoadingMore = true;
@@ -280,10 +248,8 @@ class _DvirScreenState extends State<DvirScreen>
     final nextPage = _reportsPage + 1;
     final result = await DvirService.instance.fetchReports(
       page: nextPage,
-      limit: 10,
+      limit: 100,
       search: _search.isEmpty ? null : _search,
-      reportedFrom: _isoFromDate,
-      reportedTo: _isoToDate,
       inspectionType: _typeFilter == 'all' ? null : _typeFilter,
       reportStatus: _statusFilter == 'all' ? null : _statusFilter,
     );
@@ -316,7 +282,7 @@ class _DvirScreenState extends State<DvirScreen>
 
     final result = await DvirService.instance.fetchDefects(
       page: 1,
-      limit: 10,
+      limit: 100,
       search: _search.isEmpty ? null : _search,
       defectStatus: _defectStatusFilter == 'all' ? null : _defectStatusFilter,
       severity: _severityFilter == 'all' ? null : _severityFilter,
@@ -347,8 +313,9 @@ class _DvirScreenState extends State<DvirScreen>
   Future<void> _loadMoreDefects() async {
     if (_defectsLoading ||
         _defectsLoadingMore ||
-        _defectsPage >= _defectsTotalPages)
+        _defectsPage >= _defectsTotalPages) {
       return;
+    }
 
     setState(() {
       _defectsLoadingMore = true;
@@ -357,7 +324,7 @@ class _DvirScreenState extends State<DvirScreen>
     final nextPage = _defectsPage + 1;
     final result = await DvirService.instance.fetchDefects(
       page: nextPage,
-      limit: 10,
+      limit: 100,
       search: _search.isEmpty ? null : _search,
       defectStatus: _defectStatusFilter == 'all' ? null : _defectStatusFilter,
       severity: _severityFilter == 'all' ? null : _severityFilter,
@@ -399,165 +366,125 @@ class _DvirScreenState extends State<DvirScreen>
   Widget _buildReportCard(DvirReportModel r) {
     final (safeBg, safeFg) = _safetyColors(r.reportStatus);
     final (typeBg, typeFg) = _typeColors(r.inspectionType);
+    final avColor = _avatarColor(r.driverName);
+    final initials = _initials(r.driverName);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: _cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      r.vehicleNumber,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: AppColors.primary,
-                      ),
+    return InkWell(
+      onTap: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => DvirDetailScreen(reportId: r.id)),
+        );
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: _cardDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    r.vehicleNumber,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      color: AppColors.textPrimary,
                     ),
-                    if ((r.vin ?? '').isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        r.vin!,
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              _Badge(label: r.reportStatus, bg: safeBg, fg: safeFg),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: _avatarColor(
-                  r.driverName,
-                ).withValues(alpha: 0.15),
-                child: Text(
-                  _initials(r.driverName),
-                  style: TextStyle(
-                    color: _avatarColor(r.driverName),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
                   ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      r.driverName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                      overflow: TextOverflow.ellipsis,
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: safeBg,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    r.reportStatus.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: safeFg,
                     ),
-                    Text(
-                      r.driverExternalId,
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Divider(
-            height: 1,
-            thickness: 1,
-            color: AppColors.textSecondary.withValues(alpha: 0.12),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _GridText(
-                  icon: Icons.calendar_today_outlined,
-                  label: 'REPORTED',
-                  value: _formatDateTime(r.reportedAt),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _GridCell(
-                  icon: Icons.category_outlined,
-                  label: 'TYPE',
-                  child: _Badge(
-                    label: r.inspectionType,
-                    bg: typeBg,
-                    fg: typeFg,
-                    compact: true,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _GridText(
-                  icon: Icons.business_outlined,
-                  label: 'COMPANY',
-                  value: r.companyName,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _GridText(
-                  icon: Icons.report_problem_outlined,
-                  label: 'DEFECTS',
-                  value: '${r.defectCount}',
-                  valueColor: r.defectCount > 0
-                      ? const Color(0xFFBA1A1A)
-                      : AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _GridText(
-            icon: Icons.sync_outlined,
-            label: 'SOURCE',
-            value: r.integrationSourceName,
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DvirDetailScreen(reportId: r.id),
-                  ),
-                );
-              },
-              child: const Text('View Report'),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 12,
+                  backgroundColor: avColor,
+                  child: Text(
+                    initials,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  r.driverName,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: typeBg,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    r.inspectionType,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: typeFg,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _formatDateTime(r.reportedAt),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                Text(
+                  '${r.defectCount} defect${r.defectCount == 1 ? '' : 's'}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: r.defectCount > 0
+                        ? AppColors.danger
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -565,222 +492,95 @@ class _DvirScreenState extends State<DvirScreen>
   Widget _buildDefectCard(DvirDefectModel d) {
     final (statusBg, statusFg) = _defectStatusColors(d.defectStatus);
     final (sevBg, sevFg) = _severityColors(d.severity);
-    final hasReport = (d.syncedDvirReportId ?? '').isNotEmpty;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: _cardDecoration(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      d.defectName,
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: AppColors.primary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Code: ${d.defectCode}',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              _Badge(label: d.defectStatus, bg: statusBg, fg: statusFg),
-            ],
+    return InkWell(
+      onTap: () async {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => DvirDefectDetailScreen(defectId: d.id),
           ),
-          if ((d.defectDescription ?? '').trim().isNotEmpty) ...[
-            const SizedBox(height: 8),
+        );
+        _loadDefects();
+      },
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: _cardDecoration(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    d.defectName,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: statusBg,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    d.defectStatus.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: statusFg,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
             Text(
-              d.defectDescription!,
-              style: TextStyle(color: AppColors.textPrimary, fontSize: 13),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+              'Code: ${d.defectCode} · Vehicle: ${d.vehicleNumber ?? '—'}',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (d.severity != null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: sevBg,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      d.severity!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: sevFg,
+                      ),
+                    ),
+                  ),
+                const Spacer(),
+                Text(
+                  _formatDateTime(d.createdAt),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ),
           ],
-          const SizedBox(height: 12),
-          Divider(
-            height: 1,
-            thickness: 1,
-            color: AppColors.textSecondary.withValues(alpha: 0.12),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _GridCell(
-                  icon: Icons.local_shipping_outlined,
-                  label: 'VEHICLE',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        d.vehicleNumber ?? '—',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                      if ((d.vin ?? '').isNotEmpty)
-                        Text(
-                          d.vin!,
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _GridText(
-                  icon: Icons.business_outlined,
-                  label: 'COMPANY',
-                  value: d.companyName,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _GridCell(
-                  icon: Icons.warning_amber_outlined,
-                  label: 'SEVERITY',
-                  child: _Badge(
-                    label: (d.severity ?? '').trim().isEmpty
-                        ? 'No Severity'
-                        : d.severity!,
-                    bg: sevBg,
-                    fg: sevFg,
-                    compact: true,
-                    italic: (d.severity ?? '').trim().isEmpty,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _GridText(
-                  icon: Icons.sync_outlined,
-                  label: 'SOURCE',
-                  value: d.integrationSourceName,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _GridText(
-                  icon: Icons.calendar_today_outlined,
-                  label: 'REPORTED',
-                  value: _formatDateTime(d.createdAt),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _GridCell(
-                  icon: Icons.description_outlined,
-                  label: 'DVIR REPORT',
-                  child: hasReport
-                      ? InkWell(
-                          onTap: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => DvirDetailScreen(
-                                  reportId: d.syncedDvirReportId!,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Text(
-                            'View Report',
-                            style: TextStyle(
-                              color: AppColors.primary,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              decoration: TextDecoration.underline,
-                            ),
-                          ),
-                        )
-                      : Text(
-                          'No DVIR Report',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontStyle: FontStyle.italic,
-                            fontSize: 13,
-                          ),
-                        ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => DvirDefectDetailScreen(defectId: d.id),
-                  ),
-                );
-              },
-              child: const Text('View Details'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLimitNote(String text) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF3C7),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFFDE68A)),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.info_outline, size: 16, color: Color(0xFF92400E)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Color(0xFF92400E),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -789,535 +589,116 @@ class _DvirScreenState extends State<DvirScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(48),
-        child: TabBar(
-          controller: _tabController,
-          labelColor: AppColors.textPrimary,
-          unselectedLabelColor: AppColors.textSecondary,
-          indicatorColor: AppColors.primary,
-          labelStyle: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 14,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontWeight: FontWeight.normal,
-            fontSize: 14,
-          ),
-          tabs: const [
-            Tab(text: 'DVIR Reports'),
-            Tab(text: 'Defects'),
-          ],
-        ),
-      ),
       body: WebPageBody(
-        onRefresh: () async {
-          _loadCurrentTab();
-        },
-        child: AnimatedBuilder(
-          animation: _tabController,
-          builder: (context, _) {
-            final isReportsTab = _tabController.index == 0;
-            return Column(
-              children: [
-                _buildLimitNote(
-                  isReportsTab
-                      ? 'DVIR report data view is limited to the past 30 days.'
-                      : 'Defect data view is limited to the past 30 days.',
+        child: NestedScrollView(
+          headerSliverBuilder: (context, innerBoxIsScrolled) => [
+            SliverToBoxAdapter(
+              child: WebPageHeader(
+                title: 'DVIR Inspection Reports',
+                subtitle:
+                    'Driver vehicle inspection reports, defect tracking, and safety compliance.',
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
                 ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                  child: WebSearchField(
-                    controller: _searchController,
-                    hintText: isReportsTab
-                        ? 'Search Reports...'
-                        : 'Search Defects...',
-                    showClear: _search.isNotEmpty,
-                    onClear: () {
-                      _searchController.clear();
-                      setState(() {
-                        _search = '';
-                      });
-                      _loadCurrentTab();
-                    },
-                  ),
+                child: TabBar(
+                  controller: _tabController,
+                  indicatorColor: AppColors.primary,
+                  labelColor: AppColors.primary,
+                  unselectedLabelColor: AppColors.textSecondary,
+                  tabs: const [
+                    Tab(text: 'Reports'),
+                    Tab(text: 'Defects'),
+                  ],
                 ),
-                if (isReportsTab) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _DvirDateField(
-                            label: 'From',
-                            value: _fromDate,
-                            onTap: _pickFromDate,
-                            onClear: _fromDate != null
-                                ? () {
-                                    setState(() => _fromDate = null);
-                                    _loadReports();
-                                  }
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _DvirDateField(
-                            label: 'To',
-                            value: _toDate,
-                            onTap: _pickToDate,
-                            onClear: _toDate != null
-                                ? () {
-                                    setState(() => _toDate = null);
-                                    _loadReports();
-                                  }
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _typeFilter,
-                            decoration: const InputDecoration(
-                              labelText: 'Type',
-                              border: InputBorder.none,
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'all',
-                                child: Text('All Types'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'pre-trip',
-                                child: Text('Pre-Trip'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'post-trip',
-                                child: Text('Post-Trip'),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              setState(() => _typeFilter = v ?? 'all');
-                              _loadReports();
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _statusFilter,
-                            decoration: const InputDecoration(
-                              labelText: 'Status',
-                              border: InputBorder.none,
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'all',
-                                child: Text('All Status'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'safe',
-                                child: Text('Safe'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'unsafe',
-                                child: Text('Unsafe'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'unknown',
-                                child: Text('Unknown'),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              setState(() => _statusFilter = v ?? 'all');
-                              _loadReports();
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ] else
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _severityFilter,
-                            decoration: const InputDecoration(
-                              labelText: 'Severity',
-                              border: InputBorder.none,
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'all',
-                                child: Text('All Severities'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'major',
-                                child: Text('Major'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'minor',
-                                child: Text('Minor'),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              setState(() => _severityFilter = v ?? 'all');
-                              _loadDefects();
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _defectStatusFilter,
-                            decoration: const InputDecoration(
-                              labelText: 'Status',
-                              border: InputBorder.none,
-                            ),
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'all',
-                                child: Text('All Status'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'open',
-                                child: Text('Open'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'resolved',
-                                child: Text('Resolved'),
-                              ),
-                              DropdownMenuItem(
-                                value: 'unresolved',
-                                child: Text('Unresolved'),
-                              ),
-                            ],
-                            onChanged: (v) {
-                              setState(() => _defectStatusFilter = v ?? 'all');
-                              _loadDefects();
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: TabBarView(
-                    controller: _tabController,
-                    physics: const NeverScrollableScrollPhysics(),
-                    children: [
-                      // Reports list
-                      _reportsLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : _reportsError != null
-                          ? ApiErrorBanner(
-                              message: _reportsError!,
-                              onRetry: _loadReports,
-                            )
-                          : _reports.isEmpty
-                          ? ListEmptyState(
-                              message: 'No reports found',
-                              icon: Icons.description_outlined,
-                            )
-                          : ListView(
-                              controller: _reportsScrollController,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              children: [
-                                LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    if (constraints.maxWidth < 600) {
-                                      return Column(
-                                        children: _reports
-                                            .map(
-                                              (r) => Padding(
-                                                padding: const EdgeInsets.only(
-                                                  bottom: 12,
-                                                ),
-                                                child: _buildReportCard(r),
-                                              ),
-                                            )
-                                            .toList(),
-                                      );
-                                    }
-                                    return GridView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      itemCount: _reports.length,
-                                      gridDelegate:
-                                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                                            maxCrossAxisExtent: 500,
-                                            mainAxisExtent: 400,
-                                            crossAxisSpacing: 16,
-                                            mainAxisSpacing: 16,
-                                          ),
-                                      itemBuilder: (context, i) =>
-                                          _buildReportCard(_reports[i]),
-                                    );
-                                  },
-                                ),
-                                if (_reportsLoadingMore)
-                                  const Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: Center(
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                      // Defects list
-                      _defectsLoading
-                          ? const Center(child: CircularProgressIndicator())
-                          : _defectsError != null
-                          ? ApiErrorBanner(
-                              message: _defectsError!,
-                              onRetry: _loadDefects,
-                            )
-                          : _defects.isEmpty
-                          ? ListEmptyState(
-                              message: 'No defects found',
-                              icon: Icons.report_problem_outlined,
-                            )
-                          : ListView(
-                              controller: _defectsScrollController,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              children: [
-                                LayoutBuilder(
-                                  builder: (context, constraints) {
-                                    if (constraints.maxWidth < 600) {
-                                      return Column(
-                                        children: _defects
-                                            .map(
-                                              (d) => Padding(
-                                                padding: const EdgeInsets.only(
-                                                  bottom: 12,
-                                                ),
-                                                child: _buildDefectCard(d),
-                                              ),
-                                            )
-                                            .toList(),
-                                      );
-                                    }
-                                    return GridView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      itemCount: _defects.length,
-                                      gridDelegate:
-                                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                                            maxCrossAxisExtent: 500,
-                                            mainAxisExtent: 460,
-                                            crossAxisSpacing: 16,
-                                            mainAxisSpacing: 16,
-                                          ),
-                                      itemBuilder: (context, i) =>
-                                          _buildDefectCard(_defects[i]),
-                                    );
-                                  },
-                                ),
-                                if (_defectsLoadingMore)
-                                  const Padding(
-                                    padding: EdgeInsets.all(16),
-                                    child: Center(
-                                      child: CircularProgressIndicator(),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _Badge extends StatelessWidget {
-  const _Badge({
-    required this.label,
-    required this.bg,
-    required this.fg,
-    this.compact = false,
-    this.italic = false,
-  });
-
-  final String label;
-  final Color bg;
-  final Color fg;
-  final bool compact;
-  final bool italic;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 3 : 4,
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: fg,
-          fontSize: compact ? 11 : 12,
-          fontWeight: FontWeight.w700,
-          fontStyle: italic ? FontStyle.italic : FontStyle.normal,
-        ),
-      ),
-    );
-  }
-}
-
-class _GridText extends StatelessWidget {
-  const _GridText({
-    required this.icon,
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return _GridCell(
-      icon: icon,
-      label: label,
-      child: Text(
-        value,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.bold,
-          color: valueColor ?? AppColors.textPrimary,
-        ),
-        overflow: TextOverflow.ellipsis,
-      ),
-    );
-  }
-}
-
-class _GridCell extends StatelessWidget {
-  const _GridCell({
-    required this.icon,
-    required this.label,
-    required this.child,
-  });
-
-  final IconData icon;
-  final String label;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Icon(icon, size: 12, color: AppColors.primary),
-            const SizedBox(width: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
-                letterSpacing: 0.5,
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 6),
-        child,
-      ],
-    );
-  }
-}
-
-class _DvirDateField extends StatelessWidget {
-  const _DvirDateField({
-    required this.label,
-    required this.value,
-    required this.onTap,
-    this.onClear,
-  });
-
-  final String label;
-  final DateTime? value;
-  final VoidCallback onTap;
-  final VoidCallback? onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = value != null
-        ? DateFormat('MM-dd-yyyy').format(value!)
-        : label;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.calendar_month_outlined,
-              size: 16,
-              color: AppColors.textSecondary,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                text,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: value != null
-                      ? AppColors.textPrimary
-                      : AppColors.textSecondary,
+          body: TabBarView(
+            controller: _tabController,
+            children: [
+              // Tab 1: Reports
+              RefreshIndicator(
+                onRefresh: _loadReports,
+                child: ListView(
+                  controller: _reportsScrollController,
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    WebSearchField(
+                      controller: _searchController,
+                      hintText: 'Search report, vehicle, driver...',
+                    ),
+                    const SizedBox(height: 12),
+                    if (_reportsError != null)
+                      ApiErrorBanner(
+                        message: _reportsError!,
+                        onRetry: _loadReports,
+                      ),
+                    if (_reportsLoading)
+                      const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (_reports.isEmpty)
+                      const ListEmptyState(
+                        message:
+                            'No DVIR inspection reports match your criteria.',
+                        icon: Icons.assignment_outlined,
+                      )
+                    else
+                      ..._reports.map(_buildReportCard),
+                    if (_reportsLoadingMore)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                  ],
                 ),
               ),
-            ),
-            if (value != null && onClear != null)
-              InkWell(
-                onTap: onClear,
-                child: Icon(
-                  Icons.close,
-                  size: 16,
-                  color: AppColors.textSecondary,
+
+              // Tab 2: Defects
+              RefreshIndicator(
+                onRefresh: _loadDefects,
+                child: ListView(
+                  controller: _defectsScrollController,
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    WebSearchField(
+                      controller: _searchController,
+                      hintText: 'Search defect, code, vehicle...',
+                    ),
+                    const SizedBox(height: 12),
+                    if (_defectsError != null)
+                      ApiErrorBanner(
+                        message: _defectsError!,
+                        onRetry: _loadDefects,
+                      ),
+                    if (_defectsLoading)
+                      const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    else if (_defects.isEmpty)
+                      const ListEmptyState(
+                        message: 'No vehicle defects match your criteria.',
+                        icon: Icons.warning_amber_rounded,
+                      )
+                    else
+                      ..._defects.map(_buildDefectCard),
+                    if (_defectsLoadingMore)
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                  ],
                 ),
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );

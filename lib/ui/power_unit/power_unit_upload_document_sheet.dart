@@ -532,8 +532,9 @@ class _EditDocumentSheetState extends State<_EditDocumentSheet> {
   @override
   void initState() {
     super.initState();
-    if (_category != null)
+    if (_category != null) {
       _loadDocTypesForCategory(_category!, keepSelection: true);
+    }
   }
 
   @override

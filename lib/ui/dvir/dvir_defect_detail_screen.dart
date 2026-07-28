@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
+import 'package:rapide_nforce/core/utils/api_feedback.dart';
+import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/models/dvir_defect_model.dart';
 import 'package:rapide_nforce/services/dvir_service.dart';
 import 'package:rapide_nforce/ui/dvir/dvir_detail_screen.dart';
@@ -49,6 +51,131 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
     });
   }
 
+  Future<void> _openResolveModal() async {
+    final noteController = TextEditingController();
+    final nameController = TextEditingController();
+    String status = 'repaired';
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return AlertDialog(
+            backgroundColor: AppColors.card,
+            title: const Text(
+              'Resolve DVIR Defect',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Resolution Status',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<String>(
+                    initialValue: status,
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: AppColors.surfaceTertiary,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'repaired',
+                        child: Text('Repaired / Corrected'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'no_repair_needed',
+                        child: Text('No Repair Needed'),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) setModalState(() => status = v);
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Mechanic / Technician Name',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: nameController,
+                    decoration: InputDecoration(
+                      hintText: 'Enter technician name...',
+                      filled: true,
+                      fillColor: AppColors.surfaceTertiary,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Repair Notes',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: noteController,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      hintText:
+                          'Describe actions taken to fix or verify defect...',
+                      filled: true,
+                      fillColor: AppColors.surfaceTertiary,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () async {
+                  final res = await DvirService.instance.resolveDefect(
+                    widget.defectId,
+                    mechanicNote: noteController.text.trim(),
+                    mechanicName: nameController.text.trim(),
+                    status: status,
+                  );
+                  if (ctx.mounted) {
+                    if (res.isSuccess) {
+                      AppToast.showSuccess('Defect resolved successfully');
+                      Navigator.pop(ctx, true);
+                    } else {
+                      ApiFeedback.showError(res);
+                    }
+                  }
+                },
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF16A34A),
+                ),
+                child: const Text('Mark Resolved'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    if (result == true) {
+      _load();
+    }
+  }
+
   Widget detailRow(String label, String? value) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -84,7 +211,10 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final d = _defect;
-    final statusColor = d?.defectStatus.toLowerCase() == 'open' ? const Color(0xFFBA1A1A) : const Color(0xFF2E7D32);
+    final isOpen = d?.isOpen ?? false;
+    final statusColor = isOpen
+        ? const Color(0xFFBA1A1A)
+        : const Color(0xFF2E7D32);
 
     return Scaffold(
       appBar: AppBar(
@@ -96,6 +226,21 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
           'Defect Details',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
+        actions: [
+          if (isOpen)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: FilledButton.icon(
+                onPressed: _openResolveModal,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF16A34A),
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.check_circle_outline, size: 18),
+                label: const Text('Resolve Defect'),
+              ),
+            ),
+        ],
       ),
       body: ScreenStateBuilder(
         loading: _loading,
@@ -133,7 +278,10 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
                                 ),
                               ),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   color: statusColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(20),
@@ -157,17 +305,23 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
                           detailRow('Company Name', d.companyName),
                           detailRow('Source System', d.integrationSourceName),
                           detailRow('Reported Date', d.createdAt),
-                          if (d.resolvedAt != null) detailRow('Resolved Date', d.resolvedAt),
-                          if (d.resolvedBy != null) detailRow('Resolved By', d.resolvedBy),
+                          if (d.resolvedAt != null)
+                            detailRow('Resolved Date', d.resolvedAt),
+                          if (d.resolvedBy != null)
+                            detailRow('Resolved By', d.resolvedBy),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
                     // Description Panel
-                    if (d.defectDescription != null && d.defectDescription!.trim().isNotEmpty) ...[
+                    if (d.defectDescription != null &&
+                        d.defectDescription!.trim().isNotEmpty) ...[
                       const Text(
                         'Description',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Container(
@@ -179,7 +333,11 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
                         ),
                         child: Text(
                           d.defectDescription!,
-                          style: TextStyle(color: AppColors.textPrimary, fontSize: 13, height: 1.5),
+                          style: TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 13,
+                            height: 1.5,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -190,7 +348,9 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
                         onPressed: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
-                              builder: (_) => DvirDetailScreen(reportId: d.syncedDvirReportId!),
+                              builder: (_) => DvirDetailScreen(
+                                reportId: d.syncedDvirReportId!,
+                              ),
                             ),
                           );
                         },
