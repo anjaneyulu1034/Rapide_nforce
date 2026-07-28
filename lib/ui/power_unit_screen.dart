@@ -10,6 +10,7 @@ import 'package:rapide_nforce/models/power_unit_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/permission_service.dart';
 import 'package:rapide_nforce/services/power_unit_service.dart';
+import 'package:rapide_nforce/ui/power_unit/power_unit_import_screen.dart';
 import 'package:rapide_nforce/ui/power_unit_detail_screen.dart';
 import 'package:rapide_nforce/ui/power_unit_form_screen.dart';
 import 'package:rapide_nforce/ui/widgets/api_error_banner.dart';
@@ -666,6 +667,20 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     if (changed == true) _load();
   }
 
+  /// Bulk-import Power Units from an Excel workbook — mirrors the web's
+  /// "Import Excel" action on the Power Unit list (Admin/Super Admin only).
+  Future<void> _openImport() async {
+    if (_isSuperAdmin && AuthService.instance.selectedCompanyIdInt == null) {
+      AppToast.showError('Select a company from the header first');
+      return;
+    }
+
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const PowerUnitImportScreen()),
+    );
+    if (changed == true) _load();
+  }
+
   Future<void> _openDetail(PowerUnitModel unit) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -1122,7 +1137,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                 Expanded(
                   child: WebSearchField(
                     controller: _searchController,
-                    hintText: 'Search by Unit, VIN',
+                    hintText: 'Search by Unit #, VIN, or Plate',
                     showClear: _search.isNotEmpty,
                     onClear: () {
                       _searchController.clear();
@@ -1183,14 +1198,31 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _hasActiveFilters ? 'Filtered Results' : 'Total Power Units',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                Expanded(
+                  child: Text(
+                    _hasActiveFilters ? 'Filtered Results' : 'Total Power Units',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
                 ),
+                if (_isAdminOrAbove)
+                  TextButton.icon(
+                    onPressed: _openImport,
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.textPrimary,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    icon: const Icon(Icons.file_upload_outlined, size: 16),
+                    label: const Text(
+                      'Import Excel',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                  ),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

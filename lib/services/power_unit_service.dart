@@ -4,6 +4,7 @@ import 'package:rapide_nforce/core/constants/api_constants.dart';
 import 'package:rapide_nforce/core/models/api_result.dart';
 import 'package:rapide_nforce/core/models/paginated_result.dart';
 import 'package:rapide_nforce/core/utils/api_parse.dart';
+import 'package:rapide_nforce/models/power_unit_import_result_model.dart';
 import 'package:rapide_nforce/models/power_unit_model.dart';
 import 'package:rapide_nforce/models/truck_document_model.dart';
 import 'package:rapide_nforce/models/truck_permit_model.dart';
@@ -67,10 +68,21 @@ class PowerUnitService {
     }
   }
 
-  Future<ApiResult<PowerUnitModel>> fetchPowerUnitById(int id) async {
+  /// Fetches a single power unit. When [syncTelematics] is true, mirrors the
+  /// web's `TruckDetailPage` default of passing `?syncTelematics=true` so the
+  /// backend refreshes odometer/telematics data from the connected provider
+  /// (e.g. Samsara) before returning — keeping "Current Odometer" and "Last
+  /// Sync" fresh on open, the same as web.
+  Future<ApiResult<PowerUnitModel>> fetchPowerUnitById(
+    int id, {
+    bool syncTelematics = false,
+  }) async {
     try {
       final body = await _api.parseJson(
-        () => _api.get('${ApiConstants.trucks}/$id'),
+        () => _api.get(
+          '${ApiConstants.trucks}/$id',
+          params: syncTelematics ? {'syncTelematics': 'true'} : null,
+        ),
         onSuccess: (b) => b,
       );
 
@@ -160,6 +172,47 @@ class PowerUnitService {
       return ApiResult.fail(e.message, statusCode: e.statusCode);
     } catch (_) {
       return ApiResult.fail('Failed to delete power unit.');
+    }
+  }
+
+  /// Bulk-creates power units from an uploaded Excel workbook (.xlsx/.xls).
+  /// Mirrors the web's `truckService.bulkImportPowerUnits`
+  /// (`POST /trucks/bulk-import`, multipart field "file", plus optional
+  /// "countryId" fallback and "companyId"). Note this endpoint's response
+  /// shape (`total`/`created`/`failed`/`results`) is distinct from the
+  /// generic `/imports/excel` result used for trailers.
+  Future<ApiResult<PowerUnitImportResult>> bulkImport({
+    required String filePath,
+    required String fileName,
+    int? countryId,
+    String? companyId,
+  }) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('dummy'));
+      if (countryId != null) {
+        request.fields['countryId'] = countryId.toString();
+      }
+      if (companyId != null && companyId.isNotEmpty) {
+        request.fields['companyId'] = companyId;
+      }
+      request.files.add(
+        await http.MultipartFile.fromPath('file', filePath, filename: fileName),
+      );
+
+      final body = await _api.parseJson(
+        () => _api.postMultipart(
+          ApiConstants.trucksBulkImport,
+          request,
+          companyId: companyId,
+        ),
+        onSuccess: (b) => b,
+      );
+      final data = ApiParse.asMap(ApiParse.unwrapData(body)) ?? {};
+      return ApiResult.ok(PowerUnitImportResult.fromJson(data));
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to import power units.');
     }
   }
 

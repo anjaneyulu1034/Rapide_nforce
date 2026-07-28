@@ -18,21 +18,21 @@ import 'package:rapide_nforce/ui/widgets/status_badge.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_detail_screen.dart';
 
-String _getAddLabel({required bool isOverview}) =>
-    isOverview ? 'Add Part Type' : 'Add Part';
-
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key, this.initialIndex = 0});
 
   final int initialIndex;
 
   @override
-  State<InventoryScreen> createState() => _InventoryScreenState();
+  State<InventoryScreen> createState() => InventoryScreenState();
 }
 
-class _InventoryScreenState extends State<InventoryScreen>
+class InventoryScreenState extends State<InventoryScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final GlobalKey<_PartTypesTabState> _typesKey = GlobalKey<_PartTypesTabState>();
+  final GlobalKey<_PartsTabState> _partsKey = GlobalKey<_PartsTabState>();
+
   String? _partsInitialSearch;
   int? _partsInitialTypeId;
 
@@ -50,6 +50,14 @@ class _InventoryScreenState extends State<InventoryScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
+  }
+
+  void openCurrentAdd() {
+    if (_tabController.index == 0) {
+      _typesKey.currentState?.openAdd();
+    } else {
+      _partsKey.currentState?.openAdd();
+    }
   }
 
   void _viewPartsForType(String name, int id) {
@@ -89,9 +97,9 @@ class _InventoryScreenState extends State<InventoryScreen>
         controller: _tabController,
         physics: const NeverScrollableScrollPhysics(),
         children: [
-          _PartTypesTab(onViewParts: _viewPartsForType),
+          _PartTypesTab(key: _typesKey, onViewParts: _viewPartsForType),
           _PartsTab(
-            key: ValueKey('$_partsInitialTypeId|$_partsInitialSearch'),
+            key: _partsKey,
             initialSearch: _partsInitialSearch,
             initialTypeId: _partsInitialTypeId,
           ),
@@ -106,7 +114,7 @@ class _InventoryScreenState extends State<InventoryScreen>
 // ---------------------------------------------------------------------------
 
 class _PartTypesTab extends StatefulWidget {
-  const _PartTypesTab({required this.onViewParts});
+  const _PartTypesTab({super.key, required this.onViewParts});
 
   final void Function(String name, int id) onViewParts;
 
@@ -137,7 +145,17 @@ class _PartTypesTabState extends State<_PartTypesTab> {
   MenuPermissions _permissions = const MenuPermissions();
 
   bool get _canCreate => AuthService.instance.currentUser != null;
+  bool get _canUpdate => _isAdminOrAbove || _permissions.canUpdate;
   bool get _canDelete => _isAdminOrAbove || _permissions.canDelete;
+
+  static const Map<String, String> _sortOptions = {
+    'name': 'Name',
+    'count': 'Quantity',
+    'status': 'Status',
+    'lowStockTrigger': 'Low Stock Trigger',
+    'createdOn': 'Created On',
+    'createdBy': 'Created By',
+  };
 
   String get _companyFallback {
     final user = AuthService.instance.currentUser;
@@ -245,7 +263,11 @@ class _PartTypesTabState extends State<_PartTypesTab> {
     });
   }
 
-  Future<void> _openAdd() async {
+  Future<void> openAdd() async {
+    if (!_canCreate) {
+      AppToast.showError('You do not have permission to add part types.');
+      return;
+    }
     final changed = await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const PartTypeFormScreen()));
@@ -288,7 +310,66 @@ class _PartTypesTabState extends State<_PartTypesTab> {
     _load();
   }
 
+  void _onSortSelected(String key) {
+    setState(() {
+      if (key.isEmpty) {
+        _sortKey = null;
+        _sortOrder = null;
+      } else if (_sortKey == key) {
+        _sortOrder = _sortOrder == 'asc' ? 'desc' : 'asc';
+      } else {
+        _sortKey = key;
+        _sortOrder = 'asc';
+      }
+      _page = 1;
+    });
+    _load();
+  }
 
+  Widget _buildSortButton() {
+    final hasSort = _sortKey != null;
+    return PopupMenuButton<String>(
+      tooltip: 'Sort',
+      onSelected: _onSortSelected,
+      icon: Icon(
+        hasSort && _sortOrder == 'desc'
+            ? Icons.arrow_downward
+            : Icons.arrow_upward,
+        size: 18,
+        color: hasSort ? AppColors.primary : AppColors.textSecondary,
+      ),
+      itemBuilder: (context) => [
+        if (hasSort)
+          const PopupMenuItem<String>(value: '', child: Text('Clear sort')),
+        ..._sortOptions.entries.map((e) {
+          final selected = _sortKey == e.key;
+          return PopupMenuItem<String>(
+            value: e.key,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  e.value,
+                  style: TextStyle(
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                    color: selected ? AppColors.primary : null,
+                  ),
+                ),
+                if (selected)
+                  Icon(
+                    _sortOrder == 'desc'
+                        ? Icons.arrow_downward
+                        : Icons.arrow_upward,
+                    size: 14,
+                    color: AppColors.primary,
+                  ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
 
   Widget _buildCard(PartTypeModel item) {
     final company = item.companyName?.trim().isNotEmpty == true
@@ -321,6 +402,7 @@ class _PartTypesTabState extends State<_PartTypesTab> {
                   partType: item,
                   onChanged: _load,
                   canDelete: _canDelete,
+                  canUpdate: _canUpdate,
                 ),
               ),
             );
@@ -368,18 +450,19 @@ class _PartTypesTabState extends State<_PartTypesTab> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              IconOnlyButton(
-                icon: Icons.edit,
-                color: AppColors.chromeBlue,
-                onTap: () async {
-                  final ok = await Navigator.of(context).push<bool>(
-                    MaterialPageRoute(
-                      builder: (_) => PartTypeFormScreen(partType: item),
-                    ),
-                  );
-                  if (ok == true) _load();
-                },
-              ),
+              if (_canUpdate)
+                IconOnlyButton(
+                  icon: Icons.edit,
+                  color: AppColors.chromeBlue,
+                  onTap: () async {
+                    final ok = await Navigator.of(context).push<bool>(
+                      MaterialPageRoute(
+                        builder: (_) => PartTypeFormScreen(partType: item),
+                      ),
+                    );
+                    if (ok == true) _load();
+                  },
+                ),
               if (_canDelete)
                 IconOnlyButton(
                   icon: Icons.delete_outline,
@@ -573,13 +656,17 @@ class _PartTypesTabState extends State<_PartTypesTab> {
                           color: AppColors.primary,
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          'LOW STOCK TRIGGER',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
+                        Expanded(
+                          child: Text(
+                            'LOW STOCK TRIGGER',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
                       ],
@@ -709,35 +796,8 @@ class _PartTypesTabState extends State<_PartTypesTab> {
                   },
                 ),
               ),
-              if (_canCreate) ...[
-                const SizedBox(width: 12),
-                Builder(
-                  builder: (context) {
-                    final label = _getAddLabel(isOverview: true);
-                    return FilledButton.icon(
-                      onPressed: _openAdd,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: AppColors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        minimumSize: const Size(0, 36),
-                      ),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          label,
-                          style: const TextStyle(fontSize: 14),
-                          maxLines: 1,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
+              const SizedBox(width: 8),
+              _buildSortButton(),
             ],
           ),
           const SizedBox(height: 16),
@@ -878,7 +938,15 @@ class _PartsTabState extends State<_PartsTab> {
   MenuPermissions _permissions = const MenuPermissions();
 
   bool get _canCreate => AuthService.instance.currentUser != null;
+  bool get _canUpdate => _isAdminOrAbove || _permissions.canUpdate;
   bool get _canDelete => _isAdminOrAbove || _permissions.canDelete;
+
+  static const Map<String, String> _sortOptions = {
+    'part_type_name': 'Part Type',
+    'code': 'Code',
+    'createdOn': 'Created On',
+    'createdBy': 'Created By',
+  };
 
   @override
   void initState() {
@@ -987,7 +1055,11 @@ class _PartsTabState extends State<_PartsTab> {
     });
   }
 
-  Future<void> _openAdd() async {
+  Future<void> openAdd() async {
+    if (!_canCreate) {
+      AppToast.showError('You do not have permission to add parts.');
+      return;
+    }
     final changed = await Navigator.of(
       context,
     ).push<bool>(MaterialPageRoute(builder: (_) => const PartFormScreen()));
@@ -1034,7 +1106,66 @@ class _PartsTabState extends State<_PartsTab> {
     _load();
   }
 
+  void _onSortSelected(String key) {
+    setState(() {
+      if (key.isEmpty) {
+        _sortKey = null;
+        _sortOrder = null;
+      } else if (_sortKey == key) {
+        _sortOrder = _sortOrder == 'asc' ? 'desc' : 'asc';
+      } else {
+        _sortKey = key;
+        _sortOrder = 'asc';
+      }
+      _page = 1;
+    });
+    _load();
+  }
 
+  Widget _buildSortButton() {
+    final hasSort = _sortKey != null;
+    return PopupMenuButton<String>(
+      tooltip: 'Sort',
+      onSelected: _onSortSelected,
+      icon: Icon(
+        hasSort && _sortOrder == 'desc'
+            ? Icons.arrow_downward
+            : Icons.arrow_upward,
+        size: 18,
+        color: hasSort ? AppColors.primary : AppColors.textSecondary,
+      ),
+      itemBuilder: (context) => [
+        if (hasSort)
+          const PopupMenuItem<String>(value: '', child: Text('Clear sort')),
+        ..._sortOptions.entries.map((e) {
+          final selected = _sortKey == e.key;
+          return PopupMenuItem<String>(
+            value: e.key,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  e.value,
+                  style: TextStyle(
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+                    color: selected ? AppColors.primary : null,
+                  ),
+                ),
+                if (selected)
+                  Icon(
+                    _sortOrder == 'desc'
+                        ? Icons.arrow_downward
+                        : Icons.arrow_upward,
+                    size: 14,
+                    color: AppColors.primary,
+                  ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
 
   Widget _buildCard(PartModel part) {
     final tone = stockLevelTone(part.stockLevel);
@@ -1064,6 +1195,7 @@ class _PartsTabState extends State<_PartsTab> {
                   part: part,
                   onChanged: _load,
                   canDelete: _canDelete,
+                  canUpdate: _canUpdate,
                 ),
               ),
             );
@@ -1111,20 +1243,21 @@ class _PartsTabState extends State<_PartsTab> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              IconOnlyButton(
-                icon: Icons.edit,
-                color: AppColors.chromeBlue,
-                onTap: !part.isProtected
-                    ? () async {
-                        final ok = await Navigator.of(context).push<bool>(
-                          MaterialPageRoute(
-                            builder: (_) => PartFormScreen(part: part),
-                          ),
-                        );
-                        if (ok == true) _load();
-                      }
-                    : null,
-              ),
+              if (_canUpdate)
+                IconOnlyButton(
+                  icon: Icons.edit,
+                  color: AppColors.chromeBlue,
+                  onTap: !part.isProtected
+                      ? () async {
+                          final ok = await Navigator.of(context).push<bool>(
+                            MaterialPageRoute(
+                              builder: (_) => PartFormScreen(part: part),
+                            ),
+                          );
+                          if (ok == true) _load();
+                        }
+                      : null,
+                ),
               if (_canDelete)
                 IconOnlyButton(
                   icon: Icons.delete_outline,
@@ -1369,14 +1502,25 @@ class _PartsTabState extends State<_PartsTab> {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      part.hasInvoiceFile ? 'View Invoice' : 'No Invoice',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                    InkWell(
+                      onTap: part.hasInvoiceFile
+                          ? () => openInventoryInvoiceLink(part.invoiceLink)
+                          : null,
+                      child: Text(
+                        part.hasInvoiceFile ? 'View Invoice' : 'No Invoice',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: part.hasInvoiceFile
+                              ? AppColors.primary
+                              : AppColors.textPrimary,
+                          decoration: part.hasInvoiceFile
+                              ? TextDecoration.underline
+                              : null,
+                          decorationColor: AppColors.primary,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -1479,13 +1623,17 @@ class _PartsTabState extends State<_PartsTab> {
                           color: AppColors.primary,
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          'USED IN WORK ORDERS',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
+                        Expanded(
+                          child: Text(
+                            'USED IN WORK ORDERS',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
                       ],
@@ -1690,35 +1838,8 @@ class _PartsTabState extends State<_PartsTab> {
                   },
                 ),
               ),
-              if (_canCreate) ...[
-                const SizedBox(width: 12),
-                Builder(
-                  builder: (context) {
-                    final label = _getAddLabel(isOverview: false);
-                    return FilledButton.icon(
-                      onPressed: _openAdd,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: AppColors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        minimumSize: const Size(0, 36),
-                      ),
-                      icon: const Icon(Icons.add, size: 18),
-                      label: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          label,
-                          style: const TextStyle(fontSize: 14),
-                          maxLines: 1,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ],
+              const SizedBox(width: 8),
+              _buildSortButton(),
             ],
           ),
           const SizedBox(height: 16),

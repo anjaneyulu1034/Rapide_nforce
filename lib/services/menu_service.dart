@@ -31,9 +31,19 @@ class MenuService {
           .where((m) => m.path.isNotEmpty)
           .toList();
 
+      final user = AuthService.instance.currentUser;
+      final role = (user?.role ?? '').toLowerCase();
+      final isLead = role.contains('lead') ||
+          role.contains('admin') ||
+          role.contains('manager') ||
+          user?.roleId == 5 ||
+          user?.roleId == 2 ||
+          user?.roleId == 1;
+
       final cleanItems = <NavMenuItem>[];
       for (final item in navItems) {
         final label = item.label.toLowerCase();
+        final path = item.path.toLowerCase();
         final isMaintenance = label.contains('maintenance') ||
             label == 'work orders' ||
             label == 'work-orders' ||
@@ -41,6 +51,16 @@ class MenuService {
             label == 'fault codes' ||
             label == 'fault-codes' ||
             label == 'dvir';
+
+        if (label == 'approvals' || path == '/lead-approvals' || item.id == 'approvals') {
+          if (isLead) cleanItems.add(item);
+          continue;
+        }
+
+        if (label == 'documents' || label == 'reports') {
+          if (isLead) cleanItems.add(item);
+          continue;
+        }
 
         if (!isMaintenance) {
           cleanItems.add(item);
@@ -229,12 +249,20 @@ class MenuService {
   }
 
   List<NavMenuItem> _fallbackMenus() {
-    return const [
-      NavMenuItem(id: 'dashboard', label: 'Dashboard', path: '/dashboard'),
-      // NavMenuItem(id: 'carriers', label: 'Carrier', path: '/carriers'),
-      NavMenuItem(id: 'powerunit', label: 'Power Unit', path: '/powerunit'),
-      NavMenuItem(id: 'trailers', label: 'My Trailers', path: '/trailers'),
-      NavMenuItem(
+    final user = AuthService.instance.currentUser;
+    final role = (user?.role ?? '').toLowerCase();
+    final isLead = role.contains('lead') ||
+        role.contains('admin') ||
+        role.contains('manager') ||
+        user?.roleId == 5 ||
+        user?.roleId == 2 ||
+        user?.roleId == 1;
+
+    return [
+      const NavMenuItem(id: 'dashboard', label: 'Dashboard', path: '/dashboard'),
+      const NavMenuItem(id: 'powerunit', label: 'Power Unit', path: '/powerunit'),
+      const NavMenuItem(id: 'trailers', label: 'My Trailers', path: '/trailers'),
+      const NavMenuItem(
         id: 'maintenance',
         label: 'Service Maintenance',
         path: '/maintenance',
@@ -261,11 +289,14 @@ class MenuService {
           ),
         ],
       ),
-      NavMenuItem(id: 'documents', label: 'Documents', path: '/documents'),
-      NavMenuItem(id: 'reports', label: 'Reports', path: '/reports'),
-      NavMenuItem(id: 'requests', label: 'Requests', path: '/requests'),
-      NavMenuItem(id: 'approvals', label: 'Approvals', path: '/lead-approvals'),
-      NavMenuItem(id: 'profile', label: 'Profile', path: '/settings'),
+      if (isLead) ...const [
+        NavMenuItem(id: 'documents', label: 'Documents', path: '/documents'),
+        NavMenuItem(id: 'reports', label: 'Reports', path: '/reports'),
+      ],
+      const NavMenuItem(id: 'requests', label: 'Requests', path: '/requests'),
+      if (isLead)
+        const NavMenuItem(id: 'approvals', label: 'Approvals', path: '/lead-approvals'),
+      const NavMenuItem(id: 'profile', label: 'Profile', path: '/settings'),
     ];
   }
 }

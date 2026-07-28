@@ -19,6 +19,9 @@ class WebPageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (title.isEmpty && (subtitle == null || subtitle!.isEmpty) && trailing == null) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
       child: Row(
@@ -28,17 +31,18 @@ class WebPageHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                    letterSpacing: -0.5,
-                    height: 1.15,
+                if (title.isNotEmpty)
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textPrimary,
+                      letterSpacing: -0.5,
+                      height: 1.15,
+                    ),
                   ),
-                ),
-                if (subtitle != null) ...[
+                if (subtitle != null && subtitle!.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
                     subtitle!,

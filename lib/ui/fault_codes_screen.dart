@@ -168,6 +168,198 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
   int get _criticalCount => _rawItems.where((i) => i.isCritical).length;
   int get _closedCount => _rawItems.where((i) => i.isClosed).length;
 
+  bool get _hasActiveFaultFilters =>
+      _searchTerm.isNotEmpty ||
+      _statusFilter != 'all' ||
+      _severityFilter != 'all';
+
+  Widget _filterChip({
+    required String label,
+    required bool selected,
+    required ValueChanged<bool> onSelected,
+  }) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: onSelected,
+      selectedColor: const Color(0xFF0E7490).withValues(alpha: 0.15),
+      backgroundColor: AppColors.surfaceTertiary,
+      labelStyle: TextStyle(
+        fontSize: 12.5,
+        fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+        color: selected ? const Color(0xFF0E7490) : AppColors.textPrimary,
+      ),
+      side: BorderSide(
+        color: selected ? const Color(0xFF0E7490) : AppColors.border,
+      ),
+    );
+  }
+
+  void _showFaultFiltersBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.card,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        String tempStatus = _statusFilter;
+        String tempSeverity = _severityFilter;
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final bottomInset = MediaQuery.of(context).viewInsets.bottom +
+                MediaQuery.of(context).padding.bottom +
+                24;
+
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Filter Fault Codes',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setSheetState(() {
+                                tempStatus = 'all';
+                                tempSeverity = 'all';
+                              });
+                            },
+                            child: const Text('Reset All'),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 20),
+
+                      // Status filter section
+                      Text(
+                        'Status',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          _filterChip(
+                            label: 'All',
+                            selected: tempStatus == 'all',
+                            onSelected: (_) => setSheetState(() => tempStatus = 'all'),
+                          ),
+                          _filterChip(
+                            label: 'Active',
+                            selected: tempStatus == 'active',
+                            onSelected: (_) => setSheetState(() => tempStatus = 'active'),
+                          ),
+                          _filterChip(
+                            label: 'Closed',
+                            selected: tempStatus == 'closed',
+                            onSelected: (_) => setSheetState(() => tempStatus = 'closed'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Severity filter section
+                      Text(
+                        'Severity',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          _filterChip(
+                            label: 'All',
+                            selected: tempSeverity == 'all',
+                            onSelected: (_) => setSheetState(() => tempSeverity = 'all'),
+                          ),
+                          _filterChip(
+                            label: 'Critical',
+                            selected: tempSeverity == 'critical',
+                            onSelected: (_) => setSheetState(() => tempSeverity = 'critical'),
+                          ),
+                          _filterChip(
+                            label: 'High',
+                            selected: tempSeverity == 'high',
+                            onSelected: (_) => setSheetState(() => tempSeverity = 'high'),
+                          ),
+                          _filterChip(
+                            label: 'Medium',
+                            selected: tempSeverity == 'medium',
+                            onSelected: (_) => setSheetState(() => tempSeverity = 'medium'),
+                          ),
+                          _filterChip(
+                            label: 'Low',
+                            selected: tempSeverity == 'low',
+                            onSelected: (_) => setSheetState(() => tempSeverity = 'low'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Apply Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0E7490),
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          onPressed: () {
+                            Navigator.pop(context);
+                            setState(() {
+                              _statusFilter = tempStatus;
+                              _severityFilter = tempSeverity;
+                            });
+                          },
+                          child: const Text(
+                            'Apply Filters',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -180,9 +372,8 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
     final filtered = _filteredItems;
 
     return WebListPage(
-      title: 'Fault Codes',
-      subtitle:
-          'Synced vehicle diagnostic trouble codes from connected fleet integrations.',
+      title: '',
+      subtitle: null,
       onRefresh: _load,
       controller: _scrollController,
       sliver: SliverList(
@@ -194,18 +385,67 @@ class _FaultCodesScreenState extends State<FaultCodesScreen> {
             closed: _closedCount,
           ),
           const SizedBox(height: 16),
-          _FiltersBar(
-            searchController: _searchController,
-            statusFilter: _statusFilter,
-            severityFilter: _severityFilter,
-            onStatusChanged: (v) {
-              setState(() => _statusFilter = v);
-            },
-            onSeverityChanged: (v) {
-              setState(() => _severityFilter = v);
-            },
+          Row(
+            children: [
+              Expanded(
+                child: WebSearchField(
+                  controller: _searchController,
+                  hintText: 'Search vehicle, code, description, company...',
+                ),
+              ),
+              const SizedBox(width: 8),
+              UnconstrainedBox(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _showFaultFiltersBottomSheet,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _hasActiveFaultFilters
+                            ? const Color(0xFF0E7490).withValues(alpha: 0.12)
+                            : AppColors.surfaceTertiary,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: _hasActiveFaultFilters
+                              ? const Color(0xFF0E7490)
+                              : AppColors.border,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.filter_list_rounded,
+                            size: 18,
+                            color: _hasActiveFaultFilters
+                                ? const Color(0xFF0E7490)
+                                : AppColors.textPrimary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Filter',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: _hasActiveFaultFilters
+                                  ? const Color(0xFF0E7490)
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           if (_error != null) ApiErrorBanner(message: _error!, onRetry: _load),
           WebSectionCard(
             title: 'Fault codes',
@@ -479,111 +719,69 @@ class _SimpleStatCard extends StatelessWidget {
   }
 }
 
-class _FiltersBar extends StatelessWidget {
-  const _FiltersBar({
-    required this.searchController,
-    required this.statusFilter,
-    required this.severityFilter,
-    required this.onStatusChanged,
-    required this.onSeverityChanged,
+class _MiniBadge extends StatelessWidget {
+  const _MiniBadge({
+    required this.label,
+    required this.bgColor,
+    required this.textColor,
   });
 
-  final TextEditingController searchController;
-  final String statusFilter;
-  final String severityFilter;
-  final ValueChanged<String> onStatusChanged;
-  final ValueChanged<String> onSeverityChanged;
+  final String label;
+  final Color bgColor;
+  final Color textColor;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        WebSearchField(
-          controller: searchController,
-          hintText: 'Search vehicle, code, description, company...',
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: textColor,
+          letterSpacing: 0.3,
         ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _FilterDropdown(
-                label: 'Status',
-                value: statusFilter,
-                items: const {
-                  'all': 'All',
-                  'active': 'Active',
-                  'closed': 'Closed',
-                },
-                onChanged: onStatusChanged,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _FilterDropdown(
-                label: 'Severity',
-                value: severityFilter,
-                items: const {
-                  'all': 'All',
-                  'critical': 'Critical',
-                  'high': 'High',
-                  'medium': 'Medium',
-                  'low': 'Low',
-                },
-                onChanged: onSeverityChanged,
-              ),
-            ),
-          ],
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _FilterDropdown extends StatelessWidget {
-  const _FilterDropdown({
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-  });
+class _GridCell extends StatelessWidget {
+  const _GridCell({required this.label, required this.child});
 
   final String label;
-  final String value;
-  final Map<String, String> items;
-  final ValueChanged<String> onChanged;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return InputDecorator(
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: AppColors.surfaceTertiary,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppColors.primary),
-        ),
+    return Container(
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceTertiary,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
       ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          isExpanded: true,
-          value: value,
-          items: items.entries
-              .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
-              .toList(),
-          onChanged: (v) {
-            if (v != null) onChanged(v);
-          },
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textSecondary,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 3),
+          child,
+        ],
       ),
     );
   }
@@ -604,295 +802,249 @@ class _FaultCodeRow extends StatelessWidget {
     }
   }
 
+  Color _severityAccent(FaultCodeModel item) {
+    if (item.isCritical) return const Color(0xFFE11D48);
+    final sev = (item.severity ?? '').trim().toLowerCase();
+    if (sev == 'high') return const Color(0xFFEA580C);
+    if (sev == 'medium') return const Color(0xFFD97706);
+    if (sev == 'low') return const Color(0xFF2563EB);
+    return item.isActive ? const Color(0xFFE11D48) : const Color(0xFF16A34A);
+  }
+
+  (Color bg, Color fg) _severityBadgeColors(String? sev) {
+    final s = (sev ?? '').trim().toLowerCase();
+    if (s == 'critical' || s == 'high') {
+      return (const Color(0xFFFFE4E6), const Color(0xFF9F1239));
+    }
+    if (s == 'medium') {
+      return (const Color(0xFFFEF3C7), const Color(0xFF92400E));
+    }
+    if (s == 'low') {
+      return (const Color(0xFFDBEAFE), const Color(0xFF1E40AF));
+    }
+    return (AppColors.surfaceTertiary, AppColors.textSecondary);
+  }
+
+  (Color bg, Color fg) _statusBadgeColors(bool isActive) {
+    if (isActive) {
+      return (const Color(0xFFFFE4E6), const Color(0xFF9F1239));
+    }
+    return (const Color(0xFFDCFCE7), const Color(0xFF166534));
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = _severityAccent(item);
+    final (statusBg, statusFg) = _statusBadgeColors(item.isActive);
+    final (sevBg, sevFg) = _severityBadgeColors(item.severity);
     final formattedDate = _formatDate(item.detectedAt);
 
-    return InkWell(
-      onTap: () => FaultCodeDetailSheet.show(context, item),
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 5),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isDark ? const Color(0xFF1E293B) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: isDark ? Colors.white10 : const Color(0xFFE2E8F0)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
-              blurRadius: 6,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top bar: Last Detected & Integration Source
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                if (formattedDate.isNotEmpty)
-                  Text(
-                    formattedDate,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: isDark ? Colors.white60 : const Color(0xFF64748B),
-                    ),
-                  )
-                else
-                  const SizedBox.shrink(),
-                if (item.integrationSourceName != null && item.integrationSourceName!.isNotEmpty)
-                  Text(
-                    item.integrationSourceName!,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: isDark ? Colors.white70 : const Color(0xFF334155),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
+    final vehicleDisplay = item.vehicleNumber.trim().isNotEmpty
+        ? item.vehicleNumber.trim()
+        : '—';
 
-            // Vehicle number & Fault Code Pill
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final desc = item.faultDescription.trim().isNotEmpty
+        ? item.faultDescription.trim()
+        : (item.faultName != null && item.faultName!.trim().isNotEmpty)
+            ? item.faultName!.trim()
+            : '—';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.cardShadow.withValues(alpha: 0.3),
+            blurRadius: 12,
+            spreadRadius: 1,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => FaultCodeDetailSheet.show(context, item),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Container(width: 5, color: accent),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.vehicleNumber,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2F6B54),
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Top row: Status badge (Left) | Fault Code Pill (Right)
+                        Row(
+                          children: [
+                            _MiniBadge(
+                              label: item.isActive ? 'ACTIVE' : 'CLOSED',
+                              bgColor: statusBg,
+                              textColor: statusFg,
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF0E7490).withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: const Color(0xFF0E7490).withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: Text(
+                                item.faultCode,
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0E7490),
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      if (item.vin != null && item.vin!.trim().isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          item.vin!,
-                          style: TextStyle(
-                            fontSize: 11.5,
-                            fontFamily: 'monospace',
-                            color: isDark ? Colors.white.withValues(alpha: 0.5) : const Color(0xFF64748B),
+                        const SizedBox(height: 8),
+
+                        // Vehicle unit number (Bold)
+                        RichText(
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          text: TextSpan(
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                            children: [
+                              const TextSpan(text: 'Vehicle: '),
+                              TextSpan(
+                                text: vehicleDisplay,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              if (item.vin != null && item.vin!.trim().isNotEmpty) ...[
+                                TextSpan(
+                                  text: ' (VIN: ${item.vin!})',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
+                        const SizedBox(height: 4),
+
+                        // Fault Description
+                        RichText(
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          text: TextSpan(
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                            children: [
+                              const TextSpan(text: 'Description: '),
+                              TextSpan(
+                                text: desc,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Bottom Grid: Source | Severity | Reported Date
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _GridCell(
+                                label: 'SOURCE',
+                                child: Text(
+                                  (item.integrationSourceName ?? '').trim().isNotEmpty
+                                      ? item.integrationSourceName!
+                                      : '—',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _GridCell(
+                                label: 'SEVERITY',
+                                child: (item.severity ?? '').trim().isNotEmpty
+                                    ? _MiniBadge(
+                                        label: item.severity!,
+                                        bgColor: sevBg,
+                                        textColor: sevFg,
+                                      )
+                                    : const Text(
+                                        'No Severity',
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontStyle: FontStyle.italic,
+                                          fontWeight: FontWeight.w500,
+                                          color: Color(0xFF94A3B8),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _GridCell(
+                                label: 'REPORTED',
+                                child: Text(
+                                  formattedDate.isNotEmpty ? formattedDate : '—',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              size: 20,
+                              color: AppColors.textSecondary,
+                            ),
+                          ],
+                        ),
                       ],
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-
-                // Fault Code Pill
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F3ED),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFB8D4C8)),
-                  ),
-                  child: Text(
-                    item.faultCode,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2F5E4E),
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-
-            // Description / Name
-            if (item.faultName != null && item.faultName!.trim().isNotEmpty) ...[
-              Text(
-                item.faultName!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF1E293B),
-                ),
-              ),
-              const SizedBox(height: 2),
-            ],
-            if (item.faultDescription.trim().isNotEmpty) ...[
-              Text(
-                item.faultDescription,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  color: isDark ? Colors.white60 : const Color(0xFF64748B),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
-
-            // Bottom Badges: MIL/FMI severity, Status pill, Company name
-            Row(
-              children: [
-                _SeverityCell(item: item),
-                const SizedBox(width: 8),
-                _StatusPill(status: item.formattedStatus),
-                const Spacer(),
-                if (item.companyName != null && item.companyName!.isNotEmpty)
-                  Flexible(
-                    child: Text(
-                      item.companyName!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.white60 : const Color(0xFF64748B),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status});
-
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final n = status.toLowerCase();
-    Color bg;
-    Color fg;
-    Color border;
-
-    if (n == 'active' || n == 'open') {
-      bg = const Color(0xFFDCFCE7);
-      fg = const Color(0xFF15803D);
-      border = const Color(0xFFBBF7D0);
-    } else if (n == 'resolved') {
-      bg = const Color(0xFFEDE9FE);
-      fg = const Color(0xFF6D28D9);
-      border = const Color(0xFFDDD6FE);
-    } else if (n == 'cleared') {
-      bg = const Color(0xFFCFFAFE);
-      fg = const Color(0xFF0E7490);
-      border = const Color(0xFFA5F3FC);
-    } else {
-      bg = const Color(0xFFF1F5F9);
-      fg = const Color(0xFF334155);
-      border = const Color(0xFFE2E8F0);
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: border),
-      ),
-      child: Text(
-        status,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.bold,
-          color: fg,
-        ),
-      ),
-    );
-  }
-}
-
-class _SeverityCell extends StatelessWidget {
-  const _SeverityCell({required this.item});
-
-  final FaultCodeModel item;
-
-  @override
-  Widget build(BuildContext context) {
-    final codeSev = item.parsedCodeSeverity;
-    if (codeSev != null) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${codeSev.label} :',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF475569),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              codeSev.value,
-              style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF7C3AED),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    final sev = item.severity?.trim();
-    if (sev == null || sev.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final n = sev.toLowerCase();
-    Color bg = const Color(0xFFF1F5F9);
-    Color fg = const Color(0xFF475569);
-    Color border = const Color(0xFFE2E8F0);
-
-    if (n == 'critical' || n == 'high') {
-      bg = const Color(0xFFFEE2E2);
-      fg = const Color(0xFFB91C1C);
-      border = const Color(0xFFFECACA);
-    } else if (n == 'medium') {
-      bg = const Color(0xFFFEF3C7);
-      fg = const Color(0xFFB45309);
-      border = const Color(0xFFFDE68A);
-    } else if (n == 'low') {
-      bg = const Color(0xFFE0F2FE);
-      fg = const Color(0xFF0369A1);
-      border = const Color(0xFFBAE6FD);
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: border),
-      ),
-      child: Text(
-        sev[0].toUpperCase() + sev.substring(1),
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.bold,
-          color: fg,
+          ),
         ),
       ),
     );

@@ -78,8 +78,13 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
       _loading = true;
       _error = null;
     });
+    // syncTelematics: true mirrors the web's TruckDetailPage default — the
+    // backend refreshes odometer/telematics data from the connected
+    // provider (e.g. Samsara) before returning, so "Current Odometer" and
+    // "Last Sync" stay fresh whenever the detail page is opened.
     final result = await PowerUnitService.instance.fetchPowerUnitById(
       widget.powerUnitId,
+      syncTelematics: true,
     );
     if (!mounted) return;
     if (!result.isSuccess) {
@@ -633,6 +638,17 @@ class _OverviewTab extends StatelessWidget {
               label: 'Next PM Odometer',
               value: PowerUnitModel.displayOrDash(unit.nextPmOdometer),
             ),
+            if ((unit.lastPmDate ?? '').isNotEmpty ||
+                (unit.lastPmEndOdometer ?? '').isNotEmpty) ...[
+              VehicleInfoRow(
+                label: 'Last PM Date',
+                value: PowerUnitModel.displayOrDash(unit.lastPmDate),
+              ),
+              VehicleInfoRow(
+                label: 'Last PM End Odometer',
+                value: PowerUnitModel.displayOrDash(unit.lastPmEndOdometer),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 12),

@@ -1,5 +1,10 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
@@ -9,6 +14,13 @@ import 'package:rapide_nforce/services/trailer_service.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
+
+/// Bundled copy of the web app's sample import workbook
+/// (`public/templates/rapidenforce-trailer-template.xlsx`), so mobile users
+/// get the same "download sample template" convenience the web Import page
+/// offers alongside the required-columns list.
+const _kTrailerTemplateAsset = 'assets/templates/rapidenforce-trailer-template.xlsx';
+const _kTrailerTemplateFileName = 'rapidenforce-trailer-template.xlsx';
 
 const _kTrailerImportHeaders = [
   'Unit Number',
@@ -31,7 +43,32 @@ class _TrailerImportScreenState extends State<TrailerImportScreen> {
   String? _fileName;
   String? _filePath;
   bool _importing = false;
+  bool _downloadingTemplate = false;
   ImportResult? _result;
+
+  Future<void> _downloadTemplate() async {
+    if (_downloadingTemplate) return;
+    setState(() => _downloadingTemplate = true);
+    try {
+      final data = await rootBundle.load(_kTrailerTemplateAsset);
+      final bytes = data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
+      final tempDir = await getTemporaryDirectory();
+      final savePath = '${tempDir.path}/$_kTrailerTemplateFileName';
+      await File(savePath).writeAsBytes(bytes, flush: true);
+      if (!mounted) return;
+      final result = await OpenFilex.open(savePath);
+      if (result.type != ResultType.done && mounted) {
+        AppToast.showError('Could not open template: ${result.message}');
+      }
+    } catch (_) {
+      if (mounted) AppToast.showError('Could not download sample template');
+    } finally {
+      if (mounted) setState(() => _downloadingTemplate = false);
+    }
+  }
 
   Future<void> _pickFile() async {
     final picked = await FilePicker.platform.pickFiles(
@@ -135,6 +172,35 @@ class _TrailerImportScreenState extends State<TrailerImportScreen> {
               title: 'Required columns',
               message: _kTrailerImportHeaders.join(', '),
             ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _downloadingTemplate ? null : _downloadTemplate,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.textPrimary,
+                  side: BorderSide(color: AppColors.border),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                icon: _downloadingTemplate
+                    ? SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.textSecondary,
+                        ),
+                      )
+                    : const Icon(Icons.download_outlined, size: 16),
+                label: const Text(
+                  'Download Sample Template',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
             WebFileUploadZone(
               fileName: _fileName,
               onBrowse: _pickFile,

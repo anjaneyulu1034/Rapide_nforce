@@ -101,6 +101,7 @@ class DvirService {
     String? search,
     String? defectStatus,
     String? severity,
+    String? syncedDvirReportId,
     int? companyId,
   }) async {
     final cid = companyId ?? AuthService.instance.selectedCompanyIdInt;
@@ -116,6 +117,9 @@ class DvirService {
     }
     if (severity != null && severity.isNotEmpty) {
       params['severity'] = severity;
+    }
+    if (syncedDvirReportId != null && syncedDvirReportId.isNotEmpty) {
+      params['syncedDvirReportId'] = syncedDvirReportId;
     }
     if (cid != null) {
       params['companyId'] = cid;
@@ -178,7 +182,7 @@ class DvirService {
   }) async {
     try {
       await _api.parseJson(
-        () => _api.post(
+        () => _api.patch(
           '/synced-dvir-defects/$id/resolve',
           body: {
             if (mechanicNote != null && mechanicNote.isNotEmpty)

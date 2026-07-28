@@ -16,11 +16,13 @@ class PartTypeDetailScreen extends StatelessWidget {
     required this.partType,
     this.onChanged,
     this.canDelete = true,
+    this.canUpdate = true,
   });
 
   final PartTypeModel partType;
   final VoidCallback? onChanged;
   final bool canDelete;
+  final bool canUpdate;
 
   Future<void> _delete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
@@ -61,20 +63,21 @@ class PartTypeDetailScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text(partType.name),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            onPressed: () async {
-              final changed = await Navigator.of(context).push<bool>(
-                MaterialPageRoute(
-                  builder: (_) => PartTypeFormScreen(partType: partType),
-                ),
-              );
-              if (changed == true) {
-                onChanged?.call();
-                if (context.mounted) Navigator.pop(context, true);
-              }
-            },
-          ),
+          if (canUpdate)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () async {
+                final changed = await Navigator.of(context).push<bool>(
+                  MaterialPageRoute(
+                    builder: (_) => PartTypeFormScreen(partType: partType),
+                  ),
+                );
+                if (changed == true) {
+                  onChanged?.call();
+                  if (context.mounted) Navigator.pop(context, true);
+                }
+              },
+            ),
           if (canDelete)
             IconButton(
               icon: const Icon(Icons.delete_outline, color: AppColors.danger),
@@ -114,11 +117,13 @@ class PartDetailScreen extends StatelessWidget {
     required this.part,
     this.onChanged,
     this.canDelete = true,
+    this.canUpdate = true,
   });
 
   final PartModel part;
   final VoidCallback? onChanged;
   final bool canDelete;
+  final bool canUpdate;
 
   Future<void> _delete(BuildContext context) async {
     if (part.isUsedInWorkOrder) {
@@ -159,8 +164,8 @@ class PartDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showEdit = !part.isProtected;
-    final showDelete = canDelete && showEdit && !part.isUsedInWorkOrder;
+    final showEdit = !part.isProtected && canUpdate;
+    final showDelete = canDelete && !part.isProtected && !part.isUsedInWorkOrder;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -301,23 +306,27 @@ class PartDetailScreen extends StatelessWidget {
                   _Row(
                     'Invoice file',
                     null,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.insert_drive_file_outlined,
-                          size: 16,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'View Document',
-                          style: TextStyle(
+                    child: InkWell(
+                      onTap: () => openInventoryInvoiceLink(part.invoiceLink),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.insert_drive_file_outlined,
+                            size: 16,
                             color: AppColors.primary,
-                            fontWeight: FontWeight.bold,
-                            decoration: TextDecoration.underline,
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 6),
+                          Text(
+                            'View Document',
+                            style: TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.bold,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 _Row('Created by', part.createdByUsername ?? '—'),

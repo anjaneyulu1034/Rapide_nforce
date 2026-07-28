@@ -23,10 +23,17 @@ class WorkOrderFormScreen extends StatefulWidget {
     super.key,
     this.existing,
     this.initialIssueDescription,
+    this.linkedDefects,
   });
 
   final WorkOrderModel? existing;
   final String? initialIssueDescription;
+  // When set, this work order is created via the backend's from-source
+  // endpoint instead of the generic create endpoint — each entry becomes a
+  // linked repair line (no inventory part attached), and the first entry's
+  // vehicle is used to try to auto-select the Unit field. Mirrors the web
+  // app's bulk "Create Work Order for Selected" / single defect flows.
+  final List<WorkOrderLinkedDefect>? linkedDefects;
 
   bool get isEdit => existing != null;
 
@@ -105,6 +112,19 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     if (widget.existing == null &&
         (widget.initialIssueDescription?.trim().isNotEmpty ?? false)) {
       _issueController.text = widget.initialIssueDescription!.trim();
+    } else if (widget.existing == null &&
+        (widget.linkedDefects?.isNotEmpty ?? false)) {
+      _issueController.text = widget.linkedDefects!
+          .map((d) => d.description)
+          .where((d) => d.trim().isNotEmpty)
+          .join('; ');
+      for (final d in widget.linkedDefects!) {
+        _partLines.add(
+          _PartLineForm(
+            description: d.description,
+          ),
+        );
+      }
     }
     _loadMeta();
   }
@@ -229,6 +249,70 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       final match = _entities.where((e) => e.name == existing.unitNumber);
       if (match.isNotEmpty) {
         setState(() => _selectedEntityId = match.first.id);
+      }
+    } else if (existing == null &&
+        (widget.linkedDefects?.isNotEmpty ?? false) &&
+        mounted) {
+      final defectId = widget.linkedDefects!.first.defectId;
+      final prefillRes = await MaintenanceService.instance
+          .getWorkOrderFromSourcePrefill(sourceId: defectId);
+      final prefill = prefillRes.isSuccess ? prefillRes.data : null;
+
+      final targetUnitNumber = prefill?.unitNumber?.trim() ??
+          widget.linkedDefects!.first.unitNumber?.trim();
+      final targetEntityTypeId = prefill?.entityTypeId;
+
+      if (prefill?.priority != null) {
+        final p = WorkOrderPriority.fromCode(prefill!.priority);
+        if (mounted) setState(() => _priority = p);
+      }
+
+      if ((prefill?.issueDescription?.trim().isNotEmpty ?? false) &&
+          mounted) {
+        _issueController.text = prefill!.issueDescription!.trim();
+      }
+
+      if (targetEntityTypeId != null &&
+          _entityTypes.any((t) => t.id == targetEntityTypeId)) {
+        if (mounted) setState(() => _entityTypeId = targetEntityTypeId);
+        await _loadEntities(targetEntityTypeId);
+      }
+
+      if (targetUnitNumber != null && targetUnitNumber.isNotEmpty) {
+        EntityModel? matchedEntity;
+        try {
+          matchedEntity = _entities.firstWhere((e) => e.name == targetUnitNumber);
+        } catch (_) {}
+
+        if (matchedEntity == null) {
+          for (final type in _entityTypes) {
+            if (type.id == _entityTypeId) continue;
+            final otherRes =
+                await MaintenanceService.instance.getEntities(type.id);
+            if (otherRes.isSuccess && otherRes.data != null) {
+              try {
+                final found = otherRes.data!
+                    .firstWhere((e) => e.name == targetUnitNumber);
+                if (mounted) {
+                  setState(() {
+                    _entityTypeId = type.id;
+                    _entities = otherRes.data!;
+                  });
+                }
+                matchedEntity = found;
+                break;
+              } catch (_) {}
+            }
+          }
+        }
+
+        if (matchedEntity != null && mounted) {
+          setState(() {
+            _selectedEntityId = matchedEntity!.id;
+          });
+          _fetchOdometer();
+          _loadEvents();
+        }
       }
     }
   }
@@ -623,7 +707,23 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       return;
     }
 
-    final result = await MaintenanceService.instance.createWorkOrder(payload);
+    final linkedDefects = widget.linkedDefects;
+    final result = (linkedDefects != null && linkedDefects.isNotEmpty)
+        ? await MaintenanceService.instance.createWorkOrderFromSource(
+            sourceId: linkedDefects.first.defectId,
+            payload: payload,
+            linkedIssueParts: linkedDefects
+                .map(
+                  (d) => WorkOrderPartPayload(
+                    usedPart: null,
+                    usageDescription: d.description,
+                    repairStatus: RepairStatus.notStarted,
+                    linkedIssueId: d.defectId,
+                  ),
+                )
+                .toList(),
+          )
+        : await MaintenanceService.instance.createWorkOrder(payload);
     if (!mounted) return;
     if (!result.isSuccess) {
       setState(() => _submitting = false);
@@ -892,6 +992,15 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                         ),
                       ],
                     ),
+                    if (widget.linkedDefects?.isNotEmpty ?? false) ...[
+                      const SizedBox(height: 14),
+                      WebInfoBanner(
+                        title: 'Linked to DVIR defect${widget.linkedDefects!.length == 1 ? '' : 's'}',
+                        message: widget.linkedDefects!.length == 1
+                            ? 'This work order will be linked back to the source defect.'
+                            : '${widget.linkedDefects!.length} selected defects will each be added as a repair line on this work order.',
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     _SectionCard(
                       number: 3,

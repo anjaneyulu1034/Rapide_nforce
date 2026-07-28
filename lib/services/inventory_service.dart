@@ -1,3 +1,4 @@
+import 'package:http/http.dart' as http;
 import 'package:rapide_nforce/core/constants/api_constants.dart';
 import 'package:rapide_nforce/core/models/api_result.dart';
 import 'package:rapide_nforce/core/models/paginated_result.dart';
@@ -206,26 +207,58 @@ class InventoryService {
     double? totalCost,
     String? invoiceNumber,
     int? companyId,
+    String? invoiceFilePath,
   }) async {
     final cid = companyId ?? _companyId;
     try {
-      final body = await _api.parseJson(
-        () => _api.post(
-          ApiConstants.parts,
-          body: {
-            'typeId': typeId,
-            'code': code,
-            'quantity': ?quantity,
-            'cost': ?cost,
-            'totalCost': ?totalCost,
-            if (invoiceNumber != null && invoiceNumber.isNotEmpty)
-              'invoiceNumber': invoiceNumber,
-            'company_id': ?cid,
-          },
-          companyId: cid?.toString(),
-        ),
-        onSuccess: (b) => b,
-      );
+      dynamic body;
+      if (invoiceFilePath != null && invoiceFilePath.isNotEmpty) {
+        final request = http.MultipartRequest('POST', Uri.parse('dummy'));
+        request.fields['typeId'] = '$typeId';
+        request.fields['code'] = code;
+        if (quantity != null) request.fields['quantity'] = '$quantity';
+        if (cost != null) request.fields['cost'] = '$cost';
+        if (totalCost != null) request.fields['totalCost'] = '$totalCost';
+        if (invoiceNumber != null && invoiceNumber.isNotEmpty) {
+          request.fields['invoiceNumber'] = invoiceNumber;
+        }
+        if (cid != null) request.fields['company_id'] = '$cid';
+        request.files.add(
+          await http.MultipartFile.fromPath('file', invoiceFilePath),
+        );
+        request.files.add(
+          await http.MultipartFile.fromPath('invoice', invoiceFilePath),
+        );
+        request.files.add(
+          await http.MultipartFile.fromPath('invoiceFile', invoiceFilePath),
+        );
+        body = await _api.parseJson(
+          () => _api.postMultipart(
+            ApiConstants.parts,
+            request,
+            companyId: cid?.toString(),
+          ),
+          onSuccess: (b) => b,
+        );
+      } else {
+        body = await _api.parseJson(
+          () => _api.post(
+            ApiConstants.parts,
+            body: {
+              'typeId': typeId,
+              'code': code,
+              'quantity': ?quantity,
+              'cost': ?cost,
+              'totalCost': ?totalCost,
+              if (invoiceNumber != null && invoiceNumber.isNotEmpty)
+                'invoiceNumber': invoiceNumber,
+              'company_id': ?cid,
+            },
+            companyId: cid?.toString(),
+          ),
+          onSuccess: (b) => b,
+        );
+      }
       final data = ApiParse.unwrapData(body);
       if (data is Map) {
         return ApiResult.ok(
@@ -249,25 +282,57 @@ class InventoryService {
     double? totalCost,
     String? invoiceNumber,
     int? companyId,
+    String? invoiceFilePath,
   }) async {
     final cid = companyId ?? _companyId;
     try {
-      final body = await _api.parseJson(
-        () => _api.put(
-          '${ApiConstants.parts}/$id',
-          body: {
-            'typeId': typeId,
-            'code': code,
-            'quantity': ?quantity,
-            'cost': ?cost,
-            'totalCost': ?totalCost,
-            'invoiceNumber': ?invoiceNumber,
-            'company_id': ?cid,
-          },
-          companyId: cid?.toString(),
-        ),
-        onSuccess: (b) => b,
-      );
+      dynamic body;
+      if (invoiceFilePath != null && invoiceFilePath.isNotEmpty) {
+        final request = http.MultipartRequest('PUT', Uri.parse('dummy'));
+        request.fields['typeId'] = '$typeId';
+        request.fields['code'] = code;
+        if (quantity != null) request.fields['quantity'] = '$quantity';
+        if (cost != null) request.fields['cost'] = '$cost';
+        if (totalCost != null) request.fields['totalCost'] = '$totalCost';
+        if (invoiceNumber != null) {
+          request.fields['invoiceNumber'] = invoiceNumber;
+        }
+        if (cid != null) request.fields['company_id'] = '$cid';
+        request.files.add(
+          await http.MultipartFile.fromPath('file', invoiceFilePath),
+        );
+        request.files.add(
+          await http.MultipartFile.fromPath('invoice', invoiceFilePath),
+        );
+        request.files.add(
+          await http.MultipartFile.fromPath('invoiceFile', invoiceFilePath),
+        );
+        body = await _api.parseJson(
+          () => _api.postMultipart(
+            '${ApiConstants.parts}/$id',
+            request,
+            companyId: cid?.toString(),
+          ),
+          onSuccess: (b) => b,
+        );
+      } else {
+        body = await _api.parseJson(
+          () => _api.put(
+            '${ApiConstants.parts}/$id',
+            body: {
+              'typeId': typeId,
+              'code': code,
+              'quantity': ?quantity,
+              'cost': ?cost,
+              'totalCost': ?totalCost,
+              'invoiceNumber': ?invoiceNumber,
+              'company_id': ?cid,
+            },
+            companyId: cid?.toString(),
+          ),
+          onSuccess: (b) => b,
+        );
+      }
       final data = ApiParse.unwrapData(body);
       if (data is Map) {
         return ApiResult.ok(

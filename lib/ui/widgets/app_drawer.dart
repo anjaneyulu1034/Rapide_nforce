@@ -54,16 +54,49 @@ class _AppDrawerState extends State<AppDrawer> {
     }
   }
 
+  bool _isLeadOrAdmin(UserModel? user) {
+    if (user == null) return false;
+    final role = user.role.trim().toLowerCase();
+    final roleId = user.roleId;
+    return role.contains('lead') ||
+        role.contains('admin') ||
+        role.contains('manager') ||
+        roleId == 5 ||
+        roleId == 2 ||
+        roleId == 1;
+  }
+
   List<NavMenuItem> _menuSource() {
+    final user = AuthService.instance.currentUser;
+    final isLead = _isLeadOrAdmin(user);
+
     final raw = widget.menuItems.isNotEmpty
         ? widget.menuItems
         : _staticMenus();
-    return raw
-        .where((item) =>
-            item.path != '/carriers' &&
-            item.path != '/carrier-management' &&
-            item.id != 'carriers')
-        .toList();
+
+    return raw.where((item) {
+      final path = item.path.toLowerCase();
+      final label = item.label.toLowerCase();
+
+      if (path == '/carriers' ||
+          path == '/carrier-management' ||
+          item.id == 'carriers' ||
+          label.contains('carrier')) {
+        return false;
+      }
+
+      if (label == 'documents' || label == 'reports') {
+        return isLead;
+      }
+
+      if (label == 'approvals' ||
+          path == '/lead-approvals' ||
+          item.id == 'approvals') {
+        return isLead;
+      }
+
+      return true;
+    }).toList();
   }
 
   bool _isGroupActive(NavMenuItem item) {
@@ -197,6 +230,15 @@ class _AppDrawerState extends State<AppDrawer> {
                         ],
                       ),
                     ),
+                    IconButton(
+                      tooltip: 'Log Out',
+                      icon: const Icon(
+                        Icons.logout_rounded,
+                        color: AppColors.danger,
+                        size: 20,
+                      ),
+                      onPressed: () => _confirmLogout(context),
+                    ),
                   ],
                 ),
               ),
@@ -207,25 +249,153 @@ class _AppDrawerState extends State<AppDrawer> {
     );
   }
 
+  Future<void> _confirmLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 36),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+            decoration: BoxDecoration(
+              color: AppColors.card,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 32,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: AppColors.danger.withValues(alpha: 0.10),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.logout_rounded,
+                    color: AppColors.danger,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Log Out',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Are you sure you want to log out?',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.textPrimary,
+                          side: BorderSide(color: AppColors.border, width: 1.5),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        child: const Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.danger,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        icon: const Icon(Icons.logout_rounded, size: 16),
+                        label: const Text(
+                          'Log Out',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (confirmed == true && context.mounted) {
+      Navigator.pop(context);
+      if (widget.onLogout != null) {
+        widget.onLogout!();
+      } else {
+        await AuthService.instance.logout();
+      }
+    }
+  }
+
   List<NavMenuItem> _staticMenus() {
-    return const [
-      NavMenuItem(id: 'dashboard', label: 'Dashboard', path: '/dashboard'),
-      // NavMenuItem(id: 'carriers', label: 'Carrier', path: '/carriers'),
-      NavMenuItem(id: 'powerunit', label: 'Power Unit', path: '/powerunit'),
-      NavMenuItem(id: 'trailers', label: 'My Trailers', path: '/trailers'),
-      NavMenuItem(
+    final user = AuthService.instance.currentUser;
+    final isLead = _isLeadOrAdmin(user);
+
+    return [
+      const NavMenuItem(id: 'dashboard', label: 'Dashboard', path: '/dashboard'),
+      const NavMenuItem(id: 'powerunit', label: 'Power Unit', path: '/powerunit'),
+      const NavMenuItem(id: 'trailers', label: 'My Trailers', path: '/trailers'),
+      const NavMenuItem(
         id: 'maintenance',
-        label: 'Maintenance',
+        label: 'Service Maintenance',
         path: '/maintenance',
         children: [
           NavMenuItem(
+            id: 'inventory',
+            label: 'Inventory',
+            path: '/inventory',
+          ),
+          NavMenuItem(
             id: 'maintenance-hub',
-            label: 'Maintenance',
+            label: 'Work Orders',
             path: '/maintenance',
           ),
           NavMenuItem(
-            id: 'dvir-reports',
-            label: 'DVIR Reports',
+            id: 'dvir',
+            label: 'DVIR',
             path: '/dvir-reports',
           ),
           NavMenuItem(
@@ -235,11 +405,14 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
         ],
       ),
-      NavMenuItem(id: 'documents', label: 'Documents', path: '/documents'),
-      NavMenuItem(id: 'reports', label: 'Reports', path: '/reports'),
-      NavMenuItem(id: 'requests', label: 'Requests', path: '/requests'),
-      NavMenuItem(id: 'approvals', label: 'Approvals', path: '/lead-approvals'),
-      NavMenuItem(id: 'profile', label: 'Profile', path: '/settings'),
+      if (isLead) ...const [
+        NavMenuItem(id: 'documents', label: 'Documents', path: '/documents'),
+        NavMenuItem(id: 'reports', label: 'Reports', path: '/reports'),
+      ],
+      const NavMenuItem(id: 'requests', label: 'Requests', path: '/requests'),
+      if (isLead)
+        const NavMenuItem(id: 'approvals', label: 'Approvals', path: '/lead-approvals'),
+      const NavMenuItem(id: 'profile', label: 'Profile', path: '/settings'),
     ];
   }
 }

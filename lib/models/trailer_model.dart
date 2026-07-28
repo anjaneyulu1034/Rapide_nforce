@@ -55,6 +55,8 @@ class TrailerModel {
     this.countryId,
     this.cityId,
     this.startDate,
+    this.companyId,
+    this.companyName,
   });
 
   final int id;
@@ -109,6 +111,8 @@ class TrailerModel {
   final int? countryId;
   final int? cityId;
   final String? startDate;
+  final int? companyId;
+  final String? companyName;
 
   bool get isActive =>
       status.toLowerCase() == 'active' || status == '1';
@@ -198,6 +202,8 @@ class TrailerModel {
       countryId: _toInt(json['countryId']) ?? _toInt(json['country_id']),
       cityId: _toInt(json['cityId']) ?? _toInt(json['city_id']),
       startDate: _str(json['startDate']) ?? _str(json['start_date']),
+      companyId: _toInt(json['companyId']) ?? _toInt(json['company_id']),
+      companyName: _str(json['companyName']) ?? _str(json['company_name']),
     );
   }
 

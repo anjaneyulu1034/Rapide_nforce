@@ -10,6 +10,7 @@ import 'package:rapide_nforce/models/power_unit_model.dart';
 import 'package:rapide_nforce/models/truck_permit_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/fleet_lookup_service.dart';
+import 'package:rapide_nforce/services/maintenance_service.dart';
 import 'package:rapide_nforce/services/ocr_service.dart';
 import 'package:rapide_nforce/services/power_unit_service.dart';
 import 'package:rapide_nforce/ui/widgets/document_upload_section.dart';
@@ -34,6 +35,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _checkingVin = false;
+  bool _refreshingOdometer = false;
   List<OcrDocumentEntry> _ocrDocuments = [];
 
   // Step 1
@@ -420,6 +422,41 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       _annualInspectionDue.text = annualDueIso;
       _cviExpiry.text = annualDueIso;
     });
+  }
+
+  /// Mirrors the web's `canRefreshOdometer` gate on the Current Odometer
+  /// field's sync button: telematics must not be explicitly disabled, and
+  /// both Unit Number and VIN must be filled in (needed to look the vehicle
+  /// up with the telematics provider).
+  bool get _canRefreshOdometer =>
+      _telematicsEnabled != 'inactive' &&
+      _unitNumber.text.trim().isNotEmpty &&
+      _vin.text.trim().isNotEmpty;
+
+  /// Pulls a live odometer reading from the connected telematics provider
+  /// (e.g. Samsara) and fills it into Current Odometer — mirrors the web's
+  /// "Sync odometer" refresh button next to the Current Odometer field.
+  Future<void> _refreshOdometer() async {
+    if (!_canRefreshOdometer || _refreshingOdometer) return;
+    setState(() => _refreshingOdometer = true);
+    final companyId = _isSuperAdmin
+        ? AuthService.instance.selectedCompanyIdInt
+        : AuthService.instance.currentUser?.companyId;
+    final result = await MaintenanceService.instance.fetchSamsaraOdometer(
+      unitNumber: _unitNumber.text.trim(),
+      vin: _vin.text.trim(),
+      companyId: companyId,
+    );
+    if (!mounted) return;
+    setState(() => _refreshingOdometer = false);
+    final value = result.data?.trim();
+    if (result.isSuccess && value != null && value.isNotEmpty) {
+      setState(() => _currentOdometer.text = value);
+    } else if (!result.isSuccess) {
+      ApiFeedback.showError(result, fallback: 'Failed to sync odometer');
+    } else {
+      AppToast.showError('No live odometer reading available for this unit');
+    }
   }
 
   @override
@@ -1251,6 +1288,21 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
             v,
             'Current Odometer',
             required: true,
+          ),
+          suffix: IconButton(
+            tooltip: _canRefreshOdometer
+                ? 'Sync odometer from telematics'
+                : 'Requires Unit Number, VIN, and active telematics',
+            icon: _refreshingOdometer
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync, size: 18),
+            onPressed: (_canRefreshOdometer && !_refreshingOdometer)
+                ? _refreshOdometer
+                : null,
           ),
         ),
         WebTextFormField(

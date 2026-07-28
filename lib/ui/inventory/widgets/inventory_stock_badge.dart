@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/models/inventory_item_model.dart';
 import 'package:rapide_nforce/ui/widgets/status_badge.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 BadgeTone stockLevelTone(StockLevel level) {
   return switch (level) {
@@ -54,5 +56,25 @@ String formatInventoryDate(String? iso) {
     return '$m-$day-${d.year}';
   } catch (_) {
     return iso;
+  }
+}
+
+/// Opens a part invoice file (image/PDF) in the device's default external
+/// viewer/browser — mirrors the web app's "View Invoice" link behaviour.
+Future<void> openInventoryInvoiceLink(String? url) async {
+  final trimmed = url?.trim();
+  if (trimmed == null || trimmed.isEmpty) return;
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null) {
+    AppToast.showError('Invalid invoice link');
+    return;
+  }
+  try {
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched) {
+      AppToast.showError('Unable to open invoice');
+    }
+  } catch (_) {
+    AppToast.showError('Unable to open invoice');
   }
 }

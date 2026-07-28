@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
@@ -6,7 +7,15 @@ import 'package:rapide_nforce/models/dvir_defect_model.dart';
 import 'package:rapide_nforce/services/dvir_service.dart';
 import 'package:rapide_nforce/ui/dvir/dvir_detail_screen.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
+import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
+
+String _formatDateTime(String? iso) {
+  if (iso == null || iso.isEmpty) return '—';
+  final parsed = DateTime.tryParse(iso);
+  if (parsed == null) return iso;
+  return DateFormat('MM-dd-yyyy, hh:mm a').format(parsed.toLocal());
+}
 
 class DvirDefectDetailScreen extends StatefulWidget {
   const DvirDefectDetailScreen({super.key, required this.defectId});
@@ -21,6 +30,11 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
   bool _loading = true;
   String? _error;
   DvirDefectModel? _defect;
+  // Only true once the defect's own status actually changed (resolved) —
+  // lets the Defects list know whether it's worth reloading on return,
+  // instead of clearing and refetching on every single back-navigation
+  // (which was racing the pop transition and throwing a hit-test error).
+  bool _changed = false;
 
   @override
   void initState() {
@@ -153,6 +167,7 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
                   );
                   if (ctx.mounted) {
                     if (res.isSuccess) {
+                      _changed = true;
                       AppToast.showSuccess('Defect resolved successfully');
                       Navigator.pop(ctx, true);
                     } else {
@@ -220,7 +235,7 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, _changed),
         ),
         title: const Text(
           'Defect Details',
@@ -230,14 +245,43 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
           if (isOpen)
             Padding(
               padding: const EdgeInsets.only(right: 12),
-              child: FilledButton.icon(
-                onPressed: _openResolveModal,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF16A34A),
-                  foregroundColor: Colors.white,
+              child: UnconstrainedBox(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _openResolveModal,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16A34A),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.check_circle_outline,
+                            size: 18,
+                            color: Colors.white,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'Resolve Defect',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                icon: const Icon(Icons.check_circle_outline, size: 18),
-                label: const Text('Resolve Defect'),
               ),
             ),
         ],
@@ -277,6 +321,32 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
+                              if (d.integrationSourceCode != null &&
+                                  d.integrationSourceCode!
+                                      .trim()
+                                      .isNotEmpty) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(
+                                      alpha: 0.12,
+                                    ),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    d.integrationSourceCode!.toUpperCase(),
+                                    style: TextStyle(
+                                      color: AppColors.primary,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                              ],
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 10,
@@ -299,20 +369,42 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
                           ),
                           const Divider(height: 24, thickness: 1),
                           detailRow('Defect Code', d.defectCode),
+                          detailRow('External Defect ID', d.externalDefectId),
                           detailRow('Severity', d.severity),
                           detailRow('Vehicle Number', d.vehicleNumber),
                           detailRow('VIN', d.vin),
                           detailRow('Company Name', d.companyName),
                           detailRow('Source System', d.integrationSourceName),
-                          detailRow('Reported Date', d.createdAt),
+                          detailRow(
+                            'Entity',
+                            d.entityId != null
+                                ? '${d.entityId}${d.entityTypeId != null ? ' (type ${d.entityTypeId})' : ''}'
+                                : null,
+                          ),
+                          detailRow(
+                            'Reported Date',
+                            _formatDateTime(d.createdAt),
+                          ),
+                          detailRow(
+                            'Updated Date',
+                            _formatDateTime(d.updatedAt),
+                          ),
                           if (d.resolvedAt != null)
-                            detailRow('Resolved Date', d.resolvedAt),
+                            detailRow(
+                              'Resolved Date',
+                              _formatDateTime(d.resolvedAt),
+                            ),
                           if (d.resolvedBy != null)
                             detailRow('Resolved By', d.resolvedBy),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
+                    const WebInfoBanner(
+                      title: 'Note',
+                      message:
+                          'Synchronized data is refreshed every 8 hours through automated polling.',
+                    ),
                     // Description Panel
                     if (d.defectDescription != null &&
                         d.defectDescription!.trim().isNotEmpty) ...[
@@ -368,6 +460,7 @@ class _DvirDefectDetailScreenState extends State<DvirDefectDetailScreen> {
                           style: TextStyle(fontWeight: FontWeight.bold),
                         ),
                       ),
+
                   ],
                 ),
               ),

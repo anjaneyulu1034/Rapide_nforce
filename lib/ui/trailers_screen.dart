@@ -799,6 +799,23 @@ class _TrailersScreenState extends State<TrailersScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
+                    if (_isSuperAdmin &&
+                        (t.companyName ?? '').isNotEmpty) ...[
+                      Row(
+                        children: [
+                          infoTile(
+                            icon: Icons.apartment_outlined,
+                            label: 'COMPANY',
+                            value: t.companyName ?? '',
+                            bgStart: AppColors.surfaceTertiary,
+                            bgEnd: AppColors.surfaceTertiary,
+                            border: AppColors.border,
+                            fg: AppColors.textPrimary,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     Row(
                       children: [
                         infoTile(
@@ -1045,9 +1062,11 @@ class _TrailersScreenState extends State<TrailersScreen> {
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: visible.length,
                       gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                          SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 500,
-                            mainAxisExtent: 352,
+                            // Taller for super admins — their cards gain an
+                            // extra COMPANY info row above TYPE/PLATE.
+                            mainAxisExtent: _isSuperAdmin ? 416 : 352,
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                           ),

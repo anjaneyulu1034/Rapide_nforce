@@ -601,9 +601,9 @@ class _ProfileTabState extends State<_ProfileTab> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ── Account Info (read-only) ────────────────────────────────
+        // ── Combined Account & Contact Details Card ─────────────────
         _SectionCard(
-          title: 'Account Info',
+          title: 'Account & Contact Details',
           icon: Icons.person_outline,
           children: [
             _InfoRow(label: 'Username', value: u.employeeId),
@@ -614,15 +614,10 @@ class _ProfileTabState extends State<_ProfileTab> {
             ),
             _InfoRow(label: 'Email', value: u.email ?? '—'),
             _InfoRow(label: 'Company', value: u.resolvedCompanyName),
-          ],
-        ),
-        const SizedBox(height: 14),
-
-        // ── Editable Fields ─────────────────────────────────────────
-        _SectionCard(
-          title: 'Contact Details',
-          icon: Icons.contacts_outlined,
-          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Divider(height: 1),
+            ),
             _FieldLabel(label: 'Phone Number'),
             const SizedBox(height: 6),
             _InputField(

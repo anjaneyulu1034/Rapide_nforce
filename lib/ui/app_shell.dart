@@ -63,6 +63,8 @@ class _AppShellState extends State<AppShell> {
   int _powerUnitRefreshKey = 0;
   int _workOrderRefreshKey = 0;
   int _trailersRefreshKey = 0;
+  final GlobalKey<InventoryScreenState> _inventoryKey =
+      GlobalKey<InventoryScreenState>();
 
   List<CompanyModel> _companies = [];
   List<NavMenuItem> _menuItems = [];
@@ -272,7 +274,7 @@ class _AppShellState extends State<AppShell> {
         return const DvirScreen();
 
       case AppRoute.inventory:
-        return const InventoryScreen();
+        return InventoryScreen(key: _inventoryKey);
 
       case AppRoute.logs:
         return const LogsScreen();
@@ -458,6 +460,16 @@ class _AppShellState extends State<AppShell> {
                     _screenCache.remove(AppRoute.myTrailers);
                   });
                 }
+              },
+              backgroundColor: const Color(0xFF990000),
+              foregroundColor: Colors.white,
+              elevation: 4,
+              child: const Icon(Icons.add, size: 28),
+            )
+          : _currentRoute == AppRoute.inventory
+          ? FloatingActionButton(
+              onPressed: () {
+                _inventoryKey.currentState?.openCurrentAdd();
               },
               backgroundColor: const Color(0xFF990000),
               foregroundColor: Colors.white,

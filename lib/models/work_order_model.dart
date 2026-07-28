@@ -748,6 +748,7 @@ class WorkOrderPartPayload {
     this.defectHours,
     this.repairStartedAt,
     this.repairCompletedAt,
+    this.linkedIssueId,
   });
 
   final int? id;
@@ -766,6 +767,11 @@ class WorkOrderPartPayload {
   final num? defectHours;
   final DateTime? repairStartedAt;
   final DateTime? repairCompletedAt;
+  // Set only for repair lines auto-generated from a DVIR defect / fault code
+  // (see WorkOrderFormScreen's source-linked mode) — has no `usedPart`
+  // (no real inventory part attached), just links the line back to the
+  // originating defect for the backend's from-source work order creation.
+  final String? linkedIssueId;
 
   Map<String, dynamic> toJson() => {
         if (id != null) 'id': id,
@@ -777,6 +783,7 @@ class WorkOrderPartPayload {
         if (repairPerformedBy != null)
           'repairPerformedBy': repairPerformedBy!.code,
         if (repairStatus != null) 'repairStatus': repairStatus!.code,
+        if (linkedIssueId != null) 'linkedIssueId': linkedIssueId,
         if (assignedTechnicianId != null)
           'assignedTechnicianId': assignedTechnicianId,
         if (vendorName != null) 'vendorName': vendorName,
@@ -790,4 +797,105 @@ class WorkOrderPartPayload {
         if (repairCompletedAt != null)
           'repairCompletedAt': repairCompletedAt!.toUtc().toIso8601String(),
       };
+}
+
+/// Result of `GET /maintenance/work-orders/check-existing` — lets the
+/// caller know whether an open work order already exists for a given DVIR
+/// defect / fault-code source before attempting to create a new one.
+class ExistingWorkOrderCheck {
+  const ExistingWorkOrderCheck({
+    required this.exists,
+    this.workOrderId,
+    this.workOrderNumber,
+    this.status,
+    this.statusLabel,
+  });
+
+  final bool exists;
+  final int? workOrderId;
+  final String? workOrderNumber;
+  final int? status;
+  final String? statusLabel;
+
+  factory ExistingWorkOrderCheck.fromJson(Map<String, dynamic> json) {
+    return ExistingWorkOrderCheck(
+      exists: json['exists'] == true,
+      workOrderId: json['workOrderId'] is num
+          ? (json['workOrderId'] as num).toInt()
+          : int.tryParse(json['workOrderId']?.toString() ?? ''),
+      workOrderNumber: json['workOrderNumber']?.toString(),
+      status: json['status'] is num
+          ? (json['status'] as num).toInt()
+          : int.tryParse(json['status']?.toString() ?? ''),
+      statusLabel: json['statusLabel']?.toString(),
+    );
+  }
+}
+
+/// A defect (DVIR or fault-code) selected to be bundled into one work order
+/// via the from-source creation flow — becomes a `linkedIssueId` repair line
+/// with no attached inventory part, matching the web app's bulk "Create Work
+/// Order for Selected" behavior.
+class WorkOrderLinkedDefect {
+  const WorkOrderLinkedDefect({
+    required this.defectId,
+    required this.description,
+    this.vin,
+    this.unitNumber,
+  });
+
+  final String defectId;
+  final String description;
+  final String? vin;
+  final String? unitNumber;
+}
+
+class WorkOrderFromSourcePrefill {
+  const WorkOrderFromSourcePrefill({
+    required this.sourceType,
+    required this.sourceId,
+    this.issueDescription,
+    this.unitNumber,
+    this.vin,
+    this.entityTypeId,
+    this.companyId,
+    this.priority,
+    this.reportedDate,
+    this.dueDate,
+    this.odometer,
+  });
+
+  final String sourceType;
+  final String sourceId;
+  final String? issueDescription;
+  final String? unitNumber;
+  final String? vin;
+  final int? entityTypeId;
+  final int? companyId;
+  final int? priority;
+  final String? reportedDate;
+  final String? dueDate;
+  final String? odometer;
+
+  factory WorkOrderFromSourcePrefill.fromJson(Map<String, dynamic> json) {
+    int? parseInt(dynamic v) {
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v);
+      return null;
+    }
+
+    return WorkOrderFromSourcePrefill(
+      sourceType: json['sourceType']?.toString() ?? 'dvir_defect',
+      sourceId: json['sourceId']?.toString() ?? '',
+      issueDescription: json['issueDescription']?.toString(),
+      unitNumber: json['unitNumber']?.toString(),
+      vin: json['vin']?.toString(),
+      entityTypeId: parseInt(json['entityTypeId']),
+      companyId: parseInt(json['companyId']),
+      priority: parseInt(json['priority']),
+      reportedDate: json['reportedDate']?.toString(),
+      dueDate: json['dueDate']?.toString(),
+      odometer: json['odometer']?.toString(),
+    );
+  }
 }

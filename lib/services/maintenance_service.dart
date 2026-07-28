@@ -144,6 +144,117 @@ class MaintenanceService {
     }
   }
 
+  /// Checks whether an open work order already exists for a DVIR defect /
+  /// fault-code source, before letting the user create a new one from it —
+  /// mirrors the web app's duplicate-creation guard.
+  Future<ApiResult<ExistingWorkOrderCheck>> checkExistingWorkOrder({
+    required String sourceId,
+    required String unitNumber,
+    String sourceType = 'dvir_defect',
+  }) async {
+    try {
+      final trimmedUnit = unitNumber.trim();
+      final safeUnitNumber = trimmedUnit.isEmpty ? 'N/A' : trimmedUnit;
+      final data = await _api.parseJson(
+        () => _api.get(
+          ApiConstants.workOrdersCheckExisting,
+          params: {
+            'sourceType': sourceType,
+            'sourceId': sourceId,
+            'unitNumber': safeUnitNumber,
+          },
+        ),
+        onSuccess: (body) => body,
+      );
+      final root = data as Map<String, dynamic>? ?? {};
+      final inner = root['data'] as Map<String, dynamic>? ?? root;
+      return ApiResult.ok(ExistingWorkOrderCheck.fromJson(inner));
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to check for an existing work order.');
+    }
+  }
+
+  /// Fetches prefilled work order form fields for a given DVIR defect or fault code
+  Future<ApiResult<WorkOrderFromSourcePrefill>> getWorkOrderFromSourcePrefill({
+    required String sourceId,
+    String sourceType = 'dvir_defect',
+  }) async {
+    try {
+      final data = await _api.parseJson(
+        () => _api.get(
+          '${ApiConstants.workOrdersFromSource}/$sourceType/$sourceId/prefill',
+        ),
+        onSuccess: (body) => body,
+      );
+      final root = data as Map<String, dynamic>? ?? {};
+      final inner = root['data'] as Map<String, dynamic>? ?? root;
+      return ApiResult.ok(WorkOrderFromSourcePrefill.fromJson(inner));
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to fetch work order prefill.');
+    }
+  }
+
+  /// Creates a work order from one or more linked defects (DVIR / fault
+  /// code) via the backend's `/work-orders/from-source` endpoint — the
+  /// primary [sourceId] drives the backend's own source-context lookup
+  /// (existing-work-order guard, prefill fallback), while every entry in
+  /// [linkedIssueParts] becomes its own repair line linked back to that
+  /// defect (`linkedIssueId`), so a bulk selection produces one work order
+  /// with one repair line per selected defect — matching the web app.
+  Future<ApiResult<int>> createWorkOrderFromSource({
+    required String sourceId,
+    required WorkOrderFormPayload payload,
+    required List<WorkOrderPartPayload> linkedIssueParts,
+    String sourceType = 'dvir_defect',
+  }) async {
+    try {
+      final body = <String, dynamic>{
+        'sourceType': sourceType,
+        'sourceId': sourceId,
+        'unitNumber': payload.unitNumber,
+        'issueDescription': payload.issueDescription,
+        'status': payload.status,
+        if (payload.entityTypeId > 0) 'entityTypeId': payload.entityTypeId,
+        if (payload.companyId != null) 'companyId': payload.companyId,
+        'details': {
+          'priority': payload.priority,
+          if (payload.startOdometer != null)
+            'odometer': payload.startOdometer,
+          if (payload.location != null) 'location': payload.location,
+          if (payload.assignee > 0) 'assignee': payload.assignee,
+          'estimatedCost': payload.estimatedCost,
+          if (payload.dueDate != null)
+            'dueDate': payload.dueDate!.toUtc().toIso8601String(),
+        },
+        'parts': [
+          ...linkedIssueParts.map((p) => p.toJson()),
+          ...payload.parts
+              .where((p) => p.usedPart != null)
+              .map((p) => p.toJson()),
+        ],
+      };
+
+      final data = await _api.parseJson(
+        () => _api.post(ApiConstants.workOrdersFromSource, body: body),
+        onSuccess: (b) => b,
+      );
+      final root = data as Map<String, dynamic>? ?? {};
+      final inner = root['data'];
+      final id = inner is Map
+          ? inner['id'] as int? ?? inner['workOrderId'] as int?
+          : root['id'] as int?;
+      return ApiResult.ok(id ?? 0);
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to create work order.');
+    }
+  }
+
   Future<ApiResult<List<TechnicianSummary>>> getTechnicians({
     int? companyId,
   }) async {

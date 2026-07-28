@@ -21,6 +21,7 @@ class ApiConstants {
 
   // Fleet
   static const String trucks = '/trucks';
+  static const String trucksBulkImport = '/trucks/bulk-import';
   static const String trailers = '/trailers';
   static const String carriers = '/carriers';
   static const String consentDocuments = '/consent-documents';
@@ -61,6 +62,10 @@ class ApiConstants {
 
   // Maintenance
   static const String workOrders = '/maintenance/work-orders';
+  static const String workOrdersCheckExisting =
+      '/maintenance/work-orders/check-existing';
+  static const String workOrdersFromSource =
+      '/maintenance/work-orders/from-source';
   static const String maintenanceSummary = '/maintenance/summary';
   static const String myRequests = '/maintenance/my-requests';
   static const String maintenanceApprovals = '/maintenance/approvals';
