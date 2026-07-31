@@ -3,10 +3,27 @@ import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
+import 'package:rapide_nforce/services/theme_service.dart';
 import 'package:rapide_nforce/ui/widgets/brand_logo.dart';
 import 'package:rapide_nforce/core/constants/app_gradients.dart';
-import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
+
+/// Login-only background — a soft red-to-charcoal gradient echoing the
+/// brand's red "R" logo, distinct from the flat neutral [AppGradients]
+/// background used on every other screen.
+LinearGradient get _loginBackgroundGradient => ThemeService.instance.isLight
+    ? const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFFFBE4E4), Color(0xFFF3F4F6), Color(0xFFE5E7EB)],
+        stops: [0.0, 0.45, 1.0],
+      )
+    : const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF2A0A0A), Color(0xFF14100F), Color(0xFF0B0A0A)],
+        stops: [0.0, 0.45, 1.0],
+      );
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.onLoginSuccess});
@@ -70,53 +87,55 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       backgroundColor: AppColors.surface,
       resizeToAvoidBottomInset: true,
-      body: GradientPageBackground(
+      body: DecoratedBox(
+        decoration: BoxDecoration(gradient: _loginBackgroundGradient),
         child: SafeArea(
           child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(20, 24, 20, 24 + bottomInset),
-              child: Column(
-                children: [
-                  const BrandLogo(height: 104),
-                  const SizedBox(height: 8),
-                  Text(
-                    AppStrings.loginSubtitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      height: 1.5,
-                      color: AppColors.textSecondary,
-                    ),
+            builder: (context, constraints) {
+              const verticalPadding = 48.0;
+              return SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(20, 24, 20, 24 + bottomInset),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight:
+                        constraints.maxHeight - verticalPadding - bottomInset,
                   ),
-                  const SizedBox(height: 24),
-                  _FeatureRow(),
-                  const SizedBox(height: 28),
-                  _LoginCard(
-                    formKey: _formKey,
-                    employeeIdController: _employeeIdController,
-                    passwordController: _passwordController,
-                    employeeIdFocus: _employeeIdFocus,
-                    passwordFocus: _passwordFocus,
-                    obscurePassword: _obscurePassword,
-                    loading: _loading,
-                    error: _error,
-                    onTogglePassword: () =>
-                        setState(() => _obscurePassword = !_obscurePassword),
-                    onLogin: _login,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const BrandLogo(height: 104),
+                      const SizedBox(height: 24),
+                      _FeatureRow(),
+                      const SizedBox(height: 28),
+                      _LoginCard(
+                        formKey: _formKey,
+                        employeeIdController: _employeeIdController,
+                        passwordController: _passwordController,
+                        employeeIdFocus: _employeeIdFocus,
+                        passwordFocus: _passwordFocus,
+                        obscurePassword: _obscurePassword,
+                        loading: _loading,
+                        error: _error,
+                        onTogglePassword: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
+                        onLogin: _login,
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        AppStrings.version,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary.withValues(
+                            alpha: 0.8,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 28),
-                  Text(
-                    AppStrings.version,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary.withValues(alpha: 0.8),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -149,22 +168,29 @@ class _FeatureChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: AppColors.goldLight,
+        color: AppColors.card,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.4)),
+        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.gold.withValues(alpha: 0.14),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: AppColors.gold),
-          const SizedBox(width: 4),
+          const SizedBox(width: 5),
           Text(
             label,
             style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
               color: AppColors.gold,
             ),
           ),
@@ -203,16 +229,17 @@ class _LoginCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+      padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
       decoration: BoxDecoration(
         gradient: AppGradients.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
             color: AppColors.cardShadow,
-            blurRadius: 16,
-            offset: Offset(0, 6),
+            blurRadius: 24,
+            spreadRadius: -4,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -221,23 +248,6 @@ class _LoginCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              AppStrings.loginTitle,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Access your technician workspace',
-              style: TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-              ),
-            ),
-            const SizedBox(height: 24),
             _LoginField(
               controller: employeeIdController,
               focusNode: employeeIdFocus,
@@ -284,7 +294,10 @@ class _LoginCard extends StatelessWidget {
               const SizedBox(height: 14),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.danger.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
@@ -373,10 +386,7 @@ class _LoginField extends StatelessWidget {
           textInputAction: textInputAction,
           onFieldSubmitted: onFieldSubmitted,
           validator: validator,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-          ),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(

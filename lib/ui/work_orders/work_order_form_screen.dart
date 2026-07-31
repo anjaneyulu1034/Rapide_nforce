@@ -16,6 +16,8 @@ import 'package:rapide_nforce/ui/work_orders/work_order_upload_attachment_sheet.
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
+import 'package:rapide_nforce/services/auth_service.dart';
+import 'package:rapide_nforce/services/inventory_service.dart';
 import 'package:rapide_nforce/services/maintenance_service.dart';
 
 class WorkOrderFormScreen extends StatefulWidget {
@@ -62,8 +64,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   int? _assigneeId;
   String? _assigneeName;
   WorkOrderStatus _status = WorkOrderStatus.notStarted;
-  WorkOrderPriority _priority = WorkOrderPriority.medium;
-  bool _isPm = false;
+  WorkOrderPriority? _priority;
+  bool? _isPm;
 
   final _issueController = TextEditingController();
   final _locationController = TextEditingController();
@@ -107,7 +109,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   void initState() {
     super.initState();
     _startDate = DateTime.now();
-    _dueDate = DateTime.now().add(const Duration(days: 7));
+    _dueDate = null;
     _prefillFromExisting();
     if (widget.existing == null &&
         (widget.initialIssueDescription?.trim().isNotEmpty ?? false)) {
@@ -548,6 +550,28 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       _partLines.isNotEmpty &&
       _partLines.every((l) => l.repairStatus == RepairStatus.completed);
 
+  void _recalculateEstimatedCost() {
+    double totalCost = 0;
+    for (final line in _partLines) {
+      if (line.partId != null) {
+        PartSummary? part;
+        for (final p in _parts) {
+          if (p.id == line.partId) {
+            part = p;
+            break;
+          }
+        }
+        if (part != null && part.unitCost != null) {
+          final qty = double.tryParse(line.quantityController.text.trim()) ?? 0;
+          totalCost += part.unitCost! * qty;
+        }
+      }
+    }
+    if (totalCost > 0) {
+      _costController.text = totalCost.toStringAsFixed(2);
+    }
+  }
+
   bool get _isCompletedRestrictedEdit =>
       widget.isEdit && _status == WorkOrderStatus.completed;
 
@@ -555,7 +579,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   bool get _isTrailerUnit => (_entityTypeId ?? 1) == 2;
 
   /// Odometer readings don't apply to trailers or preventive maintenance work.
-  bool get _showOdometerFields => !_isTrailerUnit && !_isPm;
+  bool get _showOdometerFields => !_isTrailerUnit && !(_isPm ?? false);
 
   void _onStatusChanged(WorkOrderStatus? next) {
     if (next == null) return;
@@ -614,10 +638,10 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       unitNumber: _selectedEntity!.name,
       issueDescription: _issueController.text.trim(),
       status: _status.code,
-      isPreventativeMaintenance: _isPm,
+      isPreventativeMaintenance: _isPm ?? false,
       entityTypeId: _entityTypeId!,
-      priority: _priority.code,
-      assignee: _assigneeId!,
+      priority: (_priority ?? WorkOrderPriority.medium).code,
+      assignee: _assigneeId ?? AuthService.instance.currentUser?.id ?? 0,
       estimatedCost: double.tryParse(_costController.text.trim()) ?? 0,
       startDate: _startDate,
       dueDate: _dueDate,
@@ -657,20 +681,47 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
             ),
           )
           .toList(),
-      pmInspectionResults: _isPm ? _pmResults : const [],
-      pmTireMeasurements: _isPm ? _tireMeasurements : const [],
-      pmDefects: _isPm ? _defects : const [],
+      pmInspectionResults: (_isPm ?? false) ? _pmResults : const [],
+      pmTireMeasurements: (_isPm ?? false) ? _tireMeasurements : const [],
+      pmDefects: (_isPm ?? false) ? _defects : const [],
     );
+  }
+
+  void _reduceInventoryForUsedParts() {
+    for (final line in _partLines) {
+      if (line.partId != null) {
+        final usedQty = int.tryParse(line.quantityController.text.trim()) ?? 0;
+        if (usedQty > 0) {
+          PartSummary? part;
+          for (final p in _parts) {
+            if (p.id == line.partId) {
+              part = p;
+              break;
+            }
+          }
+          if (part != null) {
+            final currentQty = part.quantity ?? 0;
+            final newQty =
+                (currentQty - usedQty) < 0 ? 0 : (currentQty - usedQty);
+            InventoryService.instance.updatePart(
+              id: part.id,
+              typeId: part.typeId,
+              code: part.code,
+              quantity: newQty.toInt(),
+            );
+          }
+        }
+      }
+    }
   }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    if (_entityTypeId == null ||
-        _selectedEntity == null ||
-        _assigneeId == null) {
+    if (_entityTypeId == null || _selectedEntity == null) {
       AppToast.showError('Complete all required fields');
       return;
     }
+    _assigneeId ??= AuthService.instance.currentUser?.id ?? 0;
 
     final rangeError = _odometerRangeError;
     if (rangeError != null) {
@@ -702,6 +753,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         ApiFeedback.showError(result, fallback: 'Save failed');
         return;
       }
+      _reduceInventoryForUsedParts();
       AppToast.showSuccess('Work order updated');
       Navigator.of(context).pop(true);
       return;
@@ -730,6 +782,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       ApiFeedback.showError(result, fallback: 'Save failed');
       return;
     }
+    _reduceInventoryForUsedParts();
 
     final newId = result.data ?? 0;
     if (newId > 0 && _pendingAttachments.isNotEmpty) {
@@ -784,7 +837,11 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                       children: [
                         _DropdownField<int>(
                           label: 'Unit Type *',
+                          hint: 'Select Unit',
                           value: _entityTypeId,
+                          enabled: !widget.isEdit &&
+                              (widget.linkedDefects == null ||
+                                  widget.linkedDefects!.isEmpty),
                           items: _entityTypes
                               .map(
                                 (t) => DropdownMenuItem(
@@ -804,7 +861,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                         ),
                         _DropdownField<int>(
                           label: 'Unit Number *',
+                          hint: 'Select Unit Number',
                           value: _selectedEntityId,
+                          enabled: !widget.isEdit,
                           items: _entities
                               .map(
                                 (e) => DropdownMenuItem(
@@ -821,6 +880,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                         ),
                         _DropdownField<WorkOrderPriority>(
                           label: 'Priority *',
+                          hint: 'Select Priority',
                           value: _priority,
                           items: WorkOrderPriority.values
                               .map(
@@ -837,6 +897,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                         ),
                         _DropdownField<bool>(
                           label: 'Work Order Type *',
+                          hint: 'Select Work Order Type',
                           value: _isPm,
                           items: const [
                             DropdownMenuItem(
@@ -847,12 +908,12 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                           ],
                           onChanged: (v) {
                             setState(() => _isPm = v ?? _isPm);
-                            if (_isPm && _pmCategories.isEmpty) {
+                            if ((_isPm ?? false) && _pmCategories.isEmpty) {
                               _loadPmChecklist(_entityTypeId ?? 1);
                             }
                           },
                           validator: (v) => v == null ? 'Required' : null,
-                          enabled: _entityTypeId != null,
+                          enabled: !widget.isEdit && _entityTypeId != null,
                           disabledHint: _entityTypeId == null
                               ? 'Select a Unit Type first'
                               : null,
@@ -897,31 +958,6 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                                   .toList(),
                           onChanged: _onStatusChanged,
                         ),
-                        _DropdownField<int>(
-                          label: 'Assign To *',
-                          value: _assigneeId,
-                          items: [
-                            ..._technicians.map(
-                              (t) => DropdownMenuItem(
-                                value: t.userId != 0 ? t.userId : t.id,
-                                child: Text(t.name),
-                              ),
-                            ),
-                            if (_assigneeId != null &&
-                                !_technicians.any(
-                                  (t) =>
-                                      (t.userId != 0 ? t.userId : t.id) ==
-                                      _assigneeId,
-                                ))
-                              DropdownMenuItem(
-                                value: _assigneeId,
-                                child: Text(_assigneeName ?? 'Technician'),
-                              ),
-                          ],
-                          onChanged: (v) =>
-                              setState(() => _assigneeId = v),
-                          validator: (v) => v == null ? 'Required' : null,
-                        ),
                         _DateField(
                           label: 'Start Date *',
                           value: _startDate,
@@ -931,7 +967,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                           ),
                         ),
                         _DateField(
-                          label: 'Due Date *',
+                          label: 'Due Date',
                           value: _dueDate,
                           onTap: () => _pickDate(
                             initial: _dueDate,
@@ -1075,7 +1111,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                           ..._partLines.map(_buildPartLine),
                       ],
                     ),
-                    if (_isPm) ...[
+                    if (_isPm ?? false) ...[
                       const SizedBox(height: 14),
                       _SectionCard(
                         number: 6,
@@ -1447,42 +1483,37 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
               maxLines: 2,
               onChanged: (_) => setState(() {}),
             ),
-            DropdownButtonFormField<int>(
-              decoration:
-                  const InputDecoration(labelText: 'Part Type Name *'),
-              initialValue: line.partTypeId,
-              items: _partTypes
-                  .map(
-                    (t) => DropdownMenuItem(
-                      value: t.id,
-                      child: Text(t.name),
-                    ),
-                  )
-                  .toList(),
+            WebSearchableDropdownField<PartTypeSummary?>(
+              label: 'Part Type Name *',
+              value: _partTypes
+                  .where((t) => t.id == line.partTypeId)
+                  .firstOrNull,
+              items: [null, ..._partTypes],
+              itemLabel: (t) => t?.name ?? 'Select Part Type',
+              hint: 'Select Part Type',
               onChanged: restricted
-                  ? null
+                  ? (_) {}
                   : (v) => setState(() {
-                        line.partTypeId = v;
+                        line.partTypeId = v?.id;
                         line.partId = null;
+                        _recalculateEstimatedCost();
                       }),
             ),
-            DropdownButtonFormField<int>(
-              decoration: const InputDecoration(labelText: 'Part *'),
-              initialValue: line.partId,
-              isExpanded: true,
-              items: filteredParts
-                  .map(
-                    (p) => DropdownMenuItem(
-                      value: p.id,
-                      child: Text(
-                        '${p.code} (${p.quantity ?? 0})',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  )
-                  .toList(),
-              onChanged:
-                  restricted ? null : (v) => setState(() => line.partId = v),
+            WebSearchableDropdownField<PartSummary?>(
+              label: 'Part *',
+              value: filteredParts
+                  .where((p) => p.id == line.partId)
+                  .firstOrNull,
+              items: [null, ...filteredParts],
+              itemLabel: (p) =>
+                  p != null ? '${p.code} (${p.quantity ?? 0})' : 'Select Part',
+              hint: 'Select Part',
+              onChanged: restricted
+                  ? (_) {}
+                  : (v) => setState(() {
+                        line.partId = v?.id;
+                        _recalculateEstimatedCost();
+                      }),
             ),
             TextFormField(
               controller: line.hoursController,
@@ -1500,6 +1531,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
               enabled: !restricted,
               decoration: const InputDecoration(labelText: 'Quantity *'),
               keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {
+                _recalculateEstimatedCost();
+              }),
             ),
             if (line.repairPerformedBy == RepairPerformedBy.external)
               TextFormField(
@@ -1507,6 +1541,27 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                 enabled: !restricted,
                 decoration: const InputDecoration(labelText: 'Vendor name'),
               ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _recalculateEstimatedCost();
+                  });
+                  AppToast.showSuccess('Repair details saved');
+                },
+                icon: const Icon(Icons.check_rounded, size: 16),
+                label: const Text('Save Repair'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFF1A1A1A),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -2000,6 +2055,7 @@ class _DropdownField<T> extends StatelessWidget {
     required this.value,
     required this.items,
     required this.onChanged,
+    this.hint,
     this.validator,
     this.enabled = true,
     this.disabledHint,
@@ -2009,6 +2065,7 @@ class _DropdownField<T> extends StatelessWidget {
   final T? value;
   final List<DropdownMenuItem<T>> items;
   final ValueChanged<T?> onChanged;
+  final String? hint;
   final String? Function(T?)? validator;
   final bool enabled;
   final String? disabledHint;
@@ -2023,6 +2080,7 @@ class _DropdownField<T> extends StatelessWidget {
           DropdownButtonFormField<T>(
             decoration: InputDecoration(labelText: label),
             initialValue: value,
+            hint: hint != null ? Text(hint!) : null,
             items: items,
             onChanged: enabled ? onChanged : null,
             validator: validator,

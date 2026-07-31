@@ -888,13 +888,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
   Widget _buildCard(PowerUnitModel u) {
     final bool isMaintenance = u.isMaintenance;
 
-    final subtitleStr = u.vinNumber ?? '';
-
-    String? contextText;
-    if (isMaintenance && u.registrationExpiry != null) {
-      contextText = 'Exp: ${u.registrationExpiry}';
-    }
-
     final expiryDays = _daysUntilExpiry(u.registrationExpiry);
     final bool isOverdue = expiryDays != null && expiryDays < 0;
     String? badgeLabel;
@@ -922,45 +915,25 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
         ? BadgeTone.success
         : BadgeTone.danger;
 
-    Widget dataRow(String label, String? value, {Color? valueColor}) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-            Expanded(
-              child: Text(
-                value ?? '—',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: valueColor ?? AppColors.textPrimary,
-                ),
-                textAlign: TextAlign.end,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return Container(
+      margin: const EdgeInsets.only(bottom: 12),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.cardShadow.withValues(alpha: 0.3),
+            blurRadius: 12,
+            spreadRadius: 1,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          splashColor: AppColors.danger.withValues(alpha: 0.06),
-          highlightColor: AppColors.danger.withValues(alpha: 0.03),
           onTap: () => _openDetail(u),
           child: IntrinsicHeight(
             child: Row(
@@ -969,145 +942,198 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                 Container(width: 5, color: StatusBadgeColors.accent(cardTone)),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.fromLTRB(14, 10, 10, 14),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        // ── Header ──
+                        // ── Top Header Row (Badges + Action Icons) ──
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            if (u.isOos)
+                              const MiniStatusBadge(
+                                label: 'OOS',
+                                tone: BadgeTone.danger,
+                                dense: true,
+                              )
+                            else if (isMaintenance)
+                              const MiniStatusBadge(
+                                label: 'MAINTENANCE',
+                                tone: BadgeTone.warning,
+                                dense: true,
+                              )
+                            else if (u.isActive)
+                              const MiniStatusBadge(
+                                label: 'ACTIVE',
+                                tone: BadgeTone.success,
+                                dense: true,
+                              )
+                            else
+                              const MiniStatusBadge(
+                                label: 'INACTIVE',
+                                tone: BadgeTone.danger,
+                                dense: true,
+                              ),
+                            const Spacer(),
+                            if (badgeLabel != null && badgeTone != null) ...[
+                              MiniStatusBadge(
+                                label: badgeLabel,
+                                tone: badgeTone,
+                                dense: true,
+                                borderColor: badgeTone == BadgeTone.danger
+                                    ? StatusBadgeColors.dangerBorderLight
+                                    : null,
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            if (_canUpdate)
+                              IconOnlyButton(
+                                icon: Icons.edit,
+                                color: AppColors.chromeBlue,
+                                onTap: () => _openEdit(u),
+                              ),
+                            if (_canDelete) ...[
+                              const SizedBox(width: 2),
+                              IconOnlyButton(
+                                icon: Icons.delete_outline,
+                                danger: true,
+                                onTap: () => _confirmDelete(u),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // ── Main Content Row ──
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Expanded(
+                              flex: 4,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(
                                     u.unitNumber,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      fontSize: 16,
                                       fontWeight: FontWeight.bold,
+                                      fontSize: 16,
                                       color: AppColors.textPrimary,
                                     ),
-                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  if (subtitleStr.isNotEmpty) ...[
+                                  if (u.vinNumber != null &&
+                                      u.vinNumber!.isNotEmpty) ...[
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      u.vinNumber!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                  if (u.licensePlate != null &&
+                                      u.licensePlate!.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    RichText(
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      text: TextSpan(
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                        children: [
+                                          const TextSpan(text: 'Plate: '),
+                                          TextSpan(
+                                            text: u.licensePlate!,
+                                            style: TextStyle(
+                                              color: AppColors.chromeBlue,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ] else if (u.companyName != null &&
+                                      u.companyName!.isNotEmpty) ...[
                                     const SizedBox(height: 2),
                                     Text(
-                                      subtitleStr,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: AppColors.textSecondary,
-                                        letterSpacing: 0.5,
-                                      ),
+                                      u.companyName!,
+                                      maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
+                                      ),
                                     ),
                                   ],
                                 ],
                               ),
                             ),
                             const SizedBox(width: 8),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (_canUpdate)
-                                      IconOnlyButton(
-                                        icon: Icons.edit,
-                                        color: AppColors.chromeBlue,
-                                        onTap: () => _openEdit(u),
-                                      ),
-                                    if (_canDelete)
-                                      IconOnlyButton(
-                                        icon: Icons.delete_outline,
-                                        danger: true,
-                                        onTap: () => _confirmDelete(u),
-                                      ),
-                                  ],
-                                ),
-                                const SizedBox(height: 4),
-                                Wrap(
-                                  alignment: WrapAlignment.end,
-                                  crossAxisAlignment: WrapCrossAlignment.end,
-                                  spacing: 4,
-                                  runSpacing: 4,
-                                  children: [
-                                    if (u.isOos)
-                                      const MiniStatusBadge(
-                                        label: 'OOS',
-                                        tone: BadgeTone.danger,
-                                        dense: true,
-                                      )
-                                    else if (isMaintenance)
-                                      const MiniStatusBadge(
-                                        label: 'MAINTENANCE',
-                                        tone: BadgeTone.warning,
-                                        dense: true,
-                                      )
-                                    else if (u.isActive)
-                                      const MiniStatusBadge(
-                                        label: 'ACTIVE',
-                                        tone: BadgeTone.success,
-                                        dense: true,
-                                      )
-                                    else
-                                      const MiniStatusBadge(
-                                        label: 'INACTIVE',
-                                        tone: BadgeTone.danger,
-                                        dense: true,
-                                      ),
-                                    if (badgeLabel != null && badgeTone != null)
-                                      MiniStatusBadge(
-                                        label: badgeLabel,
-                                        tone: badgeTone,
-                                        dense: true,
-                                        borderColor:
-                                            badgeTone == BadgeTone.danger
-                                            ? StatusBadgeColors
-                                                  .dangerBorderLight
-                                            : null,
-                                      ),
-                                  ],
-                                ),
-                                if (contextText != null) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    contextText,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: StatusBadgeColors.text(
-                                        BadgeTone.warning,
-                                      ),
-                                      fontWeight: FontWeight.w500,
+                            Expanded(
+                              flex: 6,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    child: _GridCell(
+                                      label: 'Status',
+                                      child: u.isOos
+                                          ? const MiniStatusBadge(
+                                              label: 'OOS',
+                                              tone: BadgeTone.danger,
+                                            )
+                                          : isMaintenance
+                                              ? const MiniStatusBadge(
+                                                  label: 'Maintenance',
+                                                  tone: BadgeTone.warning,
+                                                )
+                                              : u.isActive
+                                                  ? const MiniStatusBadge(
+                                                      label: 'Active',
+                                                      tone: BadgeTone.success,
+                                                    )
+                                                  : const MiniStatusBadge(
+                                                      label: 'Inactive',
+                                                      tone: BadgeTone.danger,
+                                                    ),
                                     ),
                                   ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: _GridCell(
+                                      label: 'Reg. Expiry',
+                                      child: Text(
+                                        u.registrationExpiry ?? '—',
+                                        maxLines: 1,
+                                        softWrap: false,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: _expiryColor(
+                                                u.registrationExpiry,
+                                              ) ??
+                                              AppColors.textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18,
+                                    color: AppColors.textTertiary,
+                                  ),
                                 ],
-                              ],
+                              ),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 10),
-                        Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: AppColors.textSecondary.withValues(
-                            alpha: 0.12,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        // ── Data rows ──
-                        dataRow(
-                          _isSuperAdmin ? 'Company' : 'License Plate',
-                          _isSuperAdmin ? u.companyName : u.licensePlate,
-                        ),
-                        dataRow(
-                          'Registration Expiry',
-                          u.registrationExpiry,
-                          valueColor: _expiryColor(u.registrationExpiry),
                         ),
                       ],
                     ),
@@ -1290,7 +1316,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                     return Column(
                       children: _visibleItems.map((u) {
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.only(bottom: 12),
                           child: _buildCard(u),
                         );
                       }).toList(),
@@ -1303,7 +1329,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                       gridDelegate:
                           const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 500,
-                            mainAxisExtent: 310,
+                            mainAxisExtent: 140,
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                           ),
@@ -1340,6 +1366,36 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _GridCell extends StatelessWidget {
+  const _GridCell({
+    required this.label,
+    required this.child,
+  });
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        child,
+      ],
     );
   }
 }

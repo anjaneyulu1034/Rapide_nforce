@@ -13,8 +13,9 @@ import 'package:rapide_nforce/ui/trailer_detail_screen.dart';
 import 'package:rapide_nforce/ui/trailers/trailer_form_screen.dart';
 import 'package:rapide_nforce/ui/trailers/trailer_import_screen.dart';
 import 'package:rapide_nforce/ui/widgets/api_error_banner.dart';
+import 'package:rapide_nforce/ui/widgets/icon_only_button.dart';
 import 'package:rapide_nforce/ui/widgets/list_empty_state.dart';
-import 'package:rapide_nforce/ui/widgets/status_chip.dart';
+import 'package:rapide_nforce/ui/widgets/status_badge.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class TrailersScreen extends StatefulWidget {
@@ -253,9 +254,6 @@ class _TrailersScreenState extends State<TrailersScreen> {
                                 _sortAscending = tempAscending;
                               });
                               Navigator.pop(sheetContext);
-                              // A column pick/clear changes the effective
-                              // fetch size (need the full batch to sort
-                              // correctly), so re-fetch when it changes.
                               if (columnChanged) _load();
                             },
                             style: FilledButton.styleFrom(
@@ -322,8 +320,6 @@ class _TrailersScreenState extends State<TrailersScreen> {
     });
   }
 
-  // Fetches a larger batch when a column sort is active so the sort reflects
-  // the whole list, not just the currently-paginated-in page.
   int get _effectiveLimit => _sortColumn != null ? 500 : _limit;
 
   Future<void> _load() async {
@@ -597,310 +593,232 @@ class _TrailersScreenState extends State<TrailersScreen> {
 
   Widget _buildCard(TrailerModel t) {
     final bool isActive = t.isActive;
-    final subtitleStr = [
-      t.make,
-      t.model,
-    ].where((s) => s != null && s.isNotEmpty).join(' ');
-
-    Widget infoTile({
-      required IconData icon,
-      required String label,
-      required String value,
-      required Color bgStart,
-      required Color bgEnd,
-      required Color border,
-      required Color fg,
-    }) {
-      return Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [bgStart, bgEnd],
-            ),
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(color: border),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, size: 11, color: fg),
-                  const SizedBox(width: 4),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: fg,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Text(
-                value.isEmpty ? 'N/A' : value,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: fg,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    // EXPIRY urgency drives the tile color — a real signal, not decoration.
     final expiryDays = _daysUntilExpiry(t.registrationExpiry);
-    final Color expiryBgStart, expiryBgEnd, expiryBorder, expiryFg;
-    if (expiryDays == null) {
-      expiryBgStart = AppColors.surfaceTertiary;
-      expiryBgEnd = AppColors.surfaceTertiary;
-      expiryBorder = AppColors.border;
-      expiryFg = AppColors.textSecondary;
-    } else if (expiryDays < 0) {
-      expiryBgStart = AppColors.statRoseBgStart;
-      expiryBgEnd = AppColors.statRoseBgEnd;
-      expiryBorder = AppColors.statRoseBorder;
-      expiryFg = AppColors.statRoseText;
-    } else if (expiryDays <= 30) {
-      expiryBgStart = AppColors.statOrangeBgStart;
-      expiryBgEnd = AppColors.statOrangeBgEnd;
-      expiryBorder = AppColors.statOrangeBorder;
-      expiryFg = AppColors.statOrangeText;
-    } else {
-      expiryBgStart = AppColors.statEmeraldBgStart;
-      expiryBgEnd = AppColors.statEmeraldBgEnd;
-      expiryBorder = AppColors.statEmeraldBorder;
-      expiryFg = AppColors.statEmeraldText;
+    final bool isOverdue = expiryDays != null && expiryDays < 0;
+    String? badgeLabel;
+    BadgeTone? badgeTone;
+    if (expiryDays != null && expiryDays <= 30) {
+      if (expiryDays < 0) {
+        badgeLabel = 'OVERDUE';
+        badgeTone = BadgeTone.danger;
+      } else if (expiryDays == 0) {
+        badgeLabel = 'DUE TODAY';
+        badgeTone = BadgeTone.danger;
+      } else {
+        badgeLabel = '$expiryDays DAYS';
+        badgeTone = BadgeTone.warning;
+      }
     }
 
-    Widget actionButton({
-      required IconData icon,
-      required String label,
-      required VoidCallback onPressed,
-      required Color fg,
-      required Color border,
-      Color? bg,
-    }) {
-      return Expanded(
-        child: OutlinedButton.icon(
-          onPressed: onPressed,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: fg,
-            backgroundColor: bg,
-            side: BorderSide(color: border),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(9),
-            ),
-            minimumSize: const Size(0, 38),
-            padding: EdgeInsets.zero,
-          ),
-          icon: Icon(icon, size: 14),
-          label: Text(
-            label,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          ),
-        ),
-      );
-    }
+    final BadgeTone cardTone = isOverdue
+        ? BadgeTone.danger
+        : !isActive
+        ? BadgeTone.danger
+        : BadgeTone.success;
 
     return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 14,
-            offset: const Offset(0, 6),
+            color: AppColors.cardShadow.withValues(alpha: 0.3),
+            blurRadius: 12,
+            spreadRadius: 1,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          Positioned(
-            left: 0,
-            top: 0,
-            bottom: 0,
-            width: 4,
-            child: ColoredBox(color: AppColors.primary),
-          ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () => _openDetail(t),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _openDetail(t),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 5, color: StatusBadgeColors.accent(cardTone)),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 10, 10, 14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            color: AppColors.primary.withValues(alpha: 0.10),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(
-                            Icons.rv_hookup_outlined,
-                            size: 20,
-                            color: AppColors.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                t.trailerNumber,
-                                style: TextStyle(
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.textPrimary,
-                                  letterSpacing: -0.2,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              if (subtitleStr.isNotEmpty) ...[
-                                const SizedBox(height: 2),
-                                Text(
-                                  subtitleStr,
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    color: AppColors.textSecondary,
-                                    fontWeight: FontWeight.w500,
+                        // ── Top Header Row (Badges + Action Icons) ──
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            isActive
+                                ? const MiniStatusBadge(
+                                    label: 'ACTIVE',
+                                    tone: BadgeTone.success,
+                                    dense: true,
+                                  )
+                                : const MiniStatusBadge(
+                                    label: 'INACTIVE',
+                                    tone: BadgeTone.danger,
+                                    dense: true,
                                   ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
+                            const Spacer(),
+                            if (badgeLabel != null && badgeTone != null) ...[
+                              MiniStatusBadge(
+                                label: badgeLabel,
+                                tone: badgeTone,
+                                dense: true,
+                                borderColor: badgeTone == BadgeTone.danger
+                                    ? StatusBadgeColors.dangerBorderLight
+                                    : null,
+                              ),
+                              const SizedBox(width: 6),
                             ],
-                          ),
+                            IconOnlyButton(
+                              icon: Icons.edit,
+                              color: AppColors.chromeBlue,
+                              onTap: () => _openEdit(t),
+                            ),
+                            const SizedBox(width: 2),
+                            IconOnlyButton(
+                              icon: Icons.delete_outline,
+                              danger: true,
+                              onTap: () => _confirmDelete(t),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 8),
-                        isActive
-                            ? StatusChip.active('Active')
-                            : StatusChip.inactive('Inactive'),
+                        const SizedBox(height: 8),
+                        // ── Main Content Row ──
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              flex: 4,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    t.trailerNumber,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  if (t.vinNumber != null &&
+                                      t.vinNumber!.isNotEmpty) ...[
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      t.vinNumber!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                  if (t.licensePlate != null &&
+                                      t.licensePlate!.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    RichText(
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      text: TextSpan(
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary,
+                                        ),
+                                        children: [
+                                          const TextSpan(text: 'Plate: '),
+                                          TextSpan(
+                                            text: t.licensePlate!,
+                                            style: TextStyle(
+                                              color: AppColors.chromeBlue,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ] else if (t.companyName != null &&
+                                      t.companyName!.isNotEmpty) ...[
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      t.companyName!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              flex: 6,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    child: _GridCell(
+                                      label: 'Status',
+                                      child: isActive
+                                          ? const MiniStatusBadge(
+                                              label: 'Active',
+                                              tone: BadgeTone.success,
+                                            )
+                                          : const MiniStatusBadge(
+                                              label: 'Inactive',
+                                              tone: BadgeTone.danger,
+                                            ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: _GridCell(
+                                      label: 'Reg. Expiry',
+                                      child: Text(
+                                        _formatDate(t.registrationExpiry) ?? '—',
+                                        maxLines: 1,
+                                        softWrap: false,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                          color: isOverdue
+                                              ? StatusBadgeColors.text(
+                                                  BadgeTone.danger,
+                                                )
+                                              : AppColors.textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    if (_isSuperAdmin &&
-                        (t.companyName ?? '').isNotEmpty) ...[
-                      Row(
-                        children: [
-                          infoTile(
-                            icon: Icons.apartment_outlined,
-                            label: 'COMPANY',
-                            value: t.companyName ?? '',
-                            bgStart: AppColors.surfaceTertiary,
-                            bgEnd: AppColors.surfaceTertiary,
-                            border: AppColors.border,
-                            fg: AppColors.textPrimary,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                    Row(
-                      children: [
-                        infoTile(
-                          icon: Icons.category_outlined,
-                          label: 'TYPE',
-                          value: t.type,
-                          bgStart: AppColors.statBlueBgStart,
-                          bgEnd: AppColors.statBlueBgEnd,
-                          border: AppColors.statBlueBorder,
-                          fg: AppColors.statBlueText,
-                        ),
-                        const SizedBox(width: 10),
-                        infoTile(
-                          icon: Icons.pin_outlined,
-                          label: 'PLATE',
-                          value: t.licensePlate ?? '',
-                          bgStart: AppColors.statOrangeBgStart,
-                          bgEnd: AppColors.statOrangeBgEnd,
-                          border: AppColors.statOrangeBorder,
-                          fg: AppColors.statOrangeText,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        infoTile(
-                          icon: Icons.fingerprint,
-                          label: 'VIN',
-                          value: t.vinNumber ?? '',
-                          bgStart: AppColors.surfaceTertiary,
-                          bgEnd: AppColors.surfaceTertiary,
-                          border: AppColors.border,
-                          fg: AppColors.textPrimary,
-                        ),
-                        const SizedBox(width: 10),
-                        infoTile(
-                          icon: expiryDays != null && expiryDays < 0
-                              ? Icons.event_busy_outlined
-                              : Icons.event_available_outlined,
-                          label: 'EXPIRY',
-                          value: _formatDate(t.registrationExpiry) ?? '',
-                          bgStart: expiryBgStart,
-                          bgEnd: expiryBgEnd,
-                          border: expiryBorder,
-                          fg: expiryFg,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Row(
-                      children: [
-                        actionButton(
-                          icon: Icons.visibility_outlined,
-                          label: 'View',
-                          onPressed: () => _openDetail(t),
-                          fg: AppColors.textPrimary,
-                          border: AppColors.border,
-                        ),
-                        const SizedBox(width: 8),
-                        actionButton(
-                          icon: Icons.edit_outlined,
-                          label: 'Edit',
-                          onPressed: () => _openEdit(t),
-                          fg: AppColors.primary,
-                          border: AppColors.primary.withValues(alpha: 0.35),
-                          bg: AppColors.primary.withValues(alpha: 0.06),
-                        ),
-                        const SizedBox(width: 8),
-                        actionButton(
-                          icon: Icons.delete_outline_rounded,
-                          label: 'Delete',
-                          onPressed: () => _confirmDelete(t),
-                          fg: AppColors.danger,
-                          border: AppColors.danger.withValues(alpha: 0.35),
-                          bg: AppColors.danger.withValues(alpha: 0.06),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -915,87 +833,55 @@ class _TrailersScreenState extends State<TrailersScreen> {
           controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
-            WebSearchField(
-              controller: _searchController,
-              hintText: 'Search by Unit #, VIN',
-              showClear: _search.isNotEmpty,
-              onClear: () {
-                _searchController.clear();
-                setState(() {
-                  _search = '';
-                  _page = 1;
-                });
-                _load();
-              },
-            ),
-            const SizedBox(height: 14),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: AppColors.primary.withValues(alpha: 0.18),
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.rv_hookup_outlined,
-                        size: 14,
-                        color: AppColors.primary,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '$_total',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _total == 1 ? 'Trailer' : 'Trailers',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ],
+                Expanded(
+                  child: WebSearchField(
+                    controller: _searchController,
+                    hintText: 'Search by Unit #, VIN, or Plate',
+                    showClear: _search.isNotEmpty,
+                    onClear: () {
+                      _searchController.clear();
+                      setState(() {
+                        _search = '';
+                        _page = 1;
+                      });
+                      _load();
+                    },
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    IconButton(
-                      onPressed: _openSortSheet,
-                      icon: Icon(
-                        Icons.sort_rounded,
-                        color: _sortColumn != null
-                            ? AppColors.primary
-                            : AppColors.textSecondary,
-                      ),
-                      style: IconButton.styleFrom(
-                        backgroundColor: AppColors.card,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          side: BorderSide(color: AppColors.border),
+                    Material(
+                      color: AppColors.inputFill,
+                      borderRadius: BorderRadius.circular(12),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: _openSortSheet,
+                        child: Container(
+                          width: 44,
+                          height: 44,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Icon(
+                            Icons.tune_rounded,
+                            color: _sortColumn != null
+                                ? AppColors.primary
+                                : AppColors.textSecondary,
+                          ),
                         ),
                       ),
                     ),
                     if (_sortColumn != null)
                       Positioned(
-                        top: 4,
-                        right: 4,
+                        top: -2,
+                        right: -2,
                         child: Container(
                           width: 10,
                           height: 10,
@@ -1008,12 +894,30 @@ class _TrailersScreenState extends State<TrailersScreen> {
                       ),
                   ],
                 ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    'My Trailers',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
                 if (_isAdminOrSuperAdmin)
                   TextButton.icon(
                     onPressed: _openImport,
                     style: TextButton.styleFrom(
                       foregroundColor: AppColors.textPrimary,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 0),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                     icon: const Icon(Icons.file_upload_outlined, size: 16),
                     label: const Text(
@@ -1024,6 +928,14 @@ class _TrailersScreenState extends State<TrailersScreen> {
                       ),
                     ),
                   ),
+                Text(
+                  '$_total Total',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.chromeBlue,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -1051,7 +963,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
                     return Column(
                       children: visible.map((t) {
                         return Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.only(bottom: 12),
                           child: _buildCard(t),
                         );
                       }).toList(),
@@ -1062,11 +974,9 @@ class _TrailersScreenState extends State<TrailersScreen> {
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: visible.length,
                       gridDelegate:
-                          SliverGridDelegateWithMaxCrossAxisExtent(
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
                             maxCrossAxisExtent: 500,
-                            // Taller for super admins — their cards gain an
-                            // extra COMPANY info row above TYPE/PLATE.
-                            mainAxisExtent: _isSuperAdmin ? 416 : 352,
+                            mainAxisExtent: 140,
                             crossAxisSpacing: 16,
                             mainAxisSpacing: 16,
                           ),
@@ -1102,3 +1012,34 @@ class _TrailersScreenState extends State<TrailersScreen> {
     );
   }
 }
+
+class _GridCell extends StatelessWidget {
+  const _GridCell({
+    required this.label,
+    required this.child,
+  });
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        child,
+      ],
+    );
+  }
+}
+

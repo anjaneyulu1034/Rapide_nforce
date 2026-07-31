@@ -422,6 +422,7 @@ class _PartTypesTabState extends State<_PartTypesTab> {
   }
 
   Widget _partTypeCardBody(PartTypeModel item, String company) {
+    final toneColor = StatusBadgeColors.text(stockLevelTone(item.stockLevel));
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -555,7 +556,7 @@ class _PartTypesTabState extends State<_PartTypesTab> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: toneColor,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1215,6 +1216,7 @@ class _PartsTabState extends State<_PartsTab> {
   }
 
   Widget _partCardBody(PartModel part) {
+    final toneColor = StatusBadgeColors.text(stockLevelTone(part.stockLevel));
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -1347,7 +1349,7 @@ class _PartsTabState extends State<_PartsTab> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
+                        color: toneColor,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),

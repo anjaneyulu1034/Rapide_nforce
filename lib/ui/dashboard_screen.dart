@@ -8,6 +8,7 @@ import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/services/dashboard_service.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
+import 'package:rapide_nforce/ui/work_orders/work_order_detail_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key, this.onNavigate});
@@ -60,8 +61,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildContent(DashboardModel data) {
     return WebListPage(
-      title: 'Dashboard',
-      subtitle: 'Overview of your work orders and inventory',
+      title: '',
       onRefresh: _load,
       sliver: SliverList(
         delegate: SliverChildListDelegate([
@@ -72,7 +72,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: EdgeInsets.zero,
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
-            childAspectRatio: 0.82,
+            childAspectRatio: 1.38,
             children: [
               WebStatCard(
                 label: AppStrings.openWorkOrders,
@@ -84,8 +84,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 borderColor: AppColors.statBlueBorder,
                 labelColor: AppColors.statBlueText,
                 valueColor: AppColors.statBlueValue,
-                iconBg: AppColors.statBlueBorder.withValues(alpha: 0.5),
-                linkColor: AppColors.gold,
+                iconBg: AppColors.statBlueBorder,
+                iconColor: Colors.white,
+                linkColor: AppColors.statBlueText,
                 onTap: () => widget.onNavigate?.call(AppRoute.maintenance),
               ),
               WebStatCard(
@@ -98,8 +99,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 borderColor: AppColors.statOrangeBorder,
                 labelColor: AppColors.statOrangeText,
                 valueColor: AppColors.statOrangeValue,
-                iconBg: AppColors.statOrangeBorder.withValues(alpha: 0.5),
-                linkColor: AppColors.primary,
+                iconBg: AppColors.statOrangeBorder,
+                iconColor: Colors.white,
+                linkColor: AppColors.statOrangeText,
                 onTap: () => widget.onNavigate?.call(AppRoute.inventory),
               ),
               WebStatCard(
@@ -112,8 +114,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 borderColor: AppColors.statRoseBorder,
                 labelColor: AppColors.statRoseText,
                 valueColor: AppColors.statRoseValue,
-                iconBg: AppColors.statRoseBorder.withValues(alpha: 0.5),
-                linkColor: const Color(0xFFFF8FAB),
+                iconBg: AppColors.statRoseBorder,
+                iconColor: Colors.white,
+                linkColor: AppColors.statRoseText,
                 onTap: () => widget.onNavigate?.call(AppRoute.requests),
               ),
               WebStatCard(
@@ -126,15 +129,43 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 borderColor: AppColors.statEmeraldBorder,
                 labelColor: AppColors.statEmeraldText,
                 valueColor: AppColors.statEmeraldValue,
-                iconBg: AppColors.statEmeraldBorder.withValues(alpha: 0.5),
+                iconBg: AppColors.statEmeraldBorder,
+                iconColor: Colors.white,
                 linkColor: AppColors.statEmeraldText,
                 onTap: () => widget.onNavigate?.call(AppRoute.maintenance),
               ),
             ],
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           WebSectionCard(
             title: 'Recent Work Orders',
+            action: TextButton(
+              onPressed: () => widget.onNavigate?.call(AppRoute.maintenance),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'View All',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.chromeBlue,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 16,
+                    color: AppColors.chromeBlue,
+                  ),
+                ],
+              ),
+            ),
             child: data.recentWorkOrders.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.all(20),
@@ -144,14 +175,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   )
                 : Column(
-                    children: data.recentWorkOrders
-                        .map(_WorkOrderTile.new)
-                        .toList(),
+                    children: data.recentWorkOrders.map((order) {
+                      return _WorkOrderTile(
+                        order: order,
+                        onTap: () async {
+                          if (order.id > 0) {
+                            final result =
+                                await Navigator.of(context).push<bool>(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    WorkOrderDetailScreen(workOrderId: order.id),
+                              ),
+                            );
+                            if (result == true || mounted) {
+                              _load();
+                            }
+                          } else {
+                            widget.onNavigate?.call(AppRoute.maintenance);
+                          }
+                        },
+                      );
+                    }).toList(),
                   ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           WebSectionCard(
             title: 'Inventory Usage Status',
+            action: TextButton(
+              onPressed: () => widget.onNavigate?.call(AppRoute.inventory),
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'View All',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.chromeBlue,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 16,
+                    color: AppColors.chromeBlue,
+                  ),
+                ],
+              ),
+            ),
             child: data.inventoryItems.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.all(20),
@@ -161,8 +237,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   )
                 : Column(
-                    children:
-                        data.inventoryItems.map(_InventoryTile.new).toList(),
+                    children: data.inventoryItems.map((item) {
+                      return _InventoryTile(
+                        item: item,
+                        onTap: () =>
+                            widget.onNavigate?.call(AppRoute.inventory),
+                      );
+                    }).toList(),
                   ),
           ),
           const SizedBox(height: 56),
@@ -173,94 +254,286 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 class _WorkOrderTile extends StatelessWidget {
-  const _WorkOrderTile(this.order);
+  const _WorkOrderTile({required this.order, this.onTap});
 
   final WorkOrderModel order;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.border)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  order.unitName,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.gold,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  order.description,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: order.status.backgroundColor,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Text(
-              order.statusLabel,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: order.status.textColor,
+    final priority = order.priority ?? WorkOrderPriority.medium;
+    final titleText = order.workOrderNumber.isNotEmpty
+        ? order.workOrderNumber
+        : (order.unitName.isNotEmpty ? order.unitName : 'WO #${order.id}');
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: AppColors.border.withValues(alpha: 0.5),
               ),
             ),
           ),
-        ],
+          child: Row(
+            children: [
+              Container(
+                width: 4,
+                height: 38,
+                margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  color: priority.accentColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            titleText,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (order.unitName.isNotEmpty &&
+                            order.workOrderNumber.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Text(
+                            order.unitName,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      order.description.isNotEmpty
+                          ? order.description
+                          : 'No description provided',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: order.status.backgroundColor,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: order.status.textColor.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: Text(
+                  order.statusLabel,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: order.status.textColor,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: AppColors.textTertiary,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
 class _InventoryTile extends StatelessWidget {
-  const _InventoryTile(this.item);
+  const _InventoryTile({required this.item, this.onTap});
 
   final InventoryItemModel item;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: AppColors.border)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              item.name,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+    final (iconBg, iconColor, statusBg, statusColor, statusLabel) =
+        switch (item.stockLevel) {
+      StockLevel.inStock => (
+          const Color(0xFFDCFCE7),
+          const Color(0xFF15803D),
+          const Color(0xFFDCFCE7),
+          const Color(0xFF15803D),
+          'In Stock'
+        ),
+      StockLevel.low => (
+          const Color(0xFFFEF3C7),
+          const Color(0xFFB45309),
+          const Color(0xFFFEF3C7),
+          const Color(0xFFB45309),
+          'Low Stock'
+        ),
+      StockLevel.outOfStock => (
+          const Color(0xFFFEE2E2),
+          const Color(0xFFB91C1C),
+          const Color(0xFFFEE2E2),
+          const Color(0xFFB91C1C),
+          'Out of Stock'
+        ),
+    };
+
+    final hasCode = item.code.isNotEmpty && item.code != item.name;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: AppColors.border.withValues(alpha: 0.4),
+              ),
             ),
           ),
-          Text(
-            'Qty ${item.quantity}',
-            style: TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 13,
-            ),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  item.stockLevel == StockLevel.low
+                      ? Icons.warning_amber_rounded
+                      : item.stockLevel == StockLevel.outOfStock
+                          ? Icons.error_outline_rounded
+                          : Icons.inventory_2_rounded,
+                  size: 20,
+                  color: iconColor,
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.name,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        if (hasCode) ...[
+                          Text(
+                            item.code,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          if (item.lowStockTrigger > 0)
+                            Text(
+                              ' • ',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
+                        ],
+                        if (item.lowStockTrigger > 0)
+                          Text(
+                            'Min alert: ${item.lowStockTrigger}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: statusBg,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: statusColor.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: Text(
+                      statusLabel,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: statusColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${item.quantity} in stock',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 20,
+                color: AppColors.textTertiary,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 }
+

@@ -615,15 +615,6 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
                         ],
                       ),
               ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: OutlinedButton.icon(
-                  onPressed: _uploadAttachment,
-                  icon: const Icon(Icons.upload_rounded, size: 18),
-                  label: const Text('Upload attachment'),
-                ),
-              ),
             ],
           ),
         ),

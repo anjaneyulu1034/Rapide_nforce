@@ -84,7 +84,7 @@ extension AppRouteNavX on AppRoute {
       case AppRoute.dashboard:
         return 'Home';
       case AppRoute.maintenance:
-        return 'Maintenance';
+        return 'Work Orders';
       case AppRoute.requests:
         return 'Requests';
       case AppRoute.profile:

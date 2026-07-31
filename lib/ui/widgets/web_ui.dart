@@ -79,6 +79,7 @@ class WebStatCard extends StatelessWidget {
     required this.valueColor,
     required this.iconBg,
     required this.linkColor,
+    this.iconColor,
     this.onTap,
   });
 
@@ -93,6 +94,7 @@ class WebStatCard extends StatelessWidget {
   final Color valueColor;
   final Color iconBg;
   final Color linkColor;
+  final Color? iconColor;
   final VoidCallback? onTap;
 
   @override
@@ -101,7 +103,7 @@ class WebStatCard extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: Ink(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -109,71 +111,84 @@ class WebStatCard extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [gradientStart, gradientEnd],
             ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: borderColor),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: borderColor, width: 1.2),
             boxShadow: [
               BoxShadow(
-                color: AppColors.cardShadow,
-                blurRadius: 12,
-                offset: const Offset(0, 4),
+                color: borderColor.withValues(alpha: 0.15),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
               ),
             ],
           ),
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          label,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: labelColor,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          value,
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            color: valueColor,
-                            letterSpacing: -0.5,
-                            height: 1.05,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: iconBg,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: borderColor.withValues(alpha: 0.5),
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: labelColor,
                       ),
                     ),
-                    child: Icon(icon, color: labelColor, size: 24),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: iconBg,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: borderColor.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Icon(icon, color: iconColor ?? labelColor, size: 18),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              Text(
-                '$linkLabel →',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: linkColor,
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: valueColor,
+                    letterSpacing: -0.5,
+                    height: 1.0,
+                  ),
                 ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      linkLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: linkColor,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 13,
+                    color: linkColor,
+                  ),
+                ],
               ),
             ],
           ),

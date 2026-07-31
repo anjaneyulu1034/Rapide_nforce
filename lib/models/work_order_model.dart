@@ -613,12 +613,16 @@ class PartSummary {
     required this.code,
     required this.typeId,
     this.quantity,
+    this.cost,
   });
 
   final int id;
   final String code;
   final int typeId;
   final num? quantity;
+  final num? cost;
+
+  num? get unitCost => cost;
 
   factory PartSummary.fromJson(Map<String, dynamic> json) {
     return PartSummary(
@@ -626,6 +630,7 @@ class PartSummary {
       code: json['code'] as String? ?? '',
       typeId: json['typeId'] as int? ?? json['type_id'] as int? ?? 0,
       quantity: json['quantity'] as num?,
+      cost: json['cost'] as num? ?? json['unitCost'] as num?,
     );
   }
 }

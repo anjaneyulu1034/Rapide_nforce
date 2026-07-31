@@ -3,6 +3,7 @@ import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/enums/app_route.dart';
 import 'package:rapide_nforce/core/utils/menu_route_mapper.dart';
+import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/nav_menu_item.dart';
 import 'package:rapide_nforce/models/user_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
@@ -86,6 +87,9 @@ class _AppDrawerState extends State<AppDrawer> {
       }
 
       if (label == 'documents' || label == 'reports') {
+        if (isLeadTechnicianRole(user?.role)) {
+          return false;
+        }
         return isLead;
       }
 
@@ -96,6 +100,16 @@ class _AppDrawerState extends State<AppDrawer> {
       }
 
       return true;
+    }).map((item) {
+      if (item.label == 'Service Maintenance' || item.label == 'Maintenance') {
+        return NavMenuItem(
+          id: item.id,
+          label: 'Work Orders',
+          path: item.path,
+          children: item.children,
+        );
+      }
+      return item;
     }).toList();
   }
 
@@ -373,6 +387,7 @@ class _AppDrawerState extends State<AppDrawer> {
   List<NavMenuItem> _staticMenus() {
     final user = AuthService.instance.currentUser;
     final isLead = _isLeadOrAdmin(user);
+    final isLeadTech = isLeadTechnicianRole(user?.role);
 
     return [
       const NavMenuItem(id: 'dashboard', label: 'Dashboard', path: '/dashboard'),
@@ -380,7 +395,7 @@ class _AppDrawerState extends State<AppDrawer> {
       const NavMenuItem(id: 'trailers', label: 'My Trailers', path: '/trailers'),
       const NavMenuItem(
         id: 'maintenance',
-        label: 'Service Maintenance',
+        label: 'Work Orders',
         path: '/maintenance',
         children: [
           NavMenuItem(
@@ -405,7 +420,7 @@ class _AppDrawerState extends State<AppDrawer> {
           ),
         ],
       ),
-      if (isLead) ...const [
+      if (isLead && !isLeadTech) ...const [
         NavMenuItem(id: 'documents', label: 'Documents', path: '/documents'),
         NavMenuItem(id: 'reports', label: 'Reports', path: '/reports'),
       ],

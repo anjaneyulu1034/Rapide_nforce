@@ -7,6 +7,7 @@ import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/models/part_models.dart';
 import 'package:rapide_nforce/services/inventory_service.dart';
 import 'package:rapide_nforce/ui/inventory/widgets/inventory_stock_badge.dart';
+import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class PartFormScreen extends StatefulWidget {
@@ -68,7 +69,7 @@ class _PartFormScreenState extends State<PartFormScreen> {
     setState(() {
       _loadingTypes = false;
       _partTypes = result.data?.items ?? [];
-      _selectedTypeId ??= _partTypes.isNotEmpty ? _partTypes.first.id : null;
+      _selectedTypeId ??= widget.initialPartTypeId;
     });
   }
 
@@ -330,22 +331,17 @@ class _PartFormScreenState extends State<PartFormScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        DropdownButtonFormField<int>(
-                          initialValue: _selectedTypeId,
-                          decoration: const InputDecoration(
-                            labelText: 'Part type',
-                          ),
-                          items: _partTypes
-                              .map(
-                                (t) => DropdownMenuItem(
-                                  value: t.id,
-                                  child: Text(t.name),
-                                ),
-                              )
-                              .toList(),
+                        WebSearchableDropdownField<PartTypeModel?>(
+                          label: 'Part type *',
+                          value: _partTypes
+                              .where((t) => t.id == _selectedTypeId)
+                              .firstOrNull,
+                          items: [null, ..._partTypes],
+                          itemLabel: (t) => t?.name ?? 'Select Part Type',
+                          hint: 'Select Part Type',
                           onChanged: widget.isEdit
-                              ? null
-                              : (v) => setState(() => _selectedTypeId = v),
+                              ? (_) {}
+                              : (v) => setState(() => _selectedTypeId = v?.id),
                           validator: (v) =>
                               v == null ? 'Select part type' : null,
                         ),

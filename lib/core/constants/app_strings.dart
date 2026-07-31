@@ -4,9 +4,7 @@ class AppStrings {
   static const String appTitle = 'RAPIDE nforce';
   static const String appBrand = 'RAPIDE';
   static const String appBrandSub = 'nforce';
-  static const String loginTitle = 'Technician Login';
-  static const String loginSubtitle =
-      'Sign in to manage work orders, inventory, and fleet maintenance.';
+  // static const String loginTitle = 'Technician Login';
   static const String employeeId = 'Employee ID';
   static const String password = 'Password';
   static const String signIn = 'Sign In';
