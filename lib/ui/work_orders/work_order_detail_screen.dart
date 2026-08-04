@@ -839,6 +839,13 @@ class _ReadOnlyField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cleanValue = value.trim();
+    final isNotAvailable = cleanValue == '—' ||
+        cleanValue.isEmpty ||
+        cleanValue.toLowerCase() == 'not available' ||
+        cleanValue.toLowerCase() == 'n/a' ||
+        cleanValue.toLowerCase() == 'none';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -865,11 +872,18 @@ class _ReadOnlyField extends StatelessWidget {
             value,
             maxLines: multiline ? null : 1,
             overflow: multiline ? null : TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
+            style: isNotAvailable
+                ? TextStyle(
+                    fontSize: 12.5,
+                    fontStyle: FontStyle.italic,
+                    fontWeight: FontWeight.normal,
+                    color: AppColors.textSecondary,
+                  )
+                : TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
           ),
         ),
       ],

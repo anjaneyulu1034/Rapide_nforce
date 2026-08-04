@@ -697,7 +697,7 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
               )
             else
               ...(_items.map(
-                (order) => _WorkOrderCard(
+                (order) => WorkOrderCard(
                   order: order,
                   onTap: () => _openDetail(order),
                   onEdit: () => _openEdit(order),
@@ -740,20 +740,21 @@ class _WorkOrdersScreenState extends State<WorkOrdersScreen> {
 // priority badges, tap to open full detail (Edit/Delete/PDF live there).
 // ---------------------------------------------------------------------------
 
-class _WorkOrderCard extends StatelessWidget {
-  const _WorkOrderCard({
+class WorkOrderCard extends StatelessWidget {
+  const WorkOrderCard({
+    super.key,
     required this.order,
     required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onExport,
+    this.onEdit,
+    this.onDelete,
+    this.onExport,
   });
 
   final WorkOrderModel order;
   final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
-  final VoidCallback onExport;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+  final VoidCallback? onExport;
 
   @override
   Widget build(BuildContext context) {
@@ -798,17 +799,21 @@ class _WorkOrderCard extends StatelessWidget {
                           children: [
                             _PriorityBadge(priority: priority),
                             const Spacer(),
-                            if (order.status == WorkOrderStatus.completed)
+                            if (onExport != null &&
+                                order.status == WorkOrderStatus.completed)
                               _IconOnlyButton(
                                 icon: Icons.picture_as_pdf_outlined,
                                 onTap: onExport,
-                              )
-                            else ...[
+                              ),
+                            if (onEdit != null) ...[
+                              const SizedBox(width: 4),
                               _IconOnlyButton(
                                 icon: Icons.edit,
                                 color: AppColors.chromeBlue,
                                 onTap: onEdit,
                               ),
+                            ],
+                            if (onDelete != null) ...[
                               const SizedBox(width: 2),
                               _IconOnlyButton(
                                 icon: Icons.delete_outline,

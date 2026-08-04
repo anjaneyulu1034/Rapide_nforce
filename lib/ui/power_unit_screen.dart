@@ -54,16 +54,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
   String? _sortColumn;
   bool _sortAscending = true;
 
-  static const Map<String, String> _sortColumns = {
-    'unitNumber': 'Unit #',
-    'companyName': 'Company Name',
-    'startDate': 'Start Date',
-    'vinNumber': 'VIN',
-    'licensePlate': 'Plate',
-    'registrationExpiry': 'Registration Expiry',
-    'status': 'Status',
-  };
-
   bool get _isSuperAdmin =>
       isSuperAdminRole(AuthService.instance.currentUser?.role);
   bool get _isAdminOrAbove =>
@@ -77,8 +67,7 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
       _statusFilter != 'all' ||
       _startDateFrom != null ||
       _startDateTo != null ||
-      _sortOrder != 'newest' ||
-      _sortColumn != null;
+      _sortOrder != 'newest';
 
   int get _effectiveLimit => _hasActiveFilters ? 500 : _limit;
 
@@ -97,7 +86,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
   }
 
   List<PowerUnitModel> get _visibleItems {
-    if (!_hasActiveFilters) return _items;
     final filtered = _items.where((u) {
       if (_statusFilter == 'active' && !u.isActive) return false;
       if (_statusFilter == 'inactive' && u.isActive) return false;
@@ -113,46 +101,21 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
       }
       return true;
     }).toList();
-    return _applyColumnSort(filtered);
-  }
 
-  /// Client-side multi-column sort (mirrors the web list's sortable column
-  /// headers, which also sort in-memory rather than via a backend param).
-  List<PowerUnitModel> _applyColumnSort(List<PowerUnitModel> list) {
-    final column = _sortColumn;
-    if (column == null) return list;
-    int compareStrings(String? a, String? b) =>
-        (a ?? '').toLowerCase().compareTo((b ?? '').toLowerCase());
-    int compareDates(String? a, String? b) {
-      final da = _parseDate(a)?.millisecondsSinceEpoch ?? 0;
-      final db = _parseDate(b)?.millisecondsSinceEpoch ?? 0;
-      return da.compareTo(db);
-    }
-
-    int cmp(PowerUnitModel a, PowerUnitModel b) {
-      switch (column) {
-        case 'unitNumber':
-          return compareStrings(a.unitNumber, b.unitNumber);
-        case 'companyName':
-          return compareStrings(a.companyName, b.companyName);
-        case 'startDate':
-          return compareDates(a.startDate, b.startDate);
-        case 'vinNumber':
-          return compareStrings(a.vinNumber, b.vinNumber);
-        case 'licensePlate':
-          return compareStrings(a.licensePlate, b.licensePlate);
-        case 'registrationExpiry':
-          return compareDates(a.registrationExpiry, b.registrationExpiry);
-        case 'status':
-          return (a.isActive ? 1 : 0).compareTo(b.isActive ? 1 : 0);
-        default:
-          return 0;
+    filtered.sort((a, b) {
+      final dateA = _parseDate(a.startDate)?.millisecondsSinceEpoch ?? 0;
+      final dateB = _parseDate(b.startDate)?.millisecondsSinceEpoch ?? 0;
+      int cmp = 0;
+      if (dateA != 0 && dateB != 0) {
+        cmp = dateA.compareTo(dateB);
       }
-    }
+      if (cmp == 0) {
+        cmp = a.id.compareTo(b.id);
+      }
+      return _sortOrder == 'oldest' ? cmp : -cmp;
+    });
 
-    final sorted = [...list];
-    sorted.sort((a, b) => _sortAscending ? cmp(a, b) : cmp(b, a));
-    return sorted;
+    return filtered;
   }
 
   @override
@@ -338,26 +301,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
               );
             }
 
-            Widget columnChip(String value, String label) {
-              final selected = tempColumn == value;
-              return ChoiceChip(
-                label: Text(label),
-                selected: selected,
-                onSelected: (_) =>
-                    setSheetState(() => tempColumn = selected ? null : value),
-                selectedColor: AppColors.primary.withValues(alpha: 0.15),
-                labelStyle: TextStyle(
-                  color: selected ? AppColors.primary : AppColors.textPrimary,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  fontSize: 13,
-                ),
-                side: BorderSide(
-                  color: selected ? AppColors.primary : AppColors.border,
-                ),
-                backgroundColor: AppColors.inputFill,
-              );
-            }
-
             return SafeArea(
               child: Padding(
                 padding: EdgeInsets.only(
@@ -435,97 +378,25 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                         sortChip('oldest', 'Oldest'),
                       ],
                     ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'SORT BY COLUMN',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final entry in _sortColumns.entries)
-                          if (entry.key != 'companyName' || _isSuperAdmin)
-                            columnChip(entry.key, entry.value),
-                      ],
-                    ),
-                    if (tempColumn != null) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ChoiceChip(
-                            label: const Text('Ascending'),
-                            selected: tempAscending,
-                            onSelected: (_) =>
-                                setSheetState(() => tempAscending = true),
-                            selectedColor: AppColors.primary.withValues(
-                              alpha: 0.15,
-                            ),
-                            labelStyle: TextStyle(
-                              color: tempAscending
-                                  ? AppColors.primary
-                                  : AppColors.textPrimary,
-                              fontWeight: tempAscending
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                              fontSize: 13,
-                            ),
-                            side: BorderSide(
-                              color: tempAscending
-                                  ? AppColors.primary
-                                  : AppColors.border,
-                            ),
-                            backgroundColor: AppColors.inputFill,
-                          ),
-                          ChoiceChip(
-                            label: const Text('Descending'),
-                            selected: !tempAscending,
-                            onSelected: (_) =>
-                                setSheetState(() => tempAscending = false),
-                            selectedColor: AppColors.primary.withValues(
-                              alpha: 0.15,
-                            ),
-                            labelStyle: TextStyle(
-                              color: !tempAscending
-                                  ? AppColors.primary
-                                  : AppColors.textPrimary,
-                              fontWeight: !tempAscending
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                              fontSize: 13,
-                            ),
-                            side: BorderSide(
-                              color: !tempAscending
-                                  ? AppColors.primary
-                                  : AppColors.border,
-                            ),
-                            backgroundColor: AppColors.inputFill,
-                          ),
-                        ],
-                      ),
-                    ],
                     const SizedBox(height: 24),
                     Row(
                       children: [
                         Expanded(
                           child: OutlinedButton(
                             onPressed: () {
-                              setSheetState(() {
-                                tempStatus = 'all';
-                                tempFrom = null;
-                                tempTo = null;
-                                tempSort = 'newest';
-                                tempColumn = null;
-                                tempAscending = true;
+                              _searchController.clear();
+                              setState(() {
+                                _search = '';
+                                _statusFilter = 'all';
+                                _startDateFrom = null;
+                                _startDateTo = null;
+                                _sortOrder = 'newest';
+                                _sortColumn = null;
+                                _sortAscending = true;
+                                _page = 1;
                               });
+                              Navigator.pop(sheetContext);
+                              _load();
                             },
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppColors.textPrimary,
@@ -1082,26 +953,17 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                                 children: [
                                   Expanded(
                                     child: _GridCell(
-                                      label: 'Status',
-                                      child: u.isOos
-                                          ? const MiniStatusBadge(
-                                              label: 'OOS',
-                                              tone: BadgeTone.danger,
-                                            )
-                                          : isMaintenance
-                                              ? const MiniStatusBadge(
-                                                  label: 'Maintenance',
-                                                  tone: BadgeTone.warning,
-                                                )
-                                              : u.isActive
-                                                  ? const MiniStatusBadge(
-                                                      label: 'Active',
-                                                      tone: BadgeTone.success,
-                                                    )
-                                                  : const MiniStatusBadge(
-                                                      label: 'Inactive',
-                                                      tone: BadgeTone.danger,
-                                                    ),
+                                      label: 'Province',
+                                      child: Text(
+                                        u.shortState,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 6),
@@ -1264,11 +1126,16 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                       const SizedBox(width: 8),
                       TextButton(
                         onPressed: () {
+                          _searchController.clear();
                           setState(() {
+                            _search = '';
                             _statusFilter = 'all';
                             _startDateFrom = null;
                             _startDateTo = null;
                             _sortOrder = 'newest';
+                            _sortColumn = null;
+                            _sortAscending = true;
+                            _page = 1;
                           });
                           _load();
                         },

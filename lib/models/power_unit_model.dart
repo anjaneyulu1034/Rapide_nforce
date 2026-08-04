@@ -149,6 +149,82 @@ class PowerUnitModel {
       status.toLowerCase() == 'in maintenance' ||
       status.toLowerCase() == 'in_maintenance';
 
+  String get shortState {
+    if (state == null || state!.trim().isEmpty) return '—';
+    final clean = state!.trim();
+    if (clean.length <= 3) return clean.toUpperCase();
+    final lower = clean.toLowerCase();
+    switch (lower) {
+      case 'ontario': return 'ON';
+      case 'alberta': return 'AB';
+      case 'british columbia': return 'BC';
+      case 'quebec':
+      case 'québec': return 'QC';
+      case 'manitoba': return 'MB';
+      case 'saskatchewan': return 'SK';
+      case 'nova scotia': return 'NS';
+      case 'new brunswick': return 'NB';
+      case 'newfoundland and labrador':
+      case 'newfoundland': return 'NL';
+      case 'prince edward island': return 'PE';
+      case 'northwest territories': return 'NT';
+      case 'nunavut': return 'NU';
+      case 'yukon': return 'YT';
+      case 'alabama': return 'AL';
+      case 'alaska': return 'AK';
+      case 'arizona': return 'AZ';
+      case 'arkansas': return 'AR';
+      case 'california': return 'CA';
+      case 'colorado': return 'CO';
+      case 'connecticut': return 'CT';
+      case 'delaware': return 'DE';
+      case 'florida': return 'FL';
+      case 'georgia': return 'GA';
+      case 'hawaii': return 'HI';
+      case 'idaho': return 'ID';
+      case 'illinois': return 'IL';
+      case 'indiana': return 'IN';
+      case 'iowa': return 'IA';
+      case 'kansas': return 'KS';
+      case 'kentucky': return 'KY';
+      case 'louisiana': return 'LA';
+      case 'maine': return 'ME';
+      case 'maryland': return 'MD';
+      case 'massachusetts': return 'MA';
+      case 'michigan': return 'MI';
+      case 'minnesota': return 'MN';
+      case 'mississippi': return 'MS';
+      case 'missouri': return 'MO';
+      case 'montana': return 'MT';
+      case 'nebraska': return 'NE';
+      case 'nevada': return 'NV';
+      case 'new hampshire': return 'NH';
+      case 'new jersey': return 'NJ';
+      case 'new mexico': return 'NM';
+      case 'new york': return 'NY';
+      case 'north carolina': return 'NC';
+      case 'north dakota': return 'ND';
+      case 'ohio': return 'OH';
+      case 'oklahoma': return 'OK';
+      case 'oregon': return 'OR';
+      case 'pennsylvania': return 'PA';
+      case 'rhode island': return 'RI';
+      case 'south carolina': return 'SC';
+      case 'south dakota': return 'SD';
+      case 'tennessee': return 'TN';
+      case 'texas': return 'TX';
+      case 'utah': return 'UT';
+      case 'vermont': return 'VT';
+      case 'virginia': return 'VA';
+      case 'washington': return 'WA';
+      case 'west virginia': return 'WV';
+      case 'wisconsin': return 'WI';
+      case 'wyoming': return 'WY';
+      default:
+        return clean.length >= 2 ? clean.substring(0, 2).toUpperCase() : clean.toUpperCase();
+    }
+  }
+
   String get displayTitle {
     final parts = <String>[];
     if (make != null && make!.isNotEmpty) parts.add(make!);

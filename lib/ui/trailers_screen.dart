@@ -767,16 +767,17 @@ class _TrailersScreenState extends State<TrailersScreen> {
                                 children: [
                                   Expanded(
                                     child: _GridCell(
-                                      label: 'Status',
-                                      child: isActive
-                                          ? const MiniStatusBadge(
-                                              label: 'Active',
-                                              tone: BadgeTone.success,
-                                            )
-                                          : const MiniStatusBadge(
-                                              label: 'Inactive',
-                                              tone: BadgeTone.danger,
-                                            ),
+                                      label: 'Province',
+                                      child: Text(
+                                        t.shortState,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.textPrimary,
+                                        ),
+                                      ),
                                     ),
                                   ),
                                   const SizedBox(width: 6),

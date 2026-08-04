@@ -21,6 +21,9 @@ import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
 import 'package:rapide_nforce/ui/widgets/status_chip.dart';
 import 'package:rapide_nforce/ui/widgets/vehicle_info_section.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_form_screen.dart';
+import 'package:rapide_nforce/ui/work_orders/work_order_detail_screen.dart';
+import 'package:rapide_nforce/ui/work_orders/work_orders_screen.dart';
+import 'package:rapide_nforce/ui/work_orders/work_order_pdf_export.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/document_download_service.dart';
@@ -1102,15 +1105,15 @@ class _ComplianceTabState extends State<_ComplianceTab> {
                   ],
                 ),
                 if (isPermits) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'State and jurisdiction-specific permits required for '
-                    'this unit to operate in certain territories.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
+                  // const SizedBox(height: 4),
+                  // Text(
+                  //   'State and jurisdiction-specific permits required for '
+                  //   'this unit to operate in certain territories.',
+                  //   style: TextStyle(
+                  //     fontSize: 12,
+                  //     color: AppColors.textSecondary,
+                  //   ),
+                  // ),
                 ],
               ],
             ),
@@ -1930,9 +1933,7 @@ class _MaintenanceTab extends StatefulWidget {
 }
 
 class _MaintenanceTabState extends State<_MaintenanceTab> {
-  final _searchCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
-  String _search = '';
   WorkOrderStatus? _filterStatus;
 
   @override
@@ -1960,7 +1961,6 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
 
   @override
   void dispose() {
-    _searchCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -1972,17 +1972,6 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
     var list = widget.workOrders;
     if (_filterStatus != null) {
       list = list.where((wo) => wo.status == _filterStatus).toList();
-    }
-    if (_search.isNotEmpty) {
-      final q = _search.toLowerCase();
-      list = list
-          .where(
-            (wo) =>
-                wo.workOrderNumber.toLowerCase().contains(q) ||
-                (wo.companyName ?? '').toLowerCase().contains(q) ||
-                wo.issueDescription.toLowerCase().contains(q),
-          )
-          .toList();
     }
     return list;
   }
@@ -2063,33 +2052,7 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
           ],
         ),
         const SizedBox(height: 12),
-        // Search row
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.card,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: TextField(
-            controller: _searchCtrl,
-            onChanged: (v) => setState(() => _search = v),
-            decoration: InputDecoration(
-              hintText: 'Search WO #, company',
-              hintStyle: TextStyle(
-                color: AppColors.textSecondary,
-                fontSize: 13,
-              ),
-              prefixIcon: Icon(
-                Icons.search,
-                size: 18,
-                color: AppColors.textSecondary,
-              ),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
+
         // Cards
         if (widget.loading)
           const Center(child: CircularProgressIndicator())
@@ -2110,9 +2073,23 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
         else
           LayoutBuilder(
             builder: (context, constraints) {
+              Widget buildCard(WorkOrderModel wo) => WorkOrderCard(
+                order: wo,
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => WorkOrderDetailScreen(workOrderId: wo.id),
+                  ),
+                ),
+                onExport: () => exportWorkOrderPdf(
+                  context: context,
+                  order: wo,
+                ),
+              );
+
               if (constraints.maxWidth < 600) {
                 return Column(
-                  children: filtered.map((wo) => _WoCard(wo: wo)).toList(),
+                  children: filtered.map(buildCard).toList(),
                 );
               }
               return GridView.builder(
@@ -2121,11 +2098,11 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
                 itemCount: filtered.length,
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 500,
-                  mainAxisExtent: 220,
+                  mainAxisExtent: 180,
                   crossAxisSpacing: 16,
                   mainAxisSpacing: 6,
                 ),
-                itemBuilder: (context, i) => _WoCard(wo: filtered[i]),
+                itemBuilder: (context, i) => buildCard(filtered[i]),
               );
             },
           ),
@@ -2243,194 +2220,6 @@ class _PrimaryActionButton extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Work order card
-// ---------------------------------------------------------------------------
-
-class _WoCard extends StatelessWidget {
-  const _WoCard({required this.wo});
-  final WorkOrderModel wo;
-
-  static String _initials(String? name) {
-    if (name == null || name.trim().isEmpty) return '?';
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length == 1) return parts[0][0].toUpperCase();
-    return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-  }
-
-  static String _fmtDate(String? s) {
-    if (s == null || s.isEmpty) return AppStrings.noData;
-    final d = DateTime.tryParse(s);
-    if (d == null) return s;
-    return '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}-${d.year}';
-  }
-
-  static String _fmtCost(double? v) =>
-      v == null ? AppStrings.noData : '\$${v.toStringAsFixed(2)}';
-
-  @override
-  Widget build(BuildContext context) {
-    final details = wo.workOrderDetails;
-    final tech = details?.technicianName;
-    final initials = _initials(tech);
-    final displayNum = wo.workOrderNumber.toLowerCase().startsWith('wo')
-        ? wo.workOrderNumber
-        : 'WO-${wo.workOrderNumber}';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // WO number + status chip
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    displayNum,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: wo.status.backgroundColor,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    wo.status.label,
-                    style: TextStyle(
-                      color: wo.status.textColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Text(
-              [
-                wo.issueDescription,
-                wo.companyName,
-              ].where((s) => s != null && s.isNotEmpty).join(' · '),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 10),
-            Divider(height: 1, color: AppColors.border),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: _InfoCell(
-                    label: 'WO TYPE',
-                    value: PowerUnitModel.displayOrDash(wo.workOrderType),
-                  ),
-                ),
-                Expanded(
-                  child: _InfoCell(
-                    label: 'COST',
-                    value: _fmtCost(details?.estimatedCost),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _InfoCell(
-                    label: 'START DATE',
-                    value: _fmtDate(details?.startDate),
-                  ),
-                ),
-                // Expanded(
-                //   child: _InfoCell(
-                //     label: 'DUE DATE',
-                //     value: _fmtDate(details?.dueDate),
-                //   ),
-                // ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Divider(height: 1, color: AppColors.border),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF1A1A1A),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      initials,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    tech ?? 'Unassigned',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ),
-                if (details?.dueDate != null) ...[
-                  Icon(
-                    Icons.access_time_outlined,
-                    size: 14,
-                    color: AppColors.textSecondary,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Due ${_fmtDate(details?.dueDate)}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Compliance stat box  (label on top, large count below — matches WO style)
 // ---------------------------------------------------------------------------

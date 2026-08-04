@@ -718,9 +718,32 @@ class _WebDateFieldState extends State<WebDateField> {
     super.dispose();
   }
 
+  DateTime? _parseDateText(String raw) {
+    final text = raw.trim();
+    if (text.isEmpty) return null;
+    final parsedIso = DateTime.tryParse(text);
+    if (parsedIso != null) return parsedIso;
+    final parts = text.split(RegExp(r'[-/]'));
+    if (parts.length == 3) {
+      final first = int.tryParse(parts[0]);
+      final second = int.tryParse(parts[1]);
+      final third = int.tryParse(parts[2]);
+      if (first != null && second != null && third != null) {
+        if (third > 1000) {
+          // MM-dd-yyyy format
+          return DateTime(third, first, second);
+        } else if (first > 1000) {
+          // yyyy-MM-dd format
+          return DateTime(first, second, third);
+        }
+      }
+    }
+    return null;
+  }
+
   String _format(String iso) {
-    final parsed = DateTime.tryParse(iso.trim());
-    return parsed == null ? '' : DateFormat('MM-dd-yyyy').format(parsed);
+    final parsed = _parseDateText(iso);
+    return parsed == null ? iso.trim() : DateFormat('MM-dd-yyyy').format(parsed);
   }
 
   void _syncDisplay() {
@@ -732,7 +755,7 @@ class _WebDateFieldState extends State<WebDateField> {
     final now = DateTime.now();
     final minDate = widget.firstDate ?? DateTime(1980);
     final maxDate = widget.lastDate ?? DateTime(now.year + 20);
-    var initial = DateTime.tryParse(widget.controller.text) ?? now;
+    var initial = _parseDateText(widget.controller.text) ?? now;
     if (initial.isAfter(maxDate)) initial = maxDate;
     if (initial.isBefore(minDate)) initial = minDate;
     final picked = await showCompactDatePicker(

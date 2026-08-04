@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
+import 'package:intl/intl.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/date_format.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
@@ -255,6 +256,28 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
 
   PowerUnitModel? _unitForStateMatch;
 
+  String _toIsoDate(String? raw) {
+    if (raw == null) return '';
+    final text = raw.trim();
+    if (text.isEmpty) return '';
+    final parsedIso = DateTime.tryParse(text);
+    if (parsedIso != null) return DateFormat('yyyy-MM-dd').format(parsedIso);
+    final parts = text.split(RegExp(r'[-/]'));
+    if (parts.length == 3) {
+      final first = int.tryParse(parts[0]);
+      final second = int.tryParse(parts[1]);
+      final third = int.tryParse(parts[2]);
+      if (first != null && second != null && third != null) {
+        if (third > 1000) {
+          return DateFormat('yyyy-MM-dd').format(DateTime(third, first, second));
+        } else if (first > 1000) {
+          return DateFormat('yyyy-MM-dd').format(DateTime(first, second, third));
+        }
+      }
+    }
+    return text;
+  }
+
   void _populate(PowerUnitModel u) {
     _unitNumber.text = u.unitNumber;
     _vin.text = u.vinNumber ?? '';
@@ -262,9 +285,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _model.text = u.model ?? '';
     _year.text = u.year?.toString() ?? '';
     _color.text = u.color ?? '';
-    _purchaseDate.text = u.purchaseDate ?? '';
+    _purchaseDate.text = _toIsoDate(u.purchaseDate ?? u.raw?['purchaseDate'] as String?);
     _purchasePrice.text = u.purchasePrice?.toString() ?? '';
-    _startDate.text = u.startDate ?? '';
+    _startDate.text = _toIsoDate(u.startDate ?? u.raw?['startDate'] as String?);
     _status = u.isActive ? 'active' : 'inactive';
     _assignedDriver.text = u.assignedDriver ?? '';
     _plate.text = u.licensePlate ?? '';
@@ -272,7 +295,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _stateId = null;
     _cityId = u.cityId;
     _registrationNumber.text = u.registrationNumber ?? '';
-    _registrationExpiry.text = u.registrationExpiry ?? '';
+    _registrationExpiry.text = _toIsoDate(u.registrationExpiry ?? u.raw?['registrationExpiry'] as String?);
     _imsNumber.text = u.imsNumber ?? '';
     final ownershipType = (u.ownershipType ?? '').toLowerCase().trim();
     _ownershipType = ['owned', 'owner-operator'].contains(ownershipType)
@@ -289,13 +312,13 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _engineModel.text = u.engineModel ?? '';
     _maintenancePolicy.text = u.maintenancePolicy ?? '';
     _selectedPolicy = u.maintenancePolicy;
-    _cviExpiry.text = u.cviExpiry ?? '';
+    _cviExpiry.text = _toIsoDate(u.cviExpiry ?? u.raw?['cviExpiry'] as String?);
     _currentOdometer.text = u.odometer?.toString() ?? '';
     _initialOdometer = u.odometer;
-    _annualInspectionDue.text = u.annualInspectionDue ?? '';
-    _lastInspection.text = u.lastInspection ?? '';
+    _annualInspectionDue.text = _toIsoDate(u.annualInspectionDue ?? u.raw?['annualInspectionDue'] as String?);
+    _lastInspection.text = _toIsoDate(u.lastInspection ?? u.raw?['lastInspection'] as String?);
     _pmInterval.text = u.pmInterval ?? '';
-    _nextPmDue.text = u.nextPmDue ?? '';
+    _nextPmDue.text = _toIsoDate(u.nextPmDue ?? u.raw?['nextPmDue'] as String?);
     _nextPmOdometer.text = u.nextPmOdometer ?? '';
     _telematicsProvider.text = u.telematicsProvider ?? '';
     _telematicsEnabled =
@@ -305,9 +328,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _eldProvider.text = u.eldProvider ?? '';
     _permits.addAll(u.permits);
     _certificateNumber.text = u.certificateNumber ?? '';
-    _inspectionDate.text = u.inspectionDate ?? '';
-    _expiryDate.text = u.expiryDate ?? '';
-    _nextInspectionDue.text = u.nextInspectionDue ?? '';
+    _inspectionDate.text = _toIsoDate(u.inspectionDate ?? u.raw?['inspectionDate'] as String?);
+    _expiryDate.text = _toIsoDate(u.expiryDate ?? u.raw?['expiryDate'] as String?);
+    _nextInspectionDue.text = _toIsoDate(u.nextInspectionDue ?? u.raw?['nextInspectionDue'] as String?);
     _inspectorName.text = u.inspectorName ?? '';
     _inspectorLicense.text = u.inspectorLicense ?? '';
     _inspectionFacility.text = u.inspectionFacility ?? '';
@@ -397,30 +420,67 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         .firstOrNull;
     if (policy == null) return;
 
-    final annualInspectionDays =
-        _inspectionDaysByFrequency[policy.inspectionFrequency] ?? 365;
-    final anchorDate =
-        DateTime.tryParse(_startDate.text.trim()) ?? DateTime.now();
+    final allPanels = policy.allPanels;
+    final activePanel = allPanels.firstWhere(
+      (p) => p.type == (_selectedTypeKey ?? 'PM'),
+      orElse: () => policy.pmPanel ?? const PolicySchedulePanel(type: 'PM', name: 'PM Schedule'),
+    );
+
+    // Anchor Date: prefer Last Inspection Date, then Start Date, then current date
+    final anchorDate = DateTime.tryParse(_lastInspection.text.trim()) ??
+        DateTime.tryParse(_startDate.text.trim()) ??
+        DateTime.now();
+
+    final panelMonths = activePanel.months ?? 0;
+    final panelDays = activePanel.days ?? (activePanel.months == null ? policy.pmIntervalDays : 0) ?? 0;
+    final intervalKm = activePanel.km ?? policy.pmIntervalKm;
     final baseOdometer = int.tryParse(_currentOdometer.text.trim());
 
+    // Calculate due date: Anchor Date + months + days
+    DateTime computedDueDate = anchorDate;
+    if (panelMonths > 0) {
+      computedDueDate = DateTime(
+        computedDueDate.year,
+        computedDueDate.month + panelMonths,
+        computedDueDate.day,
+      );
+    }
+    if (panelDays > 0) {
+      computedDueDate = computedDueDate.add(Duration(days: panelDays));
+    }
+
+    final annualInspectionDays =
+        _inspectionDaysByFrequency[policy.inspectionFrequency] ?? 365;
+
     setState(() {
-      if (policy.pmIntervalKm != null) {
-        _pmInterval.text = policy.pmIntervalKm.toString();
+      if (intervalKm != null && intervalKm > 0) {
+        _pmInterval.text = intervalKm.toString();
         if (baseOdometer != null) {
-          _nextPmOdometer.text = (baseOdometer + policy.pmIntervalKm!)
-              .toString();
+          _nextPmOdometer.text = (baseOdometer + intervalKm).toString();
         }
       }
-      if (policy.pmIntervalDays != null) {
-        _nextPmDue.text = _isoDate(
-          anchorDate.add(Duration(days: policy.pmIntervalDays!)),
-        );
+
+      if (panelMonths > 0 || panelDays > 0) {
+        _nextPmDue.text = _isoDate(computedDueDate);
       }
+
+      if (activePanel.nextDueDate != null && activePanel.nextDueDate!.isNotEmpty) {
+        _nextPmDue.text = activePanel.nextDueDate!;
+      }
+
+      if (activePanel.nextDueOdometer != null) {
+        _nextPmOdometer.text = activePanel.nextDueOdometer!.toString();
+      }
+
       final annualDueIso = _isoDate(
         anchorDate.add(Duration(days: annualInspectionDays)),
       );
-      _annualInspectionDue.text = annualDueIso;
-      _cviExpiry.text = annualDueIso;
+      if (_annualInspectionDue.text.isEmpty) {
+        _annualInspectionDue.text = annualDueIso;
+      }
+      if (_cviExpiry.text.isEmpty) {
+        _cviExpiry.text = annualDueIso;
+      }
     });
   }
 
@@ -636,7 +696,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           _req(_plate.text, 'Plate Number') != null ||
           _req(_registrationExpiry.text, 'Registration Expiry') != null ||
           _req(_transmission.text, 'Transmission') != null ||
-          _nonNegativeIntValidator(_gvwr.text, 'GVWR', required: true) != null ||
+          _nonNegativeIntValidator(_gvwr.text, 'GVWR', required: false) != null ||
           _ownershipType.isEmpty) {
         AppToast.showError('Complete all required Step 1 fields');
         return false;
@@ -716,9 +776,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       'model': _model.text.trim(),
       'year': toInt(_year.text),
       'color': _color.text.trim(),
-      'purchaseDate': _purchaseDate.text.trim(),
+      'purchaseDate': _toIsoDate(_purchaseDate.text),
       'purchasePrice': double.tryParse(_purchasePrice.text.trim()),
-      'startDate': _startDate.text.trim(),
+      'startDate': _toIsoDate(_startDate.text),
       'status': _status,
       if (_assignedDriver.text.trim().isNotEmpty)
         'assignedDriver': _assignedDriver.text.trim(),
@@ -732,7 +792,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       if (_countryId != null) 'countryId': _countryId,
       if (_cityId != null) 'cityId': _cityId,
       'registrationNumber': _registrationNumber.text.trim(),
-      'registrationExpiry': _registrationExpiry.text.trim(),
+      'registrationExpiry': _toIsoDate(_registrationExpiry.text),
       'imsNumber': _imsNumber.text.trim(),
       'ownershipType': _ownershipType,
       if (_ownershipType == 'owner-operator') ...{
@@ -747,21 +807,21 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       'engineMake': _engineMake.text.trim(),
       'engineModel': _engineModel.text.trim(),
       'maintenancePolicy': _maintenancePolicy.text.trim(),
-      'cviExpiry': _cviExpiry.text.trim(),
+      'cviExpiry': _toIsoDate(_cviExpiry.text),
       'currentOdometer': toInt(_currentOdometer.text),
       'odometer': toInt(_currentOdometer.text),
-      'annualInspectionDue': _annualInspectionDue.text.trim(),
-      'lastInspection': _lastInspection.text.trim(),
+      'annualInspectionDue': _toIsoDate(_annualInspectionDue.text),
+      'lastInspection': _toIsoDate(_lastInspection.text),
       'pmInterval': toInt(_pmInterval.text),
-      'nextPmDue': _nextPmDue.text.trim(),
+      'nextPmDue': _toIsoDate(_nextPmDue.text),
       'nextPmOdometer': toInt(_nextPmOdometer.text),
       'telematicsProvider': _telematicsProvider.text.trim(),
       'telematicsEnabled': _telematicsEnabled,
       'eldProvider': _eldProvider.text.trim(),
       'certificateNumber': _certificateNumber.text.trim(),
-      'inspectionDate': _inspectionDate.text.trim(),
-      'expiryDate': _expiryDate.text.trim(),
-      'nextInspectionDue': _nextInspectionDue.text.trim(),
+      'inspectionDate': _toIsoDate(_inspectionDate.text),
+      'expiryDate': _toIsoDate(_expiryDate.text),
+      'nextInspectionDue': _toIsoDate(_nextInspectionDue.text),
       'inspectorName': _inspectorName.text.trim(),
       'inspectorLicense': _inspectorLicense.text.trim(),
       'inspectionFacility': _inspectionFacility.text.trim(),
@@ -1224,9 +1284,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       children: [
         WebTextFormField(
           controller: _gvwr,
-          label: 'GVWR *',
+          label: 'GVWR',
           keyboardType: TextInputType.number,
-          validator: (v) => _nonNegativeIntValidator(v, 'GVWR', required: true),
+          validator: (v) => _nonNegativeIntValidator(v, 'GVWR', required: false),
         ),
         WebDropdownField<String>(
           label: 'Fuel Type',
@@ -1249,92 +1309,347 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     ),
   ];
 
-  List<Widget> _buildStep2() => [
-    WebFormSection(
-      title: 'Maintenance Policy',
-      children: [
-        WebDropdownField<String>(
-          label: 'Maintenance Policy *',
-          value: _selectedPolicy,
-          items: _policies.map((p) => p.name).toList(),
-          itemLabel: (v) => v,
-          onChanged: (v) {
-            setState(() {
-              _selectedPolicy = v;
-              _maintenancePolicy.text = v ?? '';
-            });
-            _onFormChanged();
-            _applyMaintenancePolicyDefaults();
-          },
-          validator: (v) => _req(v, 'Maintenance Policy'),
-        ),
-        WebDateField(
-          controller: _cviExpiry,
-          label: 'CVIP/Annual Inspection Due',
-          required: true,
-          validator: (v) => _req(v, 'CVIP/Annual Inspection Due'),
-        ),
-        WebDateField(
-          controller: _lastInspection,
-          label: 'Last Inspection',
-          required: true,
-          validator: (v) => _req(v, 'Last Inspection'),
-        ),
-        WebTextFormField(
-          controller: _currentOdometer,
-          label: 'Current Odometer *',
-          keyboardType: TextInputType.number,
-          validator: (v) => _nonNegativeNumberValidator(
-            v,
-            'Current Odometer',
+  String? _selectedTypeKey = 'PM';
+
+  List<Widget> _buildStep2() {
+    final selectedPolicyObj = _policyConfigs
+        .where((p) => p.name == _selectedPolicy)
+        .firstOrNull;
+    final activeSchedules =
+        selectedPolicyObj?.schedules.where((s) => s.isActive).toList() ?? [];
+    final allPanels = selectedPolicyObj?.allPanels ?? [];
+
+    final activePanel = allPanels.firstWhere(
+      (p) => p.type == (_selectedTypeKey ?? 'PM'),
+      orElse: () => const PolicySchedulePanel(type: 'PM', name: 'PM Schedule'),
+    );
+    final activeName = activePanel.name.isNotEmpty
+        ? activePanel.name
+        : (activePanel.type == 'PM'
+            ? 'PM Schedule'
+            : activePanel.type == 'OIL'
+                ? 'Oil Change'
+                : activePanel.type);
+    final isOil = activePanel.type.toUpperCase() == 'OIL' ||
+        activeName.toLowerCase().contains('oil');
+    final isReefer = activePanel.type.toUpperCase() == 'REEFER';
+
+    final dueLabel = isOil
+        ? 'Next Oil Due'
+        : (isReefer ? 'Next Reefer Due' : 'Next PM Due');
+
+    final odoLabel = isOil
+        ? 'Next Oil Odometer *'
+        : (isReefer ? 'Next Reefer Hours *' : 'Next PM Odometer *');
+
+    final unitLabel = isReefer ? 'hrs' : 'km';
+
+    final progressHeader = isOil
+        ? 'KM UNTIL OIL CHANGE'
+        : (isReefer
+            ? 'HOURS UNTIL REEFER SERVICE'
+            : 'KM UNTIL PM');
+
+    final currentOdometer = int.tryParse(_currentOdometer.text.trim()) ?? 0;
+    final nextPmOdometer = int.tryParse(_nextPmOdometer.text.trim()) ?? 0;
+    final pmIntervalKm = int.tryParse(_pmInterval.text.trim()) ??
+        (selectedPolicyObj?.pmIntervalKm ?? 10000);
+    final remainingKm = (nextPmOdometer - currentOdometer)
+        .clamp(0, pmIntervalKm > 0 ? pmIntervalKm * 2 : 100000);
+    final progressRatio = pmIntervalKm > 0
+        ? (remainingKm / pmIntervalKm).clamp(0.0, 1.0)
+        : 0.0;
+
+    return [
+      WebFormSection(
+        title: 'Maintenance Policy',
+        children: [
+          Text(
+            'Select a maintenance policy and track intervals.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          WebDropdownField<String>(
+            label: 'Maintenance Policy *',
+            value: _selectedPolicy,
+            items: _policies.map((p) => p.name).toList(),
+            itemLabel: (v) => v,
+            onChanged: (v) {
+              setState(() {
+                _selectedPolicy = v;
+                _maintenancePolicy.text = v ?? '';
+                _selectedTypeKey = 'PM';
+              });
+              _onFormChanged();
+              _applyMaintenancePolicyDefaults();
+            },
+            validator: (v) => _req(v, 'Maintenance Policy'),
+          ),
+          Text(
+            'Uses the default maintenance policy configured in Settings',
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          if (activeSchedules.isNotEmpty) ...[
+            const Text(
+              'Schedules in this Policy',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.inputFill,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.event_note, size: 18, color: AppColors.primary),
+                  const SizedBox(width: 8),
+                  Text(
+                    activeSchedules.first.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: const Text(
+                      'ACTIVE',
+                      style: TextStyle(
+                        color: Colors.green,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${allPanels.length} types configured',
+                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+          if (allPanels.isNotEmpty) ...[
+            Text(
+              'Select maintenance type to view and configure its interval',
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: allPanels.map((panel) {
+                  final isSelected = (_selectedTypeKey ?? 'PM') == panel.type;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      selected: isSelected,
+                      selectedColor: AppColors.primary.withValues(alpha: 0.2),
+                      backgroundColor: AppColors.inputFill,
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            panel.name,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight:
+                                  isSelected ? FontWeight.bold : FontWeight.normal,
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.check_circle,
+                            size: 14,
+                            color: isSelected ? AppColors.primary : Colors.green,
+                          ),
+                        ],
+                      ),
+                      onSelected: (_) {
+                        setState(() => _selectedTypeKey = panel.type);
+                        _applyMaintenancePolicyDefaults();
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
+          WebDateField(
+            controller: _cviExpiry,
+            label: 'CVIP/Annual Inspection Due',
             required: true,
+            validator: (v) => _req(v, 'CVIP/Annual Inspection Due'),
           ),
-          suffix: IconButton(
-            tooltip: _canRefreshOdometer
-                ? 'Sync odometer from telematics'
-                : 'Requires Unit Number, VIN, and active telematics',
-            icon: _refreshingOdometer
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.sync, size: 18),
-            onPressed: (_canRefreshOdometer && !_refreshingOdometer)
-                ? _refreshOdometer
-                : null,
-          ),
-        ),
-        WebTextFormField(
-          controller: _annualInspectionDue,
-          label: 'Annual Inspection Due',
-        ),
-        WebTextFormField(
-          controller: _pmInterval,
-          label: 'PM Interval *',
-          keyboardType: TextInputType.number,
-          validator: (v) =>
-              _nonNegativeNumberValidator(v, 'PM Interval', required: true),
-        ),
-        WebDateField(
-          controller: _nextPmDue,
-          label: 'Next PM Due',
-          required: true,
-          validator: (v) => _req(v, 'Next PM Due'),
-        ),
-        WebTextFormField(
-          controller: _nextPmOdometer,
-          label: 'Next PM Odometer *',
-          keyboardType: TextInputType.number,
-          validator: (v) => _nonNegativeNumberValidator(
-            v,
-            'Next PM Odometer',
+          WebDateField(
+            controller: _lastInspection,
+            label: 'Last Inspection',
             required: true,
+            validator: (v) => _req(v, 'Last Inspection'),
+            onChanged: (_) => _applyMaintenancePolicyDefaults(),
           ),
-        ),
-      ],
-    ),
-    WebFormSection(
+          WebTextFormField(
+            controller: _currentOdometer,
+            label: 'Current Odometer *',
+            keyboardType: TextInputType.number,
+            validator: (v) => _nonNegativeNumberValidator(
+              v,
+              'Current Odometer',
+              required: true,
+            ),
+            suffix: IconButton(
+              tooltip: _canRefreshOdometer
+                  ? 'Sync odometer from telematics'
+                  : 'Requires Unit Number, VIN, and active telematics',
+              icon: _refreshingOdometer
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync, size: 18),
+              onPressed: (_canRefreshOdometer && !_refreshingOdometer)
+                  ? _refreshOdometer
+                  : null,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                const SizedBox(width: 8),
+                Text(
+                  'Last Sync (24 Hours)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue.shade800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          WebDateField(
+            controller: _nextPmDue,
+            label: dueLabel,
+            required: true,
+            validator: (v) => _req(v, dueLabel),
+          ),
+          WebTextFormField(
+            controller: _nextPmOdometer,
+            label: odoLabel,
+            keyboardType: TextInputType.number,
+            validator: (v) => _nonNegativeNumberValidator(
+              v,
+              odoLabel.replaceAll(' *', ''),
+              required: true,
+            ),
+          ),
+          WebTextFormField(
+            controller: TextEditingController(
+              text: _initialOdometer?.toString() ?? '1,000',
+            ),
+            label: 'Initial Odometer',
+            readOnly: true,
+          ),
+          Text(
+            'This value is captured when creating the Power Unit.',
+            style: TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (pmIntervalKm > 0) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(top: 4, bottom: 8),
+              decoration: BoxDecoration(
+                color: AppColors.inputFill,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        progressHeader,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textSecondary,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: AppColors.primary.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Text(
+                          '$remainingKm $unitLabel',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: progressRatio,
+                      minHeight: 8,
+                      backgroundColor: AppColors.border,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        remainingKm <= 500
+                            ? AppColors.danger
+                            : (remainingKm <= 2000
+                                ? AppColors.warning
+                                : AppColors.primary),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+      WebFormSection(
       title: 'Telematics & ELD',
       children: [
         WebDropdownField<String>(
@@ -1409,6 +1724,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       ],
     ),
   ];
+}
 
   List<Widget> _buildStep3() => [
     WebFormSection(

@@ -104,7 +104,8 @@ class _VehicleInfoSectionState extends State<VehicleInfoSection>
                             : left.valueColor ?? AppColors.textPrimary,
                         fontWeight:
                             leftIsEmpty ? FontWeight.normal : FontWeight.bold,
-                        fontSize: 14,
+                        fontSize: leftIsEmpty ? 12.5 : 14,
+                        fontStyle: leftIsEmpty ? FontStyle.italic : FontStyle.normal,
                       ),
                     ),
                   ],
@@ -135,7 +136,8 @@ class _VehicleInfoSectionState extends State<VehicleInfoSection>
                               fontWeight: rightIsEmpty
                                   ? FontWeight.normal
                                   : FontWeight.bold,
-                              fontSize: 14,
+                              fontSize: rightIsEmpty ? 12.5 : 14,
+                              fontStyle: rightIsEmpty ? FontStyle.italic : FontStyle.normal,
                             ),
                           ),
                         ],
