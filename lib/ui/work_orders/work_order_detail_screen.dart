@@ -242,6 +242,12 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
                 : 'View Work Order',
           ),
           actions: [
+            if (order != null && order.status.canEdit)
+              IconButton(
+                icon: const Icon(Icons.attach_file_rounded),
+                tooltip: 'Upload Attachment',
+                onPressed: _uploadAttachment,
+              ),
             if (order != null && order.status == WorkOrderStatus.completed)
               IconButton(
                 icon: const Icon(Icons.picture_as_pdf_outlined),
@@ -266,9 +272,22 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
         body: _buildBody(),
         bottomNavigationBar: (order == null || _loading)
             ? null
-            : SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            : Container(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                decoration: BoxDecoration(
+                  color: AppColors.card,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
+                  border: Border(
+                    top: BorderSide(color: AppColors.border),
+                  ),
+                ),
+                child: SafeArea(
                   child: Row(
                     children: [
                       Expanded(
@@ -276,27 +295,41 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(48),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(12),
                             ),
+                            side: BorderSide(color: AppColors.border),
                           ),
                           onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel'),
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: FilledButton(
+                        flex: 2,
+                        child: FilledButton.icon(
                           onPressed: order.status.canEdit ? _edit : null,
-                          style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(48),
-                            backgroundColor: const Color(0xFF1A1A1A),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
+                          icon: const Icon(Icons.edit_rounded, size: 18, color: Colors.white),
+                          label: const Text(
+                            'Edit Work Order',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Colors.white,
                             ),
                           ),
-                          child: const Text(
-                            'Edit',
-                            style: TextStyle(fontWeight: FontWeight.w700),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(48),
+                            backgroundColor: AppColors.primary,
+                            elevation: 2,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
@@ -712,18 +745,18 @@ class _SectionCardState extends State<_SectionCard>
     return Container(
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: AppColors.cardShadow.withValues(alpha: 0.25),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -745,12 +778,19 @@ class _SectionCardState extends State<_SectionCard>
                       ),
                       if (widget.isCollapsible) ...[
                         const SizedBox(width: 8),
-                        RotationTransition(
-                          turns: _rotation,
-                          child: Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            color: AppColors.textSecondary,
-                            size: 22,
+                        Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: AppColors.inputFill,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: RotationTransition(
+                            turns: _rotation,
+                            child: Icon(
+                              Icons.keyboard_arrow_down_rounded,
+                              color: AppColors.textSecondary,
+                              size: 20,
+                            ),
                           ),
                         ),
                       ],
@@ -806,26 +846,30 @@ class _ReadOnlyField extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontSize: 11,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: AppColors.textSecondary,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 5),
         ],
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: AppColors.surfaceTertiary,
-            borderRadius: BorderRadius.circular(10),
+            color: AppColors.inputFill,
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppColors.border),
           ),
           child: Text(
             value,
             maxLines: multiline ? null : 1,
             overflow: multiline ? null : TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 14, color: AppColors.textPrimary),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
           ),
         ),
       ],

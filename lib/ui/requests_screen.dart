@@ -170,11 +170,11 @@ class _RequestsScreenState extends State<RequestsScreen> {
                 title: req.title,
                 subtitle: '${req.unitNumber} · ${req.requestedOn}',
                 leading: Container(
-                  width: 40,
-                  height: 40,
+                  width: 42,
+                  height: 42,
                   decoration: BoxDecoration(
                     color: _avatarBg(status),
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
                     Icons.handyman_outlined,
