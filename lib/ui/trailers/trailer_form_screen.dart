@@ -176,7 +176,7 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
   Future<void> _bootstrap() async {
     final lookups = await Future.wait([
       FleetLookupService.instance.fetchCountries(),
-      FleetLookupService.instance.fetchMaintenancePolicies(),
+      FleetLookupService.instance.fetchMaintenancePolicyConfigs(),
     ]);
     final trucks = await PowerUnitService.instance.fetchPowerUnits(limit: 500);
 
@@ -192,8 +192,8 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
     if (!mounted) return;
     setState(() {
       _loading = false;
-      _countries = lookups[0].data ?? [];
-      _policies = (lookups[1].data as List<MaintenancePolicyModel>?) ?? [];
+      _countries = lookups[0].data as List<LookupOption>? ?? [];
+      _policies = lookups[1].data as List<MaintenancePolicyModel>? ?? [];
       _trucks = trucks.data?.items ?? [];
     });
     if (_countryId != null) await _loadStates(_countryId!);
@@ -727,12 +727,15 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
       fill(_color, prefill['color']);
       fill(_plate, prefill['plateNumber']);
       fill(_registrationNumber, prefill['registrationNumber']);
-      fill(_specGvwr, prefill['gvwr']);
+      fill(_specGvwr, prefill['specGvwr'] ?? prefill['gvwr']);
+      fill(_specType, prefill['specType'] ?? prefill['vehicleType']);
+      fillDate(_cviExpiry, prefill['registrationExpiry']);
       fillDate(_purchaseDate, prefill['purchaseDate']);
       fill(_currentOdometer, prefill['odometer']);
       fill(_certificateNumber, prefill['certificateNumber']);
       fillDate(_inspectionDate, prefill['inspectionDate']);
       fillDate(_expiryDate, prefill['expiryDate']);
+      fillDate(_nextInspectionDue, prefill['nextInspectionDue']);
       fill(_inspectorName, prefill['inspectorName']);
       fill(_inspectorLicense, prefill['inspectorLicense']);
       fill(_inspectionFacility, prefill['inspectionFacility']);
@@ -741,6 +744,10 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
       fill(_ownerEmail, prefill['ownerEmail']);
       fill(_ownerPhone, prefill['ownerPhone']);
       fill(_ownerAddress, prefill['ownerAddress']);
+      fill(_criticalDefects, prefill['criticalDefects']);
+      fill(_majorDefects, prefill['majorDefects']);
+      fill(_advisoryItems, prefill['advisoryItems']);
+      fill(_inspectionSummary, prefill['inspectionSummary']);
     });
 
     // Plate province → match against the already-loaded states list, same

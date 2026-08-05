@@ -1980,17 +1980,13 @@ class _MaintenanceTabState extends State<_MaintenanceTab> {
         if (widget.loading)
           const Center(child: CircularProgressIndicator())
         else if (filtered.isEmpty)
-          Container(
+          Padding(
             padding: const EdgeInsets.all(32),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.card,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Text(
-              'No maintenance history found',
-              style: TextStyle(color: AppColors.textSecondary),
+            child: Center(
+              child: Text(
+                'No maintenance history found',
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
             ),
           )
         else

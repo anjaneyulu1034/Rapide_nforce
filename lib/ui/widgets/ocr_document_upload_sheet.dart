@@ -95,14 +95,18 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
   @override
   void initState() {
     super.initState();
-    for (final doc in widget.initialDocuments) {
-      _rows.add(
-        _DocRow(id: _nextId())
-          ..documentType = doc.documentType
-          ..fileName = doc.fileName
-          ..filePath = doc.filePath
-          ..uploaded = true,
-      );
+    if (widget.initialDocuments.isEmpty) {
+      _rows.add(_DocRow(id: _nextId()));
+    } else {
+      for (final doc in widget.initialDocuments) {
+        _rows.add(
+          _DocRow(id: _nextId())
+            ..documentType = doc.documentType
+            ..fileName = doc.fileName
+            ..filePath = doc.filePath
+            ..uploaded = true,
+        );
+      }
     }
     _loadDocumentTypes();
   }
@@ -111,11 +115,17 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
 
   Future<void> _loadDocumentTypes() async {
     setState(() => _loadingTypes = true);
+    debugPrint(
+      '[OCR Sheet] Loading document types for entityTypeId=${widget.entityTypeId}...',
+    );
     final result = await FleetLookupService.instance.fetchOcrDocumentTypes(
       entityTypeId: widget.entityTypeId,
       excluded: _kExcludedOcrDocumentTypes,
     );
     if (!mounted) return;
+    debugPrint(
+      '[OCR Sheet] Document types loaded: ${result.data?.length ?? 0} items -> ${result.data}',
+    );
     setState(() {
       _loadingTypes = false;
       _documentTypes = result.data ?? const [];
@@ -140,6 +150,10 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
   }
 
   Future<void> _pickAndScan(_DocRow row) async {
+    if (row.documentType == null || row.documentType!.trim().isEmpty) {
+      AppToast.showError('Please select a document type first');
+      return;
+    }
     final picked = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
@@ -155,31 +169,61 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
       row.fileName = file.name;
       row.failed = false;
     });
-    await _scanRow(row);
   }
 
-  Future<void> _scanRow(_DocRow row) async {
-    setState(() {
-      row.uploading = true;
-      row.failed = false;
-    });
-    final prefill = await OcrService.instance.scanAndExtract(
-      filePath: row.filePath!,
-      fileName: row.fileName!,
-      documentType: row.documentType!,
-      companyId: AuthService.instance.selectedCompanyId,
+  Future<void> _submitDocuments() async {
+    final validRows = _rows
+        .where((r) => r.filePath != null && r.documentType != null)
+        .toList();
+
+    if (validRows.isEmpty) {
+      debugPrint('[OCR Sheet] Submit tapped with 0 valid rows, closing sheet.');
+      _close();
+      return;
+    }
+
+    debugPrint(
+      '[OCR Sheet] Submitting ${validRows.length} documents for OCR: ${validRows.map((r) => "${r.documentType}: ${r.fileName}").toList()}',
     );
-    if (!mounted) return;
+
     setState(() {
-      row.uploading = false;
-      if (prefill != null) {
-        row.uploaded = true;
-      } else {
-        row.failed = true;
+      for (final r in validRows) {
+        r.uploading = true;
+        r.failed = false;
       }
     });
+
+    final uploadItems = validRows
+        .map((r) => OcrUploadDocItem(
+              filePath: r.filePath!,
+              fileName: r.fileName!,
+              documentType: r.documentType!,
+            ))
+        .toList();
+
+    final prefill = await OcrService.instance.uploadAndExtractOcr(
+      documents: uploadItems,
+      entityTypeId: widget.entityTypeId,
+      entityType: widget.entityTypeId == 2 ? 'Trailer' : 'Truck',
+      companyId: AuthService.instance.selectedCompanyId,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      for (final r in validRows) {
+        r.uploading = false;
+        if (prefill != null) {
+          r.uploaded = true;
+        } else {
+          r.failed = true;
+        }
+      }
+    });
+
     if (prefill != null) {
       widget.onPrefillExtracted(prefill);
+      _close();
     }
   }
 
@@ -249,7 +293,7 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
                               onTypeChanged: (v) =>
                                   setState(() => row.documentType = v),
                               onBrowse: () => _pickAndScan(row),
-                              onRetry: () => _scanRow(row),
+                              onRetry: _submitDocuments,
                               onRemove: () => _removeRow(row.id),
                               onAdd: _addRow,
                             );
@@ -265,7 +309,7 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
                     width: double.infinity,
                     height: 48,
                     child: FilledButton(
-                      onPressed: anyUploading ? null : _close,
+                      onPressed: anyUploading ? null : _submitDocuments,
                       style: FilledButton.styleFrom(
                         backgroundColor: const Color(0xFF4B633D),
                         foregroundColor: Colors.white,
@@ -273,13 +317,22 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      child: Text(
-                        _rows.isEmpty ? 'Done' : 'Submit',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                      child: anyUploading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Text(
+                              _rows.isEmpty ? 'Done' : 'Submit',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                     ),
                   ),
                 ),
@@ -446,9 +499,7 @@ class _DocRowCard extends StatelessWidget {
                     ? SizedBox(
                         height: 40,
                         child: FilledButton(
-                          onPressed: row.documentType == null
-                              ? null
-                              : onBrowse,
+                          onPressed: onBrowse,
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFF4B633D),
                             foregroundColor: Colors.white,

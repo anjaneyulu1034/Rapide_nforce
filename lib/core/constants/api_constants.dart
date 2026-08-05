@@ -30,7 +30,7 @@ class ApiConstants {
   static const String countries = '/countries';
   static const String states = '/states';
   static const String cities = '/cities';
-  static const String fuelTypes = '/Fuel%20Types/getAllFuelTypes';
+  static const String fuelTypes = '/fuel-types';
   static const String maintenancePolicies = '/maintenance-policies';
   static const String permitTypes = '/permit-types';
   static const String complianceDocumentTypes = '/compliance-document-types';
@@ -44,6 +44,8 @@ class ApiConstants {
 
   // OCR (Browse/Scan auto-fill on Add/Edit forms)
   static const String ocrResults = '/ocr/ocr-results';
+  static const String ocrStatus = '/ocr/status';
+  static const String ocrExtractInfo = '/ocr/extract_info';
 
   // Vehicle lookups
   static const String vehiclesVinExists = '/vehicles/vin-exists';

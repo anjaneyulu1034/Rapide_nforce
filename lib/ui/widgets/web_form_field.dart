@@ -347,11 +347,13 @@ class WebDropdownField<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLight = Theme.of(context).brightness == Brightness.light;
+    final effectiveValue = (value != null && items.contains(value)) ? value : null;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: DropdownButtonFormField<T>(
-        initialValue: value,
+        key: ValueKey('$label-$effectiveValue-${items.length}'),
+        initialValue: effectiveValue,
         isExpanded: true,
         dropdownColor: AppColors.card,
         style: const TextStyle(
@@ -582,15 +584,21 @@ class _SearchableListSheetState<T> extends State<_SearchableListSheet<T>> {
               )
               .toList();
 
-    return SafeArea(
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.7,
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+    final viewInsetsBottom = MediaQuery.of(context).viewInsets.bottom;
+    final availableHeight =
+        MediaQuery.of(context).size.height - viewInsetsBottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: viewInsetsBottom),
+      child: SafeArea(
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: availableHeight * 0.7,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
@@ -652,8 +660,9 @@ class _SearchableListSheetState<T> extends State<_SearchableListSheet<T>> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }
 
 /// Date input whose on-screen value is always shown as `MM-DD-YYYY` (matching
@@ -743,7 +752,9 @@ class _WebDateFieldState extends State<WebDateField> {
 
   String _format(String iso) {
     final parsed = _parseDateText(iso);
-    return parsed == null ? iso.trim() : DateFormat('MM-dd-yyyy').format(parsed);
+    return parsed == null
+        ? iso.trim()
+        : DateFormat('MM-dd-yyyy').format(parsed);
   }
 
   void _syncDisplay() {

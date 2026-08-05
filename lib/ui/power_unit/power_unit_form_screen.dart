@@ -115,6 +115,29 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   List<LookupOption> _states = [];
   List<LookupOption> _cities = [];
   List<LookupOption> _fuelTypes = [];
+  List<String> get _fuelTypeOptions {
+    const staticDefaults = ['CNG', 'Diesel', 'Petrol'];
+    final dynamicNames = _fuelTypes.map((f) => f.name).toList();
+    final combined = <String>[];
+    final seen = <String>{};
+
+    for (final name in [...staticDefaults, ...dynamicNames]) {
+      final trimmed = name.trim();
+      final lower = trimmed.toLowerCase();
+      if (trimmed.isNotEmpty && !seen.contains(lower)) {
+        seen.add(lower);
+        combined.add(trimmed);
+      }
+    }
+    if (_fuelType != null && _fuelType!.trim().isNotEmpty) {
+      final valTrimmed = _fuelType!.trim();
+      final valLower = valTrimmed.toLowerCase();
+      if (!seen.contains(valLower)) {
+        combined.add(valTrimmed);
+      }
+    }
+    return combined;
+  }
   List<LookupOption> _policies = [];
   List<MaintenancePolicyModel> _policyConfigs = [];
   List<LookupOption> _permitTypes = [];
@@ -269,9 +292,13 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       final third = int.tryParse(parts[2]);
       if (first != null && second != null && third != null) {
         if (third > 1000) {
-          return DateFormat('yyyy-MM-dd').format(DateTime(third, first, second));
+          return DateFormat(
+            'yyyy-MM-dd',
+          ).format(DateTime(third, first, second));
         } else if (first > 1000) {
-          return DateFormat('yyyy-MM-dd').format(DateTime(first, second, third));
+          return DateFormat(
+            'yyyy-MM-dd',
+          ).format(DateTime(first, second, third));
         }
       }
     }
@@ -285,7 +312,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _model.text = u.model ?? '';
     _year.text = u.year?.toString() ?? '';
     _color.text = u.color ?? '';
-    _purchaseDate.text = _toIsoDate(u.purchaseDate ?? u.raw?['purchaseDate'] as String?);
+    _purchaseDate.text = _toIsoDate(
+      u.purchaseDate ?? u.raw?['purchaseDate'] as String?,
+    );
     _purchasePrice.text = u.purchasePrice?.toString() ?? '';
     _startDate.text = _toIsoDate(u.startDate ?? u.raw?['startDate'] as String?);
     _status = u.isActive ? 'active' : 'inactive';
@@ -295,7 +324,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _stateId = null;
     _cityId = u.cityId;
     _registrationNumber.text = u.registrationNumber ?? '';
-    _registrationExpiry.text = _toIsoDate(u.registrationExpiry ?? u.raw?['registrationExpiry'] as String?);
+    _registrationExpiry.text = _toIsoDate(
+      u.registrationExpiry ?? u.raw?['registrationExpiry'] as String?,
+    );
     _imsNumber.text = u.imsNumber ?? '';
     final ownershipType = (u.ownershipType ?? '').toLowerCase().trim();
     _ownershipType = ['owned', 'owner-operator'].contains(ownershipType)
@@ -306,7 +337,16 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _ownerPhone.text = u.ownerPhone ?? '';
     _ownerAddress.text = u.ownerAddress ?? '';
     _gvwr.text = u.gvwr ?? '';
-    _fuelType = u.fuelType;
+    final rawFuel = u.fuelType?.trim();
+    if (rawFuel != null && rawFuel.isNotEmpty) {
+      final match = _fuelTypeOptions.firstWhere(
+        (o) => o.toLowerCase() == rawFuel.toLowerCase(),
+        orElse: () => rawFuel,
+      );
+      _fuelType = match;
+    } else {
+      _fuelType = null;
+    }
     _transmission.text = u.transmission ?? '';
     _engineMake.text = u.engineMake ?? '';
     _engineModel.text = u.engineModel ?? '';
@@ -315,8 +355,12 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _cviExpiry.text = _toIsoDate(u.cviExpiry ?? u.raw?['cviExpiry'] as String?);
     _currentOdometer.text = u.odometer?.toString() ?? '';
     _initialOdometer = u.odometer;
-    _annualInspectionDue.text = _toIsoDate(u.annualInspectionDue ?? u.raw?['annualInspectionDue'] as String?);
-    _lastInspection.text = _toIsoDate(u.lastInspection ?? u.raw?['lastInspection'] as String?);
+    _annualInspectionDue.text = _toIsoDate(
+      u.annualInspectionDue ?? u.raw?['annualInspectionDue'] as String?,
+    );
+    _lastInspection.text = _toIsoDate(
+      u.lastInspection ?? u.raw?['lastInspection'] as String?,
+    );
     _pmInterval.text = u.pmInterval ?? '';
     _nextPmDue.text = _toIsoDate(u.nextPmDue ?? u.raw?['nextPmDue'] as String?);
     _nextPmOdometer.text = u.nextPmOdometer ?? '';
@@ -328,9 +372,15 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _eldProvider.text = u.eldProvider ?? '';
     _permits.addAll(u.permits);
     _certificateNumber.text = u.certificateNumber ?? '';
-    _inspectionDate.text = _toIsoDate(u.inspectionDate ?? u.raw?['inspectionDate'] as String?);
-    _expiryDate.text = _toIsoDate(u.expiryDate ?? u.raw?['expiryDate'] as String?);
-    _nextInspectionDue.text = _toIsoDate(u.nextInspectionDue ?? u.raw?['nextInspectionDue'] as String?);
+    _inspectionDate.text = _toIsoDate(
+      u.inspectionDate ?? u.raw?['inspectionDate'] as String?,
+    );
+    _expiryDate.text = _toIsoDate(
+      u.expiryDate ?? u.raw?['expiryDate'] as String?,
+    );
+    _nextInspectionDue.text = _toIsoDate(
+      u.nextInspectionDue ?? u.raw?['nextInspectionDue'] as String?,
+    );
     _inspectorName.text = u.inspectorName ?? '';
     _inspectorLicense.text = u.inspectorLicense ?? '';
     _inspectionFacility.text = u.inspectionFacility ?? '';
@@ -423,16 +473,22 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     final allPanels = policy.allPanels;
     final activePanel = allPanels.firstWhere(
       (p) => p.type == (_selectedTypeKey ?? 'PM'),
-      orElse: () => policy.pmPanel ?? const PolicySchedulePanel(type: 'PM', name: 'PM Schedule'),
+      orElse: () =>
+          policy.pmPanel ??
+          const PolicySchedulePanel(type: 'PM', name: 'PM Schedule'),
     );
 
     // Anchor Date: prefer Last Inspection Date, then Start Date, then current date
-    final anchorDate = DateTime.tryParse(_lastInspection.text.trim()) ??
+    final anchorDate =
+        DateTime.tryParse(_lastInspection.text.trim()) ??
         DateTime.tryParse(_startDate.text.trim()) ??
         DateTime.now();
 
     final panelMonths = activePanel.months ?? 0;
-    final panelDays = activePanel.days ?? (activePanel.months == null ? policy.pmIntervalDays : 0) ?? 0;
+    final panelDays =
+        activePanel.days ??
+        (activePanel.months == null ? policy.pmIntervalDays : 0) ??
+        0;
     final intervalKm = activePanel.km ?? policy.pmIntervalKm;
     final baseOdometer = int.tryParse(_currentOdometer.text.trim());
 
@@ -464,7 +520,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         _nextPmDue.text = _isoDate(computedDueDate);
       }
 
-      if (activePanel.nextDueDate != null && activePanel.nextDueDate!.isNotEmpty) {
+      if (activePanel.nextDueDate != null &&
+          activePanel.nextDueDate!.isNotEmpty) {
         _nextPmDue.text = activePanel.nextDueDate!;
       }
 
@@ -696,7 +753,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           _req(_plate.text, 'Plate Number') != null ||
           _req(_registrationExpiry.text, 'Registration Expiry') != null ||
           _req(_transmission.text, 'Transmission') != null ||
-          _nonNegativeIntValidator(_gvwr.text, 'GVWR', required: false) != null ||
+          _nonNegativeIntValidator(_gvwr.text, 'GVWR', required: false) !=
+              null ||
           _ownershipType.isEmpty) {
         AppToast.showError('Complete all required Step 1 fields');
         return false;
@@ -925,13 +983,14 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       fill(_currentOdometer, prefill['odometer']);
       fill(_safetyVehicleType, prefill['vehicleType']);
 
-      final extractedFuelType = prefill['fuelType'];
+      final extractedFuelType = prefill['fuelType']?.toString().trim();
       if ((_fuelType == null || _fuelType!.isEmpty) &&
-          extractedFuelType != null) {
-        final match = _fuelTypes.where(
-          (f) => f.name.toLowerCase() == extractedFuelType.toLowerCase(),
+          extractedFuelType != null &&
+          extractedFuelType.isNotEmpty) {
+        final match = _fuelTypeOptions.where(
+          (o) => o.toLowerCase() == extractedFuelType.toLowerCase(),
         );
-        if (match.isNotEmpty) _fuelType = match.first.name;
+        _fuelType = match.isNotEmpty ? match.first : extractedFuelType;
       }
     });
 
@@ -1286,12 +1345,13 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           controller: _gvwr,
           label: 'GVWR',
           keyboardType: TextInputType.number,
-          validator: (v) => _nonNegativeIntValidator(v, 'GVWR', required: false),
+          validator: (v) =>
+              _nonNegativeIntValidator(v, 'GVWR', required: false),
         ),
         WebDropdownField<String>(
           label: 'Fuel Type',
           value: _fuelType,
-          items: _fuelTypes.map((f) => f.name).toList(),
+          items: _fuelTypeOptions,
           itemLabel: (v) => v,
           onChanged: (v) {
             setState(() => _fuelType = v);
@@ -1326,11 +1386,12 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     final activeName = activePanel.name.isNotEmpty
         ? activePanel.name
         : (activePanel.type == 'PM'
-            ? 'PM Schedule'
-            : activePanel.type == 'OIL'
-                ? 'Oil Change'
-                : activePanel.type);
-    final isOil = activePanel.type.toUpperCase() == 'OIL' ||
+              ? 'PM Schedule'
+              : activePanel.type == 'OIL'
+              ? 'Oil Change'
+              : activePanel.type);
+    final isOil =
+        activePanel.type.toUpperCase() == 'OIL' ||
         activeName.toLowerCase().contains('oil');
     final isReefer = activePanel.type.toUpperCase() == 'REEFER';
 
@@ -1346,16 +1407,17 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
 
     final progressHeader = isOil
         ? 'KM UNTIL OIL CHANGE'
-        : (isReefer
-            ? 'HOURS UNTIL REEFER SERVICE'
-            : 'KM UNTIL PM');
+        : (isReefer ? 'HOURS UNTIL REEFER SERVICE' : 'KM UNTIL PM');
 
     final currentOdometer = int.tryParse(_currentOdometer.text.trim()) ?? 0;
     final nextPmOdometer = int.tryParse(_nextPmOdometer.text.trim()) ?? 0;
-    final pmIntervalKm = int.tryParse(_pmInterval.text.trim()) ??
+    final pmIntervalKm =
+        int.tryParse(_pmInterval.text.trim()) ??
         (selectedPolicyObj?.pmIntervalKm ?? 10000);
-    final remainingKm = (nextPmOdometer - currentOdometer)
-        .clamp(0, pmIntervalKm > 0 ? pmIntervalKm * 2 : 100000);
+    final remainingKm = (nextPmOdometer - currentOdometer).clamp(
+      0,
+      pmIntervalKm > 0 ? pmIntervalKm * 2 : 100000,
+    );
     final progressRatio = pmIntervalKm > 0
         ? (remainingKm / pmIntervalKm).clamp(0.0, 1.0)
         : 0.0;
@@ -1409,11 +1471,17 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                   const SizedBox(width: 8),
                   Text(
                     activeSchedules.first.name,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.green.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
@@ -1430,7 +1498,10 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                   const Spacer(),
                   Text(
                     '${allPanels.length} types configured',
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -1461,8 +1532,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                             panel.name,
                             style: TextStyle(
                               fontSize: 12,
-                              fontWeight:
-                                  isSelected ? FontWeight.bold : FontWeight.normal,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
                               color: isSelected
                                   ? AppColors.primary
                                   : AppColors.textPrimary,
@@ -1472,7 +1544,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                           Icon(
                             Icons.check_circle,
                             size: 14,
-                            color: isSelected ? AppColors.primary : Colors.green,
+                            color: isSelected
+                                ? AppColors.primary
+                                : Colors.green,
                           ),
                         ],
                       ),
@@ -1638,8 +1712,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                         remainingKm <= 500
                             ? AppColors.danger
                             : (remainingKm <= 2000
-                                ? AppColors.warning
-                                : AppColors.primary),
+                                  ? AppColors.warning
+                                  : AppColors.primary),
                       ),
                     ),
                   ),
@@ -1650,81 +1724,81 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         ],
       ),
       WebFormSection(
-      title: 'Telematics & ELD',
-      children: [
-        WebDropdownField<String>(
-          label: 'Telematics Status *',
-          value: _telematicsEnabled,
-          items: const ['active', 'inactive'],
-          itemLabel: (v) => v == 'active' ? 'Active' : 'Inactive',
-          onChanged: (v) {
-            setState(() => _telematicsEnabled = v ?? 'active');
-            _onFormChanged();
-          },
-        ),
-        WebTextFormField(
-          controller: _telematicsProvider,
-          label: 'Telematics Provider *',
-          validator: (v) => _req(v, 'Telematics Provider'),
-        ),
-        WebTextFormField(
-          controller: _eldProvider,
-          label: 'ELD Provider *',
-          validator: (v) => _req(v, 'ELD Provider'),
-        ),
-      ],
-    ),
-    WebFormSection(
-      title: 'Unit-Specific Permits',
-      children: [
-        WebDropdownField<String>(
-          label: 'Permit Type *',
-          value: _selectedPermitType,
-          items: [..._permitTypes.map((p) => p.name), _kOtherPermitType],
-          itemLabel: (v) => v == _kOtherPermitType ? 'Other' : v,
-          onChanged: (v) {
-            setState(() => _selectedPermitType = v);
-            _onFormChanged();
-          },
-        ),
-        if (_selectedPermitType == _kOtherPermitType)
+        title: 'Telematics & ELD',
+        children: [
+          WebDropdownField<String>(
+            label: 'Telematics Status *',
+            value: _telematicsEnabled,
+            items: const ['active', 'inactive'],
+            itemLabel: (v) => v == 'active' ? 'Active' : 'Inactive',
+            onChanged: (v) {
+              setState(() => _telematicsEnabled = v ?? 'active');
+              _onFormChanged();
+            },
+          ),
           WebTextFormField(
-            controller: _customPermitType,
-            label: 'Custom Permit Type *',
-            hint: 'Enter a new permit type name',
+            controller: _telematicsProvider,
+            label: 'Telematics Provider *',
+            validator: (v) => _req(v, 'Telematics Provider'),
           ),
-        WebTextFormField(controller: _permitNumber, label: 'Permit Number *'),
-        WebDateField(
-          controller: _permitIssue,
-          label: 'Issue Date',
-          required: true,
-        ),
-        WebDateField(
-          controller: _permitExpiry,
-          label: 'Expiry Date',
-          required: true,
-        ),
-        OutlinedButton.icon(
-          onPressed: _addPermit,
-          icon: const Icon(Icons.add),
-          label: const Text('Add Permit'),
-        ),
-        ..._permits.map(
-          (p) => ListTile(
-            title: Text('${p.permitType} — ${p.permitNumber}'),
-            subtitle: Text(
-              '${formatDateMMDDYYYY(p.issueDate)} → ${formatDateMMDDYYYY(p.expiryDate)}',
+          WebTextFormField(
+            controller: _eldProvider,
+            label: 'ELD Provider *',
+            validator: (v) => _req(v, 'ELD Provider'),
+          ),
+        ],
+      ),
+      WebFormSection(
+        title: 'Unit-Specific Permits',
+        children: [
+          WebDropdownField<String>(
+            label: 'Permit Type *',
+            value: _selectedPermitType,
+            items: [..._permitTypes.map((p) => p.name), _kOtherPermitType],
+            itemLabel: (v) => v == _kOtherPermitType ? 'Other' : v,
+            onChanged: (v) {
+              setState(() => _selectedPermitType = v);
+              _onFormChanged();
+            },
+          ),
+          if (_selectedPermitType == _kOtherPermitType)
+            WebTextFormField(
+              controller: _customPermitType,
+              label: 'Custom Permit Type *',
+              hint: 'Enter a new permit type name',
             ),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete_outline),
-              onPressed: () => setState(() => _permits.remove(p)),
+          WebTextFormField(controller: _permitNumber, label: 'Permit Number *'),
+          WebDateField(
+            controller: _permitIssue,
+            label: 'Issue Date',
+            required: true,
+          ),
+          WebDateField(
+            controller: _permitExpiry,
+            label: 'Expiry Date',
+            required: true,
+          ),
+          OutlinedButton.icon(
+            onPressed: _addPermit,
+            icon: const Icon(Icons.add),
+            label: const Text('Add Permit'),
+          ),
+          ..._permits.map(
+            (p) => ListTile(
+              title: Text('${p.permitType} — ${p.permitNumber}'),
+              subtitle: Text(
+                '${formatDateMMDDYYYY(p.issueDate)} → ${formatDateMMDDYYYY(p.expiryDate)}',
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => setState(() => _permits.remove(p)),
+              ),
             ),
           ),
-        ),
-      ],
-    ),
-  ];
-}
+        ],
+      ),
+    ];
+  }
 
   List<Widget> _buildStep3() => [
     WebFormSection(
