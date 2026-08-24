@@ -394,18 +394,45 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _inspectionSummary.text = u.inspectionSummary ?? '';
   }
 
-  Future<void> _loadStates(int countryId) async {
+  bool _loadingStates = false;
+  bool _loadingCities = false;
+
+  Future<void> _loadStates(int? countryId) async {
+    if (!mounted) return;
+    setState(() => _loadingStates = true);
     final r = await FleetLookupService.instance.fetchStates(
       countryId: countryId,
     );
     if (!mounted) return;
-    setState(() => _states = r.data ?? []);
+    setState(() {
+      _states = r.data ?? [];
+      _loadingStates = false;
+    });
+    if (!r.isSuccess && (r.message?.isNotEmpty ?? false)) {
+      AppToast.showError('Failed to load states: ${r.message}');
+    }
   }
 
-  Future<void> _loadCities(int stateId) async {
+  Future<void> _loadCities(int? stateId) async {
+    if (stateId == null) {
+      if (!mounted) return;
+      setState(() {
+        _cities = [];
+        _loadingCities = false;
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _loadingCities = true);
     final r = await FleetLookupService.instance.fetchCities(stateId: stateId);
     if (!mounted) return;
-    setState(() => _cities = r.data ?? []);
+    setState(() {
+      _cities = r.data ?? [];
+      _loadingCities = false;
+    });
+    if (!r.isSuccess && (r.message?.isNotEmpty ?? false)) {
+      AppToast.showError('Failed to load cities: ${r.message}');
+    }
   }
 
   /// Mirrors the web app's `calculateCVIPExpiry`: BC/SK get 6 months
@@ -738,56 +765,76 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     return null;
   }
 
-  bool _validateStep(int step) {
-    if (!_formKey.currentState!.validate()) return false;
-    if (step == 1) {
-      if (_req(_unitNumber.text, 'Unit Number') != null ||
-          _req(_vin.text, 'VIN') != null ||
-          _req(_make.text, 'Make') != null ||
-          _req(_model.text, 'Model') != null ||
-          _req(_year.text, 'Year') != null ||
-          _req(_color.text, 'Color') != null ||
-          _req(_purchaseDate.text, 'Purchase Date') != null ||
-          _req(_purchasePrice.text, 'Purchase Price') != null ||
-          _req(_startDate.text, 'Start Date') != null ||
-          _req(_plate.text, 'Plate Number') != null ||
-          _req(_registrationExpiry.text, 'Registration Expiry') != null ||
-          _req(_transmission.text, 'Transmission') != null ||
-          _nonNegativeIntValidator(_gvwr.text, 'GVWR', required: false) !=
-              null ||
-          _ownershipType.isEmpty) {
-        AppToast.showError('Complete all required Step 1 fields');
-        return false;
-      }
-      if (_countryId == null) {
-        AppToast.showError('Select country');
-        return false;
-      }
-      if (_stateId == null && _states.isNotEmpty) {
-        AppToast.showError('Select state/province');
-        return false;
-      }
-      if (_ownershipType == 'owner-operator') {
-        if (_req(_ownerName.text, 'Owner Name') != null ||
-            _req(_ownerEmail.text, 'Owner Email') != null ||
-            _req(_ownerPhone.text, 'Owner Phone') != null ||
-            _req(_ownerAddress.text, 'Owner Address') != null) {
-          AppToast.showError('Complete owner operator details');
-          return false;
-        }
+  String? _purchaseDateValidator(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return 'Purchase Date is required';
+    final parsed = DateTime.tryParse(value);
+    if (parsed != null) {
+      final today = DateTime.now();
+      final pDay = DateTime(parsed.year, parsed.month, parsed.day);
+      final tDay = DateTime(today.year, today.month, today.day);
+      if (pDay.isAfter(tDay)) {
+        return 'Purchase Date cannot be in the future';
       }
     }
+    return null;
+  }
+
+  bool _validateStep(int step) {
+    if (!_formKey.currentState!.validate()) return false;
+    final missing = <String>[];
+
+    if (step == 1) {
+      if (_req(_unitNumber.text, 'Unit Number') != null) missing.add('Unit Number');
+      if (_req(_vin.text, 'VIN') != null) missing.add('VIN');
+      if (_req(_make.text, 'Make') != null) missing.add('Make');
+      if (_req(_model.text, 'Model') != null) missing.add('Model');
+      if (_req(_year.text, 'Year') != null) missing.add('Year');
+      if (_req(_color.text, 'Color') != null) missing.add('Color');
+      final purchaseDateErr = _purchaseDateValidator(_purchaseDate.text);
+      if (purchaseDateErr != null) {
+        missing.add('Purchase Date (${purchaseDateErr.replaceAll("Purchase Date ", "")})');
+      }
+      if (_req(_purchasePrice.text, 'Purchase Price') != null) missing.add('Purchase Price');
+      if (_req(_startDate.text, 'Start Date') != null) missing.add('Start Date');
+      if (_req(_plate.text, 'Plate Number') != null) missing.add('Plate Number');
+      if (_req(_registrationExpiry.text, 'Registration Expiry') != null) missing.add('Registration Expiry');
+      if (_req(_transmission.text, 'Transmission') != null) missing.add('Transmission');
+      if (_registrationNumber.text.trim().isNotEmpty &&
+          _alphanumericValidator(_registrationNumber.text, 'Registration Number') != null) {
+        missing.add('Registration Number (alphanumeric only)');
+      }
+      if (_imsNumber.text.trim().isNotEmpty &&
+          _alphanumericValidator(_imsNumber.text, 'IMS Number') != null) {
+        missing.add('IMS Number (alphanumeric only)');
+      }
+      if (_nonNegativeIntValidator(_gvwr.text, 'GVWR', required: false) != null) missing.add('GVWR');
+      if (_countryId == null) missing.add('Country');
+      if (_stateId == null && _states.isNotEmpty) missing.add('State/Province');
+      if (_ownershipType.isEmpty) missing.add('Ownership Type');
+      if (_ownershipType == 'owner-operator') {
+        if (_req(_ownerName.text, 'Owner Name') != null) missing.add('Owner Name');
+        if (_req(_ownerEmail.text, 'Owner Email') != null) missing.add('Owner Email');
+        if (_req(_ownerPhone.text, 'Owner Phone') != null) missing.add('Owner Phone');
+        if (_req(_ownerAddress.text, 'Owner Address') != null) missing.add('Owner Address');
+      }
+      if (missing.isNotEmpty) {
+        AppToast.showError('Please fill required Step 1 field(s): ${missing.join(", ")}');
+        return false;
+      }
+    }
+
     if (step == 2) {
-      if (_req(_maintenancePolicy.text, 'Maintenance Policy') != null ||
-          _req(_cviExpiry.text, 'CVIP Due') != null ||
-          _req(_currentOdometer.text, 'Current Odometer') != null ||
-          _req(_lastInspection.text, 'Last Inspection') != null ||
-          _req(_pmInterval.text, 'PM Interval') != null ||
-          _req(_nextPmDue.text, 'Next PM Due') != null ||
-          _req(_nextPmOdometer.text, 'Next PM Odometer') != null ||
-          _req(_telematicsProvider.text, 'Telematics Provider') != null ||
-          _req(_eldProvider.text, 'ELD Provider') != null) {
-        AppToast.showError('Complete all required Step 2 fields');
+      if (_req(_maintenancePolicy.text, 'Maintenance Policy') != null) missing.add('Maintenance Policy');
+      if (_req(_cviExpiry.text, 'CVIP Due') != null) missing.add('CVIP Due');
+      if (_req(_currentOdometer.text, 'Current Odometer') != null) missing.add('Current Odometer');
+      if (_req(_lastInspection.text, 'Last Inspection') != null) missing.add('Last Inspection');
+      if (_req(_nextPmDue.text, 'Next PM Due') != null) missing.add('Next PM Due');
+      if (_req(_nextPmOdometer.text, 'Next PM Odometer') != null) missing.add('Next PM Odometer');
+      if (_req(_telematicsProvider.text, 'Telematics Provider') != null) missing.add('Telematics Provider');
+      if (_req(_eldProvider.text, 'ELD Provider') != null) missing.add('ELD Provider');
+      if (missing.isNotEmpty) {
+        AppToast.showError('Please fill required Step 2 field(s): ${missing.join(", ")}');
         return false;
       }
       final currentOdometer = int.tryParse(_currentOdometer.text.trim());
@@ -795,7 +842,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           currentOdometer != null &&
           currentOdometer < _initialOdometer!) {
         AppToast.showError(
-          'Current Odometer cannot be less than the Initial Odometer ($_initialOdometer)',
+          'Current Odometer cannot be less than initial odometer ($_initialOdometer)',
         );
         return false;
       }
@@ -804,17 +851,19 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         return false;
       }
     }
+
     if (step == 3) {
-      if (_req(_certificateNumber.text, 'Certificate Number') != null ||
-          _req(_inspectionDate.text, 'Inspection Date') != null ||
-          _req(_expiryDate.text, 'Expiry Date') != null ||
-          _req(_nextInspectionDue.text, 'Next Inspection Due') != null ||
-          _req(_inspectorName.text, 'Inspector Name') != null ||
-          _req(_inspectorLicense.text, 'Inspector License') != null ||
-          _req(_inspectionFacility.text, 'Inspection Facility') != null ||
-          _req(_facilityNumber.text, 'Facility Number') != null ||
-          _req(_safetyPlate.text, 'License Plate') != null) {
-        AppToast.showError('Complete all required Step 3 fields');
+      if (_req(_certificateNumber.text, 'Certificate Number') != null) missing.add('Certificate Number');
+      if (_req(_inspectionDate.text, 'Inspection Date') != null) missing.add('Inspection Date');
+      if (_req(_expiryDate.text, 'Expiry Date') != null) missing.add('Expiry Date');
+      if (_req(_nextInspectionDue.text, 'Next Inspection Due') != null) missing.add('Next Inspection Due');
+      if (_req(_inspectorName.text, 'Inspector Name') != null) missing.add('Inspector Name');
+      if (_req(_inspectorLicense.text, 'Inspector License') != null) missing.add('Inspector License');
+      if (_req(_inspectionFacility.text, 'Inspection Facility') != null) missing.add('Inspection Facility');
+      if (_req(_facilityNumber.text, 'Facility Number') != null) missing.add('Facility Number');
+      if (_req(_safetyPlate.text, 'License Plate') != null) missing.add('License Plate');
+      if (missing.isNotEmpty) {
+        AppToast.showError('Please fill required Step 3 field(s): ${missing.join(", ")}');
         return false;
       }
     }
@@ -1056,6 +1105,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   }
 
   Future<void> _next() async {
+    if (_step >= 3 || _checkingVin || _saving) return;
     if (!_validateStep(_step)) return;
     if (_step == 1 && !widget.isEdit) {
       final vin = _vin.text.trim();
@@ -1072,7 +1122,9 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         }
       }
     }
-    setState(() => _step++);
+    if (_step < 3) {
+      setState(() => _step = (_step + 1).clamp(1, 3));
+    }
   }
 
   /// Leaves the screen, prompting for confirmation first if there are
@@ -1151,6 +1203,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     const SizedBox(height: 12),
     WebFormSection(
       title: 'Vehicle Details',
+      initiallyExpanded: true,
       children: [
         WebTextFormField(
           controller: _unitNumber,
@@ -1227,6 +1280,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     ),
     WebFormSection(
       title: 'Registration & Plates',
+      initiallyExpanded: true,
       children: [
         WebTextFormField(
           controller: _plate,
@@ -1257,6 +1311,12 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           items: _states.map((s) => s.id).toList(),
           itemLabel: (id) => _states.firstWhere((s) => s.id == id).name,
           searchHint: 'Search state/province...',
+          isLoading: _loadingStates,
+          onTap: () {
+            if (_countryId == null) {
+              AppToast.showError('Please select country first');
+            }
+          },
           onChanged: (v) async {
             setState(() {
               _stateId = v;
@@ -1277,6 +1337,14 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           items: _cities.map((c) => c.id).toList(),
           itemLabel: (id) => _cities.firstWhere((c) => c.id == id).name,
           searchHint: 'Search city...',
+          isLoading: _loadingCities,
+          onTap: () {
+            if (_countryId == null) {
+              AppToast.showError('Please select country first');
+            } else if (_stateId == null) {
+              AppToast.showError('Please select state / province first');
+            }
+          },
           onChanged: (v) {
             setState(() => _cityId = v);
             _onFormChanged();
@@ -1302,6 +1370,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     ),
     WebFormSection(
       title: 'Ownership',
+      initiallyExpanded: true,
       children: [
         WebDropdownField<String>(
           label: 'Ownership Type *',
@@ -1340,6 +1409,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     ),
     WebFormSection(
       title: 'Technical Specifications',
+      initiallyExpanded: true,
       children: [
         WebTextFormField(
           controller: _gvwr,
@@ -1425,6 +1495,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     return [
       WebFormSection(
         title: 'Maintenance Policy',
+        initiallyExpanded: true,
         children: [
           Text(
             'Select a maintenance policy and track intervals.',
@@ -1725,6 +1796,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       ),
       WebFormSection(
         title: 'Telematics & ELD',
+        initiallyExpanded: true,
         children: [
           WebDropdownField<String>(
             label: 'Telematics Status *',
@@ -1750,6 +1822,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       ),
       WebFormSection(
         title: 'Unit-Specific Permits',
+        initiallyExpanded: true,
         children: [
           WebDropdownField<String>(
             label: 'Permit Type *',
@@ -1803,6 +1876,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   List<Widget> _buildStep3() => [
     WebFormSection(
       title: 'Annual Safety / CVIP',
+      initiallyExpanded: true,
       children: [
         WebTextFormField(
           controller: _certificateNumber,
@@ -1988,7 +2062,8 @@ class _BottomBar extends StatelessWidget {
               onContinue != null
                   ? WebPrimaryButton(
                       label: 'Continue',
-                      onPressed: onContinue,
+                      loading: saving,
+                      onPressed: saving ? null : onContinue,
                       expand: false,
                       dense: true,
                     )

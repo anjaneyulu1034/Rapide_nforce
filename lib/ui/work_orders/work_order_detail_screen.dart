@@ -2,15 +2,14 @@ import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
-import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/document_download_service.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/services/maintenance_service.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_form_screen.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_pdf_export.dart';
-import 'package:rapide_nforce/ui/work_orders/work_order_upload_attachment_sheet.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/source_events_widgets.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/work_order_section_header.dart';
+import 'package:rapide_nforce/ui/work_orders/widgets/work_order_status_chip.dart';
 import 'package:rapide_nforce/ui/widgets/api_error_banner.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 
@@ -30,7 +29,6 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
   bool _loading = true;
   String? _error;
   WorkOrderModel? _order;
-  bool _deleting = false;
 
   List<TechnicianSummary> _technicians = [];
   List<MaintenanceIssueSummary> _events = [];
@@ -165,63 +163,6 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
     }
   }
 
-  Future<void> _confirmDelete() async {
-    final order = _order;
-    if (order == null || !order.status.canEdit) return;
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.card,
-        title: Text(
-          'Delete work order?',
-          style: TextStyle(color: AppColors.textPrimary),
-        ),
-        content: Text(
-          'Remove ${order.workOrderNumber.isNotEmpty ? order.workOrderNumber : 'WO #${order.id}'}? This cannot be undone.',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !mounted) return;
-
-    setState(() => _deleting = true);
-    final result = await MaintenanceService.instance.deleteWorkOrder(order.id);
-    if (!mounted) return;
-
-    setState(() => _deleting = false);
-
-    if (!result.isSuccess) {
-      ApiFeedback.showError(result, fallback: 'Delete failed');
-      return;
-    }
-
-    AppToast.showSuccess('Work order deleted');
-    Navigator.of(context).pop(true);
-  }
-
-  Future<void> _uploadAttachment() async {
-    final order = _order;
-    if (order == null) return;
-    final uploaded = await showWorkOrderUploadAttachmentSheet(
-      context: context,
-      workOrderId: order.id,
-    );
-    if (uploaded == true) _load();
-  }
-
   Future<void> _exportPdf() async {
     final order = _order;
     if (order == null) return;
@@ -236,37 +177,43 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
       child: Scaffold(
         backgroundColor: Colors.transparent,
         appBar: AppBar(
-          title: Text(
-            order?.workOrderNumber.isNotEmpty == true
-                ? order!.workOrderNumber
-                : 'View Work Order',
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          title: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                Text(
+                  order?.workOrderNumber.isNotEmpty == true
+                      ? order!.workOrderNumber
+                      : 'View Work Order',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                if (order != null) ...[
+                  const SizedBox(width: 8),
+                  WorkOrderStatusChip(status: order.status),
+                ],
+              ],
+            ),
           ),
           actions: [
-            if (order != null && order.status.canEdit)
-              IconButton(
-                icon: const Icon(Icons.attach_file_rounded),
-                tooltip: 'Upload Attachment',
-                onPressed: _uploadAttachment,
-              ),
             if (order != null && order.status == WorkOrderStatus.completed)
-              IconButton(
-                icon: const Icon(Icons.picture_as_pdf_outlined),
-                tooltip: 'Export PDF',
-                onPressed: _exportPdf,
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.inputFill,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 19),
+                  tooltip: 'Export PDF',
+                  onPressed: _exportPdf,
+                ),
               ),
-            if (order != null && order.status.canEdit)
-              IconButton(
-                icon: _deleting
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(Icons.delete_outline, color: AppColors.danger),
-                onPressed: _deleting ? null : _confirmDelete,
-                tooltip: 'Delete',
-              ),
-            const SizedBox(width: 4),
           ],
         ),
         body: _buildBody(),
@@ -278,7 +225,7 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
                   color: AppColors.card,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.08),
+                      color: AppColors.cardShadow,
                       blurRadius: 12,
                       offset: const Offset(0, -4),
                     ),
@@ -294,17 +241,18 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
                         child: OutlinedButton(
                           style: OutlinedButton.styleFrom(
                             minimumSize: const Size.fromHeight(48),
+                            foregroundColor: AppColors.textPrimary,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            side: BorderSide(color: AppColors.border),
+                            side: BorderSide(color: AppColors.border, width: 1.5),
                           ),
                           onPressed: () => Navigator.pop(context),
-                          child: Text(
+                          child: const Text(
                             'Cancel',
                             style: TextStyle(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14.5,
                             ),
                           ),
                         ),
@@ -326,7 +274,8 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
                           style: FilledButton.styleFrom(
                             minimumSize: const Size.fromHeight(48),
                             backgroundColor: AppColors.primary,
-                            elevation: 2,
+                            elevation: 3,
+                            shadowColor: AppColors.primary.withValues(alpha: 0.4),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -380,13 +329,40 @@ class _WorkOrderDetailScreenState extends State<WorkOrderDetailScreen> {
     }
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
       children: [
-        Text(
-          'View a maintenance or repair work order · Created on ${_fmtDate(order.createdOn)}',
-          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          margin: const EdgeInsets.only(bottom: 14),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.cardShadow,
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline_rounded, size: 18, color: AppColors.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'View a maintenance or repair work order · Created on ${_fmtDate(order.createdOn)}',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 14),
         numbered(
           'Work Order Source',
           subtitle: 'Select a unit to load source events for that vehicle.',

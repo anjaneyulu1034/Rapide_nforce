@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
@@ -44,6 +43,8 @@ class _TrailersScreenState extends State<TrailersScreen> {
       isSuperAdminRole(AuthService.instance.currentUser?.role);
   bool get _isAdminOrSuperAdmin =>
       isAdminRole(AuthService.instance.currentUser?.role);
+  bool get _canUpdate => _isAdminOrSuperAdmin;
+  bool get _canDelete => _isAdminOrSuperAdmin;
 
   // Column sort — applied client-side over the fetched batch, mirroring the
   // web list's clickable-column-header sort (which is also client-side).
@@ -52,50 +53,25 @@ class _TrailersScreenState extends State<TrailersScreen> {
 
   static const Map<String, String> _sortColumns = {
     'trailerNumber': 'Unit #',
-    'startDate': 'Start Date',
     'vinNumber': 'VIN',
     'licensePlate': 'Plate',
-    'registrationExpiry': 'Registration Expiry',
     'status': 'Status',
   };
-
-  DateTime? _parseDate(String? s) {
-    if (s == null || s.isEmpty) return null;
-    final parsed = DateTime.tryParse(s);
-    if (parsed != null) return parsed;
-    final parts = s.split('-');
-    if (parts.length == 3) {
-      final m = int.tryParse(parts[0]);
-      final d = int.tryParse(parts[1]);
-      final y = int.tryParse(parts[2]);
-      if (m != null && d != null && y != null) return DateTime(y, m, d);
-    }
-    return null;
-  }
 
   List<TrailerModel> get _visibleItems {
     final column = _sortColumn;
     if (column == null) return _items;
     int compareStrings(String? a, String? b) =>
         (a ?? '').toLowerCase().compareTo((b ?? '').toLowerCase());
-    int compareDates(String? a, String? b) {
-      final da = _parseDate(a)?.millisecondsSinceEpoch ?? 0;
-      final db = _parseDate(b)?.millisecondsSinceEpoch ?? 0;
-      return da.compareTo(db);
-    }
 
     int cmp(TrailerModel a, TrailerModel b) {
       switch (column) {
         case 'trailerNumber':
           return compareStrings(a.trailerNumber, b.trailerNumber);
-        case 'startDate':
-          return compareDates(a.startDate, b.startDate);
         case 'vinNumber':
           return compareStrings(a.vinNumber, b.vinNumber);
         case 'licensePlate':
           return compareStrings(a.licensePlate, b.licensePlate);
-        case 'registrationExpiry':
-          return compareDates(a.registrationExpiry, b.registrationExpiry);
         case 'status':
           return (a.isActive ? 1 : 0).compareTo(b.isActive ? 1 : 0);
         default:
@@ -572,28 +548,59 @@ class _TrailersScreenState extends State<TrailersScreen> {
     }
   }
 
-  String? _formatDate(String? iso) {
-    if (iso == null || iso.isEmpty) return null;
-    final parsed = DateTime.tryParse(iso);
-    if (parsed == null) return iso;
-    return DateFormat('MM-dd-yyyy').format(parsed.toLocal());
-  }
-
-  int? _daysUntilExpiry(String? iso) {
-    if (iso == null || iso.isEmpty) return null;
-    final parsed = DateTime.tryParse(iso);
-    if (parsed == null) return null;
+  int? _daysUntilExpiry(String? dateStr) {
+    if (dateStr == null || dateStr.trim().isEmpty) return null;
+    final clean = dateStr.trim();
+    DateTime? expiry;
+    try {
+      expiry = DateTime.parse(clean);
+    } catch (_) {
+      try {
+        final p = clean.split(RegExp(r'[-/.]'));
+        if (p.length == 3) {
+          if (p[2].length == 4) {
+            expiry = DateTime(int.parse(p[2]), int.parse(p[0]), int.parse(p[1]));
+          } else if (p[0].length == 4) {
+            expiry = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
+          }
+        }
+      } catch (_) {}
+    }
+    if (expiry == null) return null;
     final today = DateTime.now();
     return DateTime(
-      parsed.year,
-      parsed.month,
-      parsed.day,
+      expiry.year,
+      expiry.month,
+      expiry.day,
     ).difference(DateTime(today.year, today.month, today.day)).inDays;
+  }
+
+  Color? _expiryColor(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return null;
+    final days = _daysUntilExpiry(dateStr);
+    if (days == null) return null;
+    if (days < 0) return StatusBadgeColors.text(BadgeTone.danger);
+    if (days <= 30) return StatusBadgeColors.text(BadgeTone.warning);
+    return null;
   }
 
   Widget _buildCard(TrailerModel t) {
     final bool isActive = t.isActive;
-    final expiryDays = _daysUntilExpiry(t.registrationExpiry);
+
+    final regDays = _daysUntilExpiry(t.registrationExpiry);
+    final pmDays = _daysUntilExpiry(t.pmDueDate);
+    final inspDays = _daysUntilExpiry(
+      t.annualInspectionDue ?? t.cviExpiry ?? t.nextInspectionDue,
+    );
+
+    int? expiryDays = regDays;
+    if (pmDays != null && (expiryDays == null || pmDays < expiryDays)) {
+      expiryDays = pmDays;
+    }
+    if (inspDays != null && (expiryDays == null || inspDays < expiryDays)) {
+      expiryDays = inspDays;
+    }
+
     final bool isOverdue = expiryDays != null && expiryDays < 0;
     String? badgeLabel;
     BadgeTone? badgeTone;
@@ -615,6 +622,9 @@ class _TrailersScreenState extends State<TrailersScreen> {
         : !isActive
         ? BadgeTone.danger
         : BadgeTone.success;
+
+    final pmDateVal =
+        t.pmDueDate ?? t.annualInspectionDue ?? t.nextInspectionDue;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -674,17 +684,20 @@ class _TrailersScreenState extends State<TrailersScreen> {
                               ),
                               const SizedBox(width: 6),
                             ],
-                            IconOnlyButton(
-                              icon: Icons.edit,
-                              color: AppColors.chromeBlue,
-                              onTap: () => _openEdit(t),
-                            ),
-                            const SizedBox(width: 2),
-                            IconOnlyButton(
-                              icon: Icons.delete_outline,
-                              danger: true,
-                              onTap: () => _confirmDelete(t),
-                            ),
+                            if (_canUpdate)
+                              IconOnlyButton(
+                                icon: Icons.edit,
+                                color: AppColors.chromeBlue,
+                                onTap: () => _openEdit(t),
+                              ),
+                            if (_canDelete) ...[
+                              const SizedBox(width: 2),
+                              IconOnlyButton(
+                                icon: Icons.delete_outline,
+                                danger: true,
+                                onTap: () => _confirmDelete(t),
+                              ),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 8),
@@ -759,7 +772,7 @@ class _TrailersScreenState extends State<TrailersScreen> {
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 6),
                             Expanded(
                               flex: 6,
                               child: Row(
@@ -783,20 +796,17 @@ class _TrailersScreenState extends State<TrailersScreen> {
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: _GridCell(
-                                      label: 'Reg. Expiry',
+                                      label: 'Next PM',
                                       child: Text(
-                                        _formatDate(t.registrationExpiry) ?? '—',
+                                        pmDateVal ?? '—',
                                         maxLines: 1,
                                         softWrap: false,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontSize: 11.5,
                                           fontWeight: FontWeight.w600,
-                                          color: isOverdue
-                                              ? StatusBadgeColors.text(
-                                                  BadgeTone.danger,
-                                                )
-                                              : AppColors.textPrimary,
+                                          color: _expiryColor(pmDateVal) ??
+                                              AppColors.textPrimary,
                                         ),
                                       ),
                                     ),

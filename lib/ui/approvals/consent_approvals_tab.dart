@@ -5,6 +5,7 @@ import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/services/api_client.dart';
 import 'package:rapide_nforce/ui/approvals/approval_card.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
+import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
 class ConsentApprovalsTab extends StatefulWidget {
   const ConsentApprovalsTab({super.key});
@@ -14,15 +15,26 @@ class ConsentApprovalsTab extends StatefulWidget {
 }
 
 class _ConsentApprovalsTabState extends State<ConsentApprovalsTab> {
+  final _searchController = TextEditingController();
   bool _loading = true;
   String? _error;
   List<dynamic> _items = [];
   String? _actingId;
+  String _search = '';
 
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() {
+      setState(() => _search = _searchController.text);
+    });
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -203,6 +215,17 @@ class _ConsentApprovalsTabState extends State<ConsentApprovalsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final searchLower = _search.trim().toLowerCase();
+    final filtered = _items.where((item) {
+      if (searchLower.isEmpty) return true;
+      final carrier = (item['carrierName']?.toString() ?? '').toLowerCase();
+      final sender = (item['senderEmail']?.toString() ?? '').toLowerCase();
+      final signed = (item['signedBy']?.toString() ?? '').toLowerCase();
+      return carrier.contains(searchLower) ||
+          sender.contains(searchLower) ||
+          signed.contains(searchLower);
+    }).toList();
+
     return ScreenStateBuilder(
       loading: _loading,
       error: _error,
@@ -210,49 +233,84 @@ class _ConsentApprovalsTabState extends State<ConsentApprovalsTab> {
       isEmpty: _items.isEmpty,
       emptyMessage: AppStrings.noData,
       emptyIcon: Icons.assignment_turned_in_outlined,
-      child: RefreshIndicator(
-        color: AppColors.primary,
-        backgroundColor: AppColors.card,
-        onRefresh: _load,
-        child: ListView.builder(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          itemCount: _items.length,
-          itemBuilder: (context, i) {
-            final item = _items[i];
-            final id = item['id']?.toString() ?? '';
-            final status = (item['status']?.toString() ?? 'PENDING').toUpperCase();
-            final pending =
-                status == 'SUBMITTED' || status == 'SIGNED' || status == 'PENDING';
-            final acting = _actingId == id;
-            final colors = _statusColors(status, pending);
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+            child: WebSearchField(
+              controller: _searchController,
+              hintText: 'Search consent documents by carrier or sender...',
+              showClear: _search.isNotEmpty,
+              onClear: () {
+                _searchController.clear();
+                setState(() => _search = '');
+              },
+            ),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              color: AppColors.primary,
+              backgroundColor: AppColors.card,
+              onRefresh: _load,
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No consent documents match your search',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 480,
+                        mainAxisExtent: 190,
+                        crossAxisSpacing: 14,
+                        mainAxisSpacing: 14,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) {
+                        final item = filtered[i];
+                        final id = item['id']?.toString() ?? '';
+                        final status =
+                            (item['status']?.toString() ?? 'PENDING').toUpperCase();
+                        final pending = status == 'SUBMITTED' ||
+                            status == 'SIGNED' ||
+                            status == 'PENDING';
+                        final acting = _actingId == id;
+                        final colors = _statusColors(status, pending);
 
-            return ApprovalCard(
-              icon: Icons.description_outlined,
-              iconBg: AppColors.statBlueBorder,
-              iconColor: AppColors.statBlueText,
-              title: item['carrierName']?.toString() ?? 'Carrier Name',
-              subtitle: 'Sender: ${item['senderEmail'] ?? '—'}',
-              statusLabel: status,
-              statusBg: colors.bg,
-              statusFg: colors.fg,
-              metaChips: [
-                MetaChip(
-                  icon: Icons.edit_outlined,
-                  label: 'Signed by ${item['signedBy'] ?? '—'}',
-                ),
-                MetaChip(
-                  icon: Icons.calendar_today_outlined,
-                  label: '${item['uploadedOn'] ?? '—'}',
-                ),
-              ],
-              pending: pending,
-              acting: acting,
-              onApprove: () => _act(item, 'APPROVED', 'APPROVED'),
-              onReject: () => _act(item, 'REJECTED', 'REJECTED'),
-            );
-          },
-        ),
+                        return ApprovalCard(
+                          icon: Icons.description_outlined,
+                          iconBg: AppColors.statBlueBorder,
+                          iconColor: AppColors.statBlueText,
+                          title: item['carrierName']?.toString() ?? 'Carrier Name',
+                          subtitle: 'Sender: ${item['senderEmail'] ?? '—'}',
+                          statusLabel: status,
+                          statusBg: colors.bg,
+                          statusFg: colors.fg,
+                          metaChips: [
+                            MetaChip(
+                              icon: Icons.edit_outlined,
+                              label: 'Signed by ${item['signedBy'] ?? '—'}',
+                            ),
+                            MetaChip(
+                              icon: Icons.calendar_today_outlined,
+                              label: '${item['uploadedOn'] ?? '—'}',
+                            ),
+                          ],
+                          pending: pending,
+                          acting: acting,
+                          onApprove: () => _act(item, 'APPROVED', 'APPROVED'),
+                          onReject: () => _act(item, 'REJECTED', 'REJECTED'),
+                        );
+                      },
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
+

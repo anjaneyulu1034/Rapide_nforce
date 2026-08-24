@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
+import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/fleet_lookup_service.dart';
@@ -201,6 +202,125 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
             ))
         .toList();
 
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => PopScope(
+        canPop: false,
+        child: Dialog(
+          backgroundColor: AppColors.card,
+          elevation: 20,
+          shadowColor: AppColors.primary.withValues(alpha: 0.35),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+            side: BorderSide(
+              color: AppColors.primary.withValues(alpha: 0.3),
+              width: 1.5,
+            ),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    AppColors.primary.withValues(alpha: 0.12),
+                    AppColors.card,
+                    AppColors.card,
+                  ],
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    height: 5,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: AppGradients.primaryButton,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              width: 72,
+                              height: 72,
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.14),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: AppColors.primary.withValues(alpha: 0.35),
+                                  width: 2,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppColors.primary.withValues(alpha: 0.25),
+                                    blurRadius: 20,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            SizedBox(
+                              width: 58,
+                              height: 58,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 4,
+                                strokeCap: StrokeCap.round,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  AppColors.primary,
+                                ),
+                              ),
+                            ),
+                            Icon(
+                              Icons.document_scanner_rounded,
+                              size: 26,
+                              color: AppColors.primary,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 22),
+                        Text(
+                          'Extracting Data',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          "We're processing your documents and extracting ${widget.entityTypeId == 2 ? 'Trailer' : 'Power Unit'} information.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: AppColors.textSecondary,
+                            height: 1.45,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    AppToast.showInfo('Extracting document details via OCR... Please wait.');
+
     final prefill = await OcrService.instance.uploadAndExtractOcr(
       documents: uploadItems,
       entityTypeId: widget.entityTypeId,
@@ -209,6 +329,9 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
     );
 
     if (!mounted) return;
+
+    // Close the Extracting Data modal popup
+    Navigator.of(context, rootNavigator: true).pop();
 
     setState(() {
       for (final r in validRows) {
@@ -222,8 +345,11 @@ class _OcrDocumentUploadSheetState extends State<_OcrDocumentUploadSheet> {
     });
 
     if (prefill != null) {
+      AppToast.showSuccess('OCR extraction complete!');
       widget.onPrefillExtracted(prefill);
       _close();
+    } else {
+      AppToast.showError('OCR extraction failed. Please try again.');
     }
   }
 

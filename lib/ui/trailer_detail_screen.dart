@@ -9,6 +9,7 @@ import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/compact_date_picker.dart';
 import 'package:rapide_nforce/core/utils/document_download_service.dart';
+import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/trailer_model.dart';
 import 'package:rapide_nforce/models/truck_document_model.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
@@ -16,6 +17,7 @@ import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/maintenance_service.dart';
 import 'package:rapide_nforce/services/permission_service.dart';
 import 'package:rapide_nforce/services/trailer_service.dart';
+import 'package:rapide_nforce/ui/trailers/trailer_form_screen.dart';
 import 'package:rapide_nforce/ui/trailers/trailer_upload_document_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/document_card.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
@@ -45,10 +47,174 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
   bool _docsLoading = false;
   bool _woLoading = false;
 
+  bool get _isAdminOrAbove =>
+      isAdminRole(AuthService.instance.currentUser?.role);
+
+  MenuPermissions? _permissions;
+  bool get _canUpdate =>
+      _isAdminOrAbove || (_permissions == null || _permissions!.canUpdate);
+  bool get _canDelete =>
+      _isAdminOrAbove || (_permissions == null || _permissions!.canDelete);
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadPermissions();
+  }
+
+  Future<void> _loadPermissions() async {
+    final result = await PermissionService.instance.getMenuPermissions(
+      menuUrl: '/trailers',
+      menuName: 'My Trailers',
+    );
+    if (!mounted) return;
+    if (result.isSuccess && result.data != null) {
+      setState(() => _permissions = result.data!);
+    }
+  }
+
+  Future<void> _openEdit() async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => TrailerFormScreen(trailerId: widget.trailerId),
+      ),
+    );
+    if (changed == true) _load();
+  }
+
+  Future<void> _deleteTrailer() async {
+    final trailer = _trailer;
+    if (trailer == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppColors.danger,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Delete Trailer',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text.rich(
+                TextSpan(
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
+                  children: [
+                    const TextSpan(text: 'Are you sure you want to delete '),
+                    TextSpan(
+                      text: '"${trailer.trailerNumber}"',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const TextSpan(text: '? This action cannot be undone.'),
+                  ],
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 22),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.textPrimary,
+                        side: BorderSide(color: AppColors.border, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.danger,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Delete',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final result = await TrailerService.instance.deleteTrailer(trailer.id);
+    if (!mounted) return;
+    if (result.isSuccess) {
+      AppToast.showSuccess('Trailer deleted');
+      Navigator.pop(context, true);
+    } else {
+      ApiFeedback.showError(result, fallback: 'Failed to delete trailer');
+    }
   }
 
   Future<void> _load() async {
@@ -297,6 +463,23 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
                     ),
                   ],
                 ),
+          actions: [
+            if (trailer != null) ...[
+              if (_canUpdate)
+                IconButton(
+                  onPressed: _openEdit,
+                  icon: Icon(Icons.edit_outlined, color: AppColors.textPrimary),
+                  tooltip: 'Edit Trailer',
+                ),
+              if (_canDelete)
+                IconButton(
+                  onPressed: _deleteTrailer,
+                  icon: Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+                  tooltip: 'Delete Trailer',
+                ),
+              const SizedBox(width: 8),
+            ],
+          ],
         ),
         floatingActionButton: _trailer != null && _tab == _Tab.maintenance
             ? FloatingActionButton(

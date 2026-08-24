@@ -28,6 +28,9 @@ class _ApprovalsScreenState extends State<ApprovalsScreen>
   List<DeferredRepairModel> _items = [];
   int? _actingId;
 
+  final _searchController = TextEditingController();
+  String _search = '';
+
   // Consent Approvals is admin-only — Lead Technicians only deal with
   // deferred-repair approvals, matching web's separate, permission-gated
   // /consent-document-approvals route.
@@ -37,6 +40,9 @@ class _ApprovalsScreenState extends State<ApprovalsScreen>
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() {
+      setState(() => _search = _searchController.text);
+    });
     _tabController = TabController(
       length: _showConsentTab ? 2 : 1,
       vsync: this,
@@ -46,6 +52,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen>
 
   @override
   void dispose() {
+    _searchController.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -191,6 +198,19 @@ class _ApprovalsScreenState extends State<ApprovalsScreen>
   }
 
   Widget _buildLeadApprovals() {
+    final searchLower = _search.trim().toLowerCase();
+    final filtered = _items.where((item) {
+      if (searchLower.isEmpty) return true;
+      final label = item.workOrderLabel.toLowerCase();
+      final unit = (item.unitNumber ?? '').toLowerCase();
+      final issue = (item.issueDescription ?? '').toLowerCase();
+      final invoice = (item.invoiceNumber ?? '').toLowerCase();
+      return label.contains(searchLower) ||
+          unit.contains(searchLower) ||
+          issue.contains(searchLower) ||
+          invoice.contains(searchLower);
+    }).toList();
+
     return ScreenStateBuilder(
       loading: _loading,
       error: _error,
@@ -198,52 +218,93 @@ class _ApprovalsScreenState extends State<ApprovalsScreen>
       isEmpty: _items.isEmpty,
       emptyMessage: 'No deferred repairs found',
       emptyIcon: Icons.check_circle_outline,
-      child: RefreshIndicator(
-        color: AppColors.primary,
-        backgroundColor: AppColors.card,
-        onRefresh: _load,
-        child: ListView.builder(
-          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-          itemCount: _items.length,
-          itemBuilder: (context, i) {
-            final item = _items[i];
-            final acting = _actingId == item.id;
-            final colors = _statusColors(item.approvalStatus);
-            final issue = (item.issueDescription ?? '').trim();
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+            child: WebSearchField(
+              controller: _searchController,
+              hintText: 'Search approvals by WO#, Unit#, or issue...',
+              showClear: _search.isNotEmpty,
+              onClear: () {
+                _searchController.clear();
+                setState(() => _search = '');
+              },
+            ),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              color: AppColors.primary,
+              backgroundColor: AppColors.card,
+              onRefresh: _load,
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No approvals match your search',
+                        style: TextStyle(color: AppColors.textSecondary),
+                      ),
+                    )
+                  : GridView.builder(
+                      padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+                      gridDelegate:
+                          const SliverGridDelegateWithMaxCrossAxisExtent(
+                        maxCrossAxisExtent: 480,
+                        mainAxisExtent: 215,
+                        crossAxisSpacing: 14,
+                        mainAxisSpacing: 14,
+                      ),
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) {
+                        final item = filtered[i];
+                        final acting = _actingId == item.id;
+                        final colors = _statusColors(item.approvalStatus);
+                        final issue = (item.issueDescription ?? '').trim();
 
-            return ApprovalCard(
-              icon: Icons.build_rounded,
-              iconBg: AppColors.statOrangeBorder,
-              iconColor: AppColors.statOrangeText,
-              title: item.workOrderLabel,
-              subtitle: issue.isNotEmpty ? issue : 'No issue description',
-              statusLabel: item.approvalStatus,
-              statusBg: colors.bg,
-              statusFg: colors.fg,
-              metaChips: [
-                if ((item.unitNumber ?? '').trim().isNotEmpty)
-                  MetaChip(
-                    icon: Icons.local_shipping_outlined,
-                    label: item.unitNumber!,
-                  ),
-                if ((item.odometer ?? '').trim().isNotEmpty)
-                  MetaChip(icon: Icons.speed_outlined, label: '${item.odometer} km'),
-                if ((item.invoiceNumber ?? '').trim().isNotEmpty)
-                  MetaChip(
-                    icon: Icons.receipt_long_outlined,
-                    label: item.invoiceNumber!,
-                  ),
-                if ((item.usageDescription ?? '').trim().isNotEmpty)
-                  MetaChip(icon: Icons.notes_outlined, label: item.usageDescription!),
-                MetaChip(icon: Icons.build_circle_outlined, label: item.repairStatus),
-              ],
-              pending: item.isPending,
-              acting: acting,
-              onApprove: () => _act(item, true),
-              onReject: () => _act(item, false),
-            );
-          },
-        ),
+                        return ApprovalCard(
+                          icon: Icons.build_rounded,
+                          iconBg: AppColors.statOrangeBorder,
+                          iconColor: AppColors.statOrangeText,
+                          title: item.workOrderLabel,
+                          subtitle: issue.isNotEmpty ? issue : 'No issue description',
+                          statusLabel: item.approvalStatus,
+                          statusBg: colors.bg,
+                          statusFg: colors.fg,
+                          metaChips: [
+                            if ((item.unitNumber ?? '').trim().isNotEmpty)
+                              MetaChip(
+                                icon: Icons.local_shipping_outlined,
+                                label: item.unitNumber!,
+                              ),
+                            if ((item.odometer ?? '').trim().isNotEmpty)
+                              MetaChip(
+                                icon: Icons.speed_outlined,
+                                label: '${item.odometer} km',
+                              ),
+                            if ((item.invoiceNumber ?? '').trim().isNotEmpty)
+                              MetaChip(
+                                icon: Icons.receipt_long_outlined,
+                                label: item.invoiceNumber!,
+                              ),
+                            if ((item.usageDescription ?? '').trim().isNotEmpty)
+                              MetaChip(
+                                icon: Icons.notes_outlined,
+                                label: item.usageDescription!,
+                              ),
+                            MetaChip(
+                              icon: Icons.build_circle_outlined,
+                              label: item.repairStatus,
+                            ),
+                          ],
+                          pending: item.isPending,
+                          acting: acting,
+                          onApprove: () => _act(item, true),
+                          onReject: () => _act(item, false),
+                        );
+                      },
+                    ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -422,6 +422,8 @@ class WebSearchableDropdownField<T> extends FormField<T> {
     required ValueChanged<T?> onChanged,
     String hint = 'Select',
     String searchHint = 'Search...',
+    bool isLoading = false,
+    VoidCallback? onTap,
     super.validator,
     super.autovalidateMode = AutovalidateMode.onUserInteraction,
   }) : super(
@@ -434,6 +436,8 @@ class WebSearchableDropdownField<T> extends FormField<T> {
              itemLabel: itemLabel,
              hint: hint,
              searchHint: searchHint,
+             isLoading: isLoading,
+             onTap: onTap,
              errorText: field.errorText,
              onChanged: (v) {
                field.didChange(v);
@@ -453,6 +457,8 @@ class _SearchableDropdownContent<T> extends StatelessWidget {
     required this.onChanged,
     required this.hint,
     required this.searchHint,
+    this.isLoading = false,
+    this.onTap,
     required this.errorText,
   });
 
@@ -463,9 +469,17 @@ class _SearchableDropdownContent<T> extends StatelessWidget {
   final ValueChanged<T?> onChanged;
   final String hint;
   final String searchHint;
+  final bool isLoading;
+  final VoidCallback? onTap;
   final String? errorText;
 
   Future<void> _open(BuildContext context) async {
+    if (onTap != null) {
+      onTap!();
+    }
+    if (items.isEmpty && !isLoading) {
+      return;
+    }
     final selected = await showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
@@ -478,6 +492,7 @@ class _SearchableDropdownContent<T> extends StatelessWidget {
         items: items,
         itemLabel: itemLabel,
         searchHint: searchHint,
+        isLoading: isLoading,
       ),
     );
     if (selected != null) onChanged(selected);
@@ -524,10 +539,21 @@ class _SearchableDropdownContent<T> extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
             errorText: errorText,
-            suffixIcon: Icon(
-              Icons.keyboard_arrow_down_rounded,
-              color: AppColors.textSecondary,
-            ),
+            suffixIcon: isLoading
+                ? UnconstrainedBox(
+                    child: SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  )
+                : Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    color: AppColors.textSecondary,
+                  ),
           ),
           child: Text(
             selectedLabel ?? hint,
@@ -549,12 +575,14 @@ class _SearchableListSheet<T> extends StatefulWidget {
     required this.items,
     required this.itemLabel,
     required this.searchHint,
+    this.isLoading = false,
   });
 
   final String title;
   final List<T> items;
   final String Function(T) itemLabel;
   final String searchHint;
+  final bool isLoading;
 
   @override
   State<_SearchableListSheet<T>> createState() =>
@@ -611,7 +639,7 @@ class _SearchableListSheetState<T> extends State<_SearchableListSheet<T>> {
               ),
             ),
             const SizedBox(height: 12),
-            if (widget.items.length > 7) ...[
+            if (!widget.isLoading && widget.items.length > 7) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: TextField(
@@ -637,25 +665,50 @@ class _SearchableListSheetState<T> extends State<_SearchableListSheet<T>> {
               const SizedBox(height: 8),
             ],
             Flexible(
-              child: filtered.isEmpty
+              child: widget.isLoading
                   ? Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(
-                        'No matches',
-                        style: TextStyle(color: AppColors.textSecondary),
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Loading options...',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
                       ),
                     )
-                  : ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) {
-                        final item = filtered[i];
-                        return ListTile(
-                          title: Text(widget.itemLabel(item)),
-                          onTap: () => Navigator.pop(context, item),
-                        );
-                      },
-                    ),
+                  : (filtered.isEmpty
+                      ? Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            'No matches',
+                            style: TextStyle(color: AppColors.textSecondary),
+                          ),
+                        )
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: filtered.length,
+                          itemBuilder: (context, i) {
+                            final item = filtered[i];
+                            return ListTile(
+                              title: Text(widget.itemLabel(item)),
+                              onTap: () => Navigator.pop(context, item),
+                            );
+                          },
+                        )),
             ),
           ],
         ),

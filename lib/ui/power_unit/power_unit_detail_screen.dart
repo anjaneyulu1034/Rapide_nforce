@@ -27,6 +27,7 @@ import 'package:rapide_nforce/ui/work_orders/work_order_pdf_export.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/document_download_service.dart';
+import 'package:rapide_nforce/core/utils/role_utils.dart';
 
 enum PowerUnitDetailTab {
   overview,
@@ -56,11 +57,32 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
   bool _woLoading = false;
   bool _canUploadDocuments = false;
 
+  bool get _isAdminOrAbove =>
+      isAdminRole(AuthService.instance.currentUser?.role);
+
+  MenuPermissions? _permissions;
+  bool get _canUpdate =>
+      _isAdminOrAbove || (_permissions == null || _permissions!.canUpdate);
+  bool get _canDelete =>
+      _isAdminOrAbove || (_permissions == null || _permissions!.canDelete);
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadPermissions();
     _loadDocumentUploadPermission();
+  }
+
+  Future<void> _loadPermissions() async {
+    final result = await PermissionService.instance.getMenuPermissions(
+      menuUrl: '/trucks',
+      menuName: 'Power Unit',
+    );
+    if (!mounted) return;
+    if (result.isSuccess && result.data != null) {
+      setState(() => _permissions = result.data!);
+    }
   }
 
   Future<void> _loadDocumentUploadPermission() async {
@@ -140,6 +162,140 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
       ),
     );
     if (changed == true) _load();
+  }
+
+  Future<void> _deletePowerUnit() async {
+    final unit = _unit;
+    if (unit == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+          decoration: BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.border),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.delete_outline_rounded,
+                  color: AppColors.danger,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Delete Power Unit',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text.rich(
+                TextSpan(
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
+                  children: [
+                    const TextSpan(text: 'Are you sure you want to delete '),
+                    TextSpan(
+                      text: '"${unit.unitNumber}"',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const TextSpan(text: '? This action cannot be undone.'),
+                  ],
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 22),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.textPrimary,
+                        side: BorderSide(color: AppColors.border, width: 1.5),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.danger,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      child: const Text(
+                        'Delete',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final result = await PowerUnitService.instance.deletePowerUnit(unit.id);
+    if (!mounted) return;
+    if (result.isSuccess) {
+      AppToast.showSuccess('Power unit deleted');
+      Navigator.pop(context, true);
+    } else {
+      ApiFeedback.showError(result, fallback: 'Failed to delete power unit');
+    }
   }
 
   Future<void> _uploadDocument() async {
@@ -256,30 +412,21 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
                   ],
                 ),
           actions: [
-            if (unit != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: FilledButton.icon(
+            if (unit != null) ...[
+              if (_canUpdate)
+                IconButton(
                   onPressed: _openEdit,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A1A1A),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(0, 36),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                  ),
-                  icon: const Icon(Icons.edit, size: 16),
-                  label: const Text(
-                    'Edit',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                  ),
+                  icon: Icon(Icons.edit_outlined, color: AppColors.textPrimary),
+                  tooltip: 'Edit Power Unit',
                 ),
-              ),
+              if (_canDelete)
+                IconButton(
+                  onPressed: _deletePowerUnit,
+                  icon: Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+                  tooltip: 'Delete Power Unit',
+                ),
+              const SizedBox(width: 8),
+            ],
           ],
         ),
         floatingActionButton: unit != null

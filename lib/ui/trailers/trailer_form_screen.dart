@@ -173,6 +173,9 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
     _bootstrap();
   }
 
+  bool _loadingStates = false;
+  bool _loadingCities = false;
+
   Future<void> _bootstrap() async {
     final lookups = await Future.wait([
       FleetLookupService.instance.fetchCountries(),
@@ -191,17 +194,28 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _loading = false;
       _countries = lookups[0].data as List<LookupOption>? ?? [];
       _policies = lookups[1].data as List<MaintenancePolicyModel>? ?? [];
       _trucks = trucks.data?.items ?? [];
     });
-    if (_countryId != null) await _loadStates(_countryId!);
-    if (_stateId != null) await _loadCities(_stateId!);
+
+    // Default country to Canada if not set (for new trailer)
+    if (!widget.isEdit && _countryId == null && _countries.isNotEmpty) {
+      final canada = _countries.where((c) => c.name.toLowerCase() == 'canada').firstOrNull;
+      _countryId = canada?.id ?? _countries.first.id;
+    }
+
+    await _loadStates(_countryId);
+
+    if (_stateId != null) {
+      await _loadCities(_stateId!);
+    }
+
     final trailer = _trailerForStateMatch;
     if (trailer != null &&
         _stateId == null &&
         trailer.state != null &&
+        trailer.state!.isNotEmpty &&
         _states.isNotEmpty) {
       final match = _states.where(
         (s) => s.name.toLowerCase() == trailer.state!.toLowerCase(),
@@ -211,7 +225,13 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
         await _loadCities(_stateId!);
       }
     }
-    if (mounted) _bootstrapped = true;
+
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _bootstrapped = true;
+      });
+    }
   }
 
   TrailerModel? _trailerForStateMatch;
@@ -293,16 +313,40 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
     _inspectionSummary.text = t.inspectionSummary ?? '';
   }
 
-  Future<void> _loadStates(int countryId) async {
+  Future<void> _loadStates(int? countryId) async {
+    if (!mounted) return;
+    setState(() => _loadingStates = true);
     final r = await FleetLookupService.instance.fetchStates(countryId: countryId);
     if (!mounted) return;
-    setState(() => _states = r.data ?? []);
+    setState(() {
+      _states = r.data ?? [];
+      _loadingStates = false;
+    });
+    if (!r.isSuccess && (r.message?.isNotEmpty ?? false)) {
+      AppToast.showError('Failed to load states: ${r.message}');
+    }
   }
 
-  Future<void> _loadCities(int stateId) async {
+  Future<void> _loadCities(int? stateId) async {
+    if (stateId == null) {
+      if (!mounted) return;
+      setState(() {
+        _cities = [];
+        _loadingCities = false;
+      });
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _loadingCities = true);
     final r = await FleetLookupService.instance.fetchCities(stateId: stateId);
     if (!mounted) return;
-    setState(() => _cities = r.data ?? []);
+    setState(() {
+      _cities = r.data ?? [];
+      _loadingCities = false;
+    });
+    if (!r.isSuccess && (r.message?.isNotEmpty ?? false)) {
+      AppToast.showError('Failed to load cities: ${r.message}');
+    }
   }
 
   @override
@@ -489,21 +533,48 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
 
   bool _validateStep(int step) {
     if (!_formKey.currentState!.validate()) return false;
+    final missing = <String>[];
+
     if (step == 1) {
-      if (_req(_unitNumber.text, 'Unit Number') != null ||
-          _req(_vin.text, 'VIN') != null ||
-          _req(_make.text, 'Make') != null ||
-          _req(_model.text, 'Model') != null ||
-          _req(_year.text, 'Year') != null ||
-          _req(_currentOdometer.text, 'Current Odometer') != null ||
-          _req(_purchaseDate.text, 'Purchase Date') != null ||
-          _req(_purchasePrice.text, 'Purchase Price') != null ||
-          _req(_startDate.text, 'Start Date') != null ||
-          _req(_plate.text, 'Plate Number') != null ||
-          _nonNegativeNumberValidator(_specGvwr.text, 'GVWR', required: false) != null ||
-          _trailerType == null ||
-          _ownershipType.isEmpty) {
-        AppToast.showError('Complete all required Trailer Details fields');
+      if (_req(_unitNumber.text, 'Unit Number') != null) missing.add('Unit Number');
+      if (_req(_vin.text, 'VIN') != null) missing.add('VIN');
+      if (_req(_make.text, 'Make') != null) missing.add('Make');
+      if (_req(_model.text, 'Model') != null) missing.add('Model');
+      if (_req(_year.text, 'Year') != null) missing.add('Year');
+      if (_req(_currentOdometer.text, 'Current Odometer') != null) missing.add('Current Odometer');
+      final purchaseDateStr = _purchaseDate.text.trim();
+      if (purchaseDateStr.isEmpty) {
+        missing.add('Purchase Date');
+      } else {
+        final parsedPd = DateTime.tryParse(purchaseDateStr);
+        if (parsedPd != null) {
+          final today = DateTime.now();
+          final pDay = DateTime(parsedPd.year, parsedPd.month, parsedPd.day);
+          final tDay = DateTime(today.year, today.month, today.day);
+          if (pDay.isAfter(tDay)) {
+            missing.add('Purchase Date (cannot be in the future)');
+          }
+        }
+      }
+      if (_req(_purchasePrice.text, 'Purchase Price') != null) missing.add('Purchase Price');
+      if (_req(_startDate.text, 'Start Date') != null) missing.add('Start Date');
+      if (_req(_plate.text, 'Plate Number') != null) missing.add('Plate Number');
+      if (_registrationNumber.text.trim().isNotEmpty &&
+          _alphanumericOnly.hasMatch(_registrationNumber.text.trim()) == false) {
+        missing.add('Registration Number (alphanumeric only)');
+      }
+      if (_nonNegativeNumberValidator(_specGvwr.text, 'GVWR', required: false) != null) missing.add('GVWR');
+      if (_trailerType == null) missing.add('Trailer Type');
+      if (_countryId == null) missing.add('Country');
+      if (_stateId == null && _states.isNotEmpty) missing.add('State/Province');
+      if (_ownershipType.isEmpty) missing.add('Ownership Type');
+      if (_ownershipType == 'owner-operator') {
+        if (_req(_ownerName.text, 'Owner Name') != null) missing.add('Owner Name');
+        if (_req(_ownerEmail.text, 'Owner Email') != null) missing.add('Owner Email');
+        if (_req(_ownerPhone.text, 'Owner Phone') != null) missing.add('Owner Phone');
+      }
+      if (missing.isNotEmpty) {
+        AppToast.showError('Please fill required Step 1 field(s): ${missing.join(", ")}');
         return false;
       }
       final year = int.tryParse(_year.text.trim());
@@ -511,39 +582,26 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
         AppToast.showError('Enter a valid year between 1900 and 2099');
         return false;
       }
-      if (_countryId == null) {
-        AppToast.showError('Select country');
-        return false;
-      }
-      if (_stateId == null && _states.isNotEmpty) {
-        AppToast.showError('Select state/province');
-        return false;
-      }
-      if (_ownershipType == 'owner-operator') {
-        if (_req(_ownerName.text, 'Owner Name') != null ||
-            _req(_ownerEmail.text, 'Owner Email') != null ||
-            _req(_ownerPhone.text, 'Owner Phone') != null) {
-          AppToast.showError('Complete owner operator details');
-          return false;
-        }
-      }
     }
+
     if (step == 2) {
       if (_selectedPolicy == null || _selectedPolicy!.isEmpty) {
         AppToast.showError('Select a Maintenance Policy');
         return false;
       }
     }
+
     if (step == 3) {
-      if (_req(_certificateNumber.text, 'Certificate Number') != null ||
-          _req(_inspectionDate.text, 'Inspection Date') != null ||
-          _req(_expiryDate.text, 'Expiry Date') != null ||
-          _req(_nextInspectionDue.text, 'Next Inspection Due') != null ||
-          _req(_inspectorName.text, 'Inspector Name') != null ||
-          _req(_inspectorLicense.text, 'Inspector License') != null ||
-          _req(_inspectionFacility.text, 'Inspection Facility') != null ||
-          _req(_facilityNumber.text, 'Facility Number') != null) {
-        AppToast.showError('Complete all required Annual Safety / CVIP fields');
+      if (_req(_certificateNumber.text, 'Certificate Number') != null) missing.add('Certificate Number');
+      if (_req(_inspectionDate.text, 'Inspection Date') != null) missing.add('Inspection Date');
+      if (_req(_expiryDate.text, 'Expiry Date') != null) missing.add('Expiry Date');
+      if (_req(_nextInspectionDue.text, 'Next Inspection Due') != null) missing.add('Next Inspection Due');
+      if (_req(_inspectorName.text, 'Inspector Name') != null) missing.add('Inspector Name');
+      if (_req(_inspectorLicense.text, 'Inspector License') != null) missing.add('Inspector License');
+      if (_req(_inspectionFacility.text, 'Inspection Facility') != null) missing.add('Inspection Facility');
+      if (_req(_facilityNumber.text, 'Facility Number') != null) missing.add('Facility Number');
+      if (missing.isNotEmpty) {
+        AppToast.showError('Please fill required Step 3 field(s): ${missing.join(", ")}');
         return false;
       }
     }
@@ -753,18 +811,26 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
     // Plate province → match against the already-loaded states list, same
     // pattern used for edit-mode state matching in _bootstrap().
     final province = prefill['plateProvince'];
-    if (province != null && _stateId == null && _states.isNotEmpty) {
-      final match = _states.where(
-        (s) => s.name.toLowerCase() == province.toLowerCase(),
-      );
-      if (match.isNotEmpty) {
-        setState(() => _stateId = match.first.id);
-        _loadCities(_stateId!);
-      }
+    if (province != null && province.isNotEmpty && _stateId == null) {
+      () async {
+        if (_states.isEmpty) {
+          await _loadStates(_countryId);
+        }
+        if (_states.isNotEmpty && mounted) {
+          final match = _states.where(
+            (s) => s.name.toLowerCase() == province.toLowerCase(),
+          );
+          if (match.isNotEmpty) {
+            setState(() => _stateId = match.first.id);
+            _loadCities(_stateId!);
+          }
+        }
+      }();
     }
   }
 
   Future<void> _next() async {
+    if (_step >= 3 || _checkingVin || _saving) return;
     if (!_validateStep(_step)) return;
     if (_step == 1) {
       setState(() => _checkingVin = true);
@@ -779,7 +845,9 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
         return;
       }
     }
-    setState(() => _step++);
+    if (_step < 3) {
+      setState(() => _step = (_step + 1).clamp(1, 3));
+    }
   }
 
   /// Leaves the screen, prompting for confirmation first if there are
@@ -795,12 +863,13 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentStep = _step.clamp(1, 3);
     return PopScope(
-      canPop: _step == 1 && !_hasUnsavedChanges,
+      canPop: currentStep == 1 && !_hasUnsavedChanges,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-        if (_step > 1) {
-          setState(() => _step--);
+        if (currentStep > 1) {
+          setState(() => _step = currentStep - 1);
           return;
         }
         _attemptLeave();
@@ -818,7 +887,14 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
               ? const Center(child: CircularProgressIndicator())
               : Column(
                   children: [
-                    _StepIndicator(step: _step),
+                    _StepIndicator(
+                      step: currentStep,
+                      onStepTapped: (target) {
+                        if (target <= currentStep || _validateStep(currentStep)) {
+                          setState(() => _step = target);
+                        }
+                      },
+                    ),
                     Expanded(
                       child: Form(
                         key: _formKey,
@@ -826,19 +902,19 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
                         child: ListView(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                           children: [
-                            if (_step == 1) ..._buildStep1(),
-                            if (_step == 2) ..._buildStep2(),
-                            if (_step == 3) ..._buildStep3(),
+                            if (currentStep == 1) ..._buildStep1(),
+                            if (currentStep == 2) ..._buildStep2(),
+                            if (currentStep == 3) ..._buildStep3(),
                           ],
                         ),
                       ),
                     ),
                     _BottomBar(
-                      step: _step,
+                      step: currentStep,
                       saving: _saving || _checkingVin,
                       onCancel: _attemptLeave,
-                      onContinue: _step < 3 ? _next : null,
-                      onSave: _step == 3 ? _save : null,
+                      onContinue: currentStep < 3 ? _next : null,
+                      onSave: currentStep == 3 ? _save : null,
                     ),
                   ],
                 ),
@@ -1019,6 +1095,12 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           items: _states.map((s) => s.id).toList(),
           itemLabel: (id) => _states.firstWhere((s) => s.id == id).name,
           searchHint: 'Search state/province...',
+          isLoading: _loadingStates,
+          onTap: () {
+            if (_countryId == null) {
+              AppToast.showError('Please select country first');
+            }
+          },
           onChanged: (v) async {
             setState(() {
               _stateId = v;
@@ -1038,6 +1120,14 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
           items: _cities.map((c) => c.id).toList(),
           itemLabel: (id) => _cities.firstWhere((c) => c.id == id).name,
           searchHint: 'Search city...',
+          isLoading: _loadingCities,
+          onTap: () {
+            if (_countryId == null) {
+              AppToast.showError('Please select country first');
+            } else if (_stateId == null) {
+              AppToast.showError('Please select state / province first');
+            }
+          },
           onChanged: (v) {
             setState(() => _cityId = v);
             _onFormChanged();
@@ -1425,8 +1515,9 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
 }
 
 class _StepIndicator extends StatelessWidget {
-  const _StepIndicator({required this.step});
+  const _StepIndicator({required this.step, this.onStepTapped});
   final int step;
+  final ValueChanged<int>? onStepTapped;
 
   @override
   Widget build(BuildContext context) {
@@ -1435,7 +1526,11 @@ class _StepIndicator extends StatelessWidget {
       child: Row(
         children: [
           for (int i = 0; i < 3; i++) ...[
-            _StepNode(number: i + 1, currentStep: step),
+            _StepNode(
+              number: i + 1,
+              currentStep: step,
+              onTap: onStepTapped != null ? () => onStepTapped!(i + 1) : null,
+            ),
             if (i < 2)
               Expanded(
                 child: Container(
@@ -1451,23 +1546,32 @@ class _StepIndicator extends StatelessWidget {
 }
 
 class _StepNode extends StatelessWidget {
-  const _StepNode({required this.number, required this.currentStep});
+  const _StepNode({
+    required this.number,
+    required this.currentStep,
+    this.onTap,
+  });
   final int number;
   final int currentStep;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final done = number < currentStep;
     final active = number == currentStep;
-    return CircleAvatar(
-      radius: 14,
-      backgroundColor: done || active ? AppColors.primary : AppColors.surfaceTertiary,
-      child: Text(
-        done ? '✓' : '$number',
-        style: TextStyle(
-          color: done || active ? AppColors.white : AppColors.textSecondary,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: CircleAvatar(
+        radius: 14,
+        backgroundColor: done || active ? AppColors.primary : AppColors.surfaceTertiary,
+        child: Text(
+          done ? '✓' : '$number',
+          style: TextStyle(
+            color: done || active ? AppColors.white : AppColors.textSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
@@ -1515,7 +1619,8 @@ class _BottomBar extends StatelessWidget {
               onContinue != null
                   ? WebPrimaryButton(
                       label: 'Continue',
-                      onPressed: onContinue,
+                      loading: saving,
+                      onPressed: saving ? null : onContinue,
                       expand: false,
                       dense: true,
                     )
