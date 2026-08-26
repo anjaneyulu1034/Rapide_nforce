@@ -259,52 +259,57 @@ class _ConsentApprovalsTabState extends State<ConsentApprovalsTab> {
                         style: TextStyle(color: AppColors.textSecondary),
                       ),
                     )
-                  : GridView.builder(
+                  : SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 480,
-                        mainAxisExtent: 190,
-                        crossAxisSpacing: 14,
-                        mainAxisSpacing: 14,
-                      ),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) {
-                        final item = filtered[i];
-                        final id = item['id']?.toString() ?? '';
-                        final status =
-                            (item['status']?.toString() ?? 'PENDING').toUpperCase();
-                        final pending = status == 'SUBMITTED' ||
-                            status == 'SIGNED' ||
-                            status == 'PENDING';
-                        final acting = _actingId == id;
-                        final colors = _statusColors(status, pending);
+                      child: ActionCardFlow(
+                        cards: [
+                          for (final item in filtered)
+                            Builder(
+                              builder: (context) {
+                                final id = item['id']?.toString() ?? '';
+                                final status =
+                                    (item['status']?.toString() ?? 'PENDING')
+                                        .toUpperCase();
+                                final pending = status == 'SUBMITTED' ||
+                                    status == 'SIGNED' ||
+                                    status == 'PENDING';
+                                final acting = _actingId == id;
+                                final colors = _statusColors(status, pending);
 
-                        return ApprovalCard(
-                          icon: Icons.description_outlined,
-                          iconBg: AppColors.statBlueBorder,
-                          iconColor: AppColors.statBlueText,
-                          title: item['carrierName']?.toString() ?? 'Carrier Name',
-                          subtitle: 'Sender: ${item['senderEmail'] ?? '—'}',
-                          statusLabel: status,
-                          statusBg: colors.bg,
-                          statusFg: colors.fg,
-                          metaChips: [
-                            MetaChip(
-                              icon: Icons.edit_outlined,
-                              label: 'Signed by ${item['signedBy'] ?? '—'}',
+                                return ActionCard(
+                                  icon: Icons.description_outlined,
+                                  iconBg: AppColors.statBlueBorder,
+                                  iconColor: AppColors.statBlueText,
+                                  title: item['carrierName']?.toString() ??
+                                      'Carrier Name',
+                                  subtitle:
+                                      'Sender: ${item['senderEmail'] ?? '—'}',
+                                  statusLabel: status,
+                                  statusBg: colors.bg,
+                                  statusFg: colors.fg,
+                                  stripeColor: colors.fg,
+                                  metaChips: [
+                                    MetaChip(
+                                      icon: Icons.edit_outlined,
+                                      label:
+                                          'Signed by ${item['signedBy'] ?? '—'}',
+                                    ),
+                                    MetaChip(
+                                      icon: Icons.calendar_today_outlined,
+                                      label: '${item['uploadedOn'] ?? '—'}',
+                                    ),
+                                  ],
+                                  showActions: pending,
+                                  acting: acting,
+                                  onApprove: () =>
+                                      _act(item, 'APPROVED', 'APPROVED'),
+                                  onReject: () =>
+                                      _act(item, 'REJECTED', 'REJECTED'),
+                                );
+                              },
                             ),
-                            MetaChip(
-                              icon: Icons.calendar_today_outlined,
-                              label: '${item['uploadedOn'] ?? '—'}',
-                            ),
-                          ],
-                          pending: pending,
-                          acting: acting,
-                          onApprove: () => _act(item, 'APPROVED', 'APPROVED'),
-                          onReject: () => _act(item, 'REJECTED', 'REJECTED'),
-                        );
-                      },
+                        ],
+                      ),
                     ),
             ),
           ),

@@ -3,14 +3,12 @@ import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/maintenance_request_model.dart';
-import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/request_service.dart';
+import 'package:rapide_nforce/ui/approvals/approval_card.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
-import 'package:rapide_nforce/ui/widgets/status_chip.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_detail_screen.dart';
-import 'package:rapide_nforce/ui/work_orders/widgets/work_order_status_chip.dart';
 
 class RequestsScreen extends StatefulWidget {
   const RequestsScreen({super.key});
@@ -69,19 +67,6 @@ class _RequestsScreenState extends State<RequestsScreen> {
     return _items.where((r) => r.approvalStatusEnum == status).length;
   }
 
-  StatusChipTone _toneFor(RequestApprovalStatus status) {
-    switch (status) {
-      case RequestApprovalStatus.pending:
-        return StatusChipTone.warning;
-      case RequestApprovalStatus.approved:
-        return StatusChipTone.success;
-      case RequestApprovalStatus.rejected:
-        return StatusChipTone.danger;
-      case RequestApprovalStatus.unknown:
-        return StatusChipTone.neutral;
-    }
-  }
-
   Color _avatarBg(RequestApprovalStatus status) {
     switch (status) {
       case RequestApprovalStatus.pending:
@@ -135,8 +120,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
       emptyMessage: AppStrings.noData,
       emptyIcon: Icons.handyman_outlined,
       child: WebListPage(
-        title: 'Requests',
-        subtitle: '${_items.length} maintenance requests',
+        title: '',
         onRefresh: _load,
         toolbar: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -221,235 +205,56 @@ class _RequestsScreenState extends State<RequestsScreen> {
                   ),
                 ),
               )
-            : SliverGrid(
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 480,
-                  mainAxisExtent: 155,
-                  crossAxisSpacing: 14,
-                  mainAxisSpacing: 14,
-                ),
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) {
-                    final req = filtered[i];
-                    final status = req.approvalStatusEnum;
-                    return _RequestGridCard(
-                      req: req,
-                      status: status,
-                      avatarBg: _avatarBg(status),
-                      avatarFg: _avatarFg(status),
-                      tone: _toneFor(status),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                WorkOrderDetailScreen(workOrderId: req.id),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                  childCount: filtered.length,
-                ),
-              ),
-      ),
-    );
-  }
-}
-
-class _RequestGridCard extends StatelessWidget {
-  const _RequestGridCard({
-    required this.req,
-    required this.status,
-    required this.avatarBg,
-    required this.avatarFg,
-    required this.tone,
-    required this.onTap,
-  });
-
-  final MaintenanceRequestModel req;
-  final RequestApprovalStatus status;
-  final Color avatarBg;
-  final Color avatarFg;
-  final StatusChipTone tone;
-  final VoidCallback onTap;
-
-  Color get _stripeColor {
-    switch (status) {
-      case RequestApprovalStatus.pending:
-        return AppColors.warning;
-      case RequestApprovalStatus.approved:
-        return AppColors.statusCompleted;
-      case RequestApprovalStatus.rejected:
-        return AppColors.danger;
-      case RequestApprovalStatus.unknown:
-        return AppColors.border;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.cardShadow,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(width: 5, color: _stripeColor),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: avatarBg,
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              Icons.handyman_outlined,
-                              size: 19,
-                              color: avatarFg,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  req.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
+            : SliverToBoxAdapter(
+                child: ActionCardFlow(
+                  cards: [
+                    for (final req in filtered)
+                      Builder(
+                        builder: (context) {
+                          final status = req.approvalStatusEnum;
+                          return ActionCard(
+                            icon: Icons.handyman_outlined,
+                            iconBg: _avatarBg(status),
+                            iconColor: _avatarFg(status),
+                            title: req.title,
+                            subtitle: req.issueDescription,
+                            statusLabel: status.label,
+                            statusBg: _avatarBg(status),
+                            statusFg: _avatarFg(status),
+                            stripeColor: _avatarFg(status),
+                            metaChips: [
+                              MetaChip(
+                                icon: Icons.local_shipping_outlined,
+                                label: req.unitNumber,
+                              ),
+                              MetaChip(
+                                icon: Icons.calendar_today_outlined,
+                                label: req.requestedOn,
+                              ),
+                              if ((req.technicianName ?? '')
+                                  .trim()
+                                  .isNotEmpty)
+                                MetaChip(
+                                  icon: Icons.person_outline,
+                                  label: req.technicianName!,
+                                ),
+                            ],
+                            onTap: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => WorkOrderDetailScreen(
+                                    workOrderId: req.id,
                                   ),
                                 ),
-                                if (req.issueDescription.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    req.issueDescription,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              WorkOrderPriorityChip(
-                                priority:
-                                    WorkOrderPriority.fromCode(req.priority),
-                              ),
-                              const SizedBox(height: 4),
-                              StatusChip(
-                                label: status.label,
-                                tone: tone,
-                              ),
-                            ],
-                          ),
-                        ],
+                              );
+                            },
+                            viewLabel: 'View',
+                          );
+                        },
                       ),
-                      const SizedBox(height: 10),
-                      Divider(
-                        height: 1,
-                        color: AppColors.border.withValues(alpha: 0.6),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.local_shipping_outlined,
-                                size: 14,
-                                color: AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                req.unitNumber,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Icon(
-                                Icons.calendar_today_outlined,
-                                size: 13,
-                                color: AppColors.textSecondary,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                req.requestedOn,
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'View',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                              const SizedBox(width: 2),
-                              Icon(
-                                Icons.chevron_right_rounded,
-                                size: 16,
-                                color: AppColors.primary,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
       ),
     );
   }

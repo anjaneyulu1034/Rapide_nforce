@@ -244,63 +244,74 @@ class _ApprovalsScreenState extends State<ApprovalsScreen>
                         style: TextStyle(color: AppColors.textSecondary),
                       ),
                     )
-                  : GridView.builder(
+                  : SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-                      gridDelegate:
-                          const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 480,
-                        mainAxisExtent: 215,
-                        crossAxisSpacing: 14,
-                        mainAxisSpacing: 14,
-                      ),
-                      itemCount: filtered.length,
-                      itemBuilder: (context, i) {
-                        final item = filtered[i];
-                        final acting = _actingId == item.id;
-                        final colors = _statusColors(item.approvalStatus);
-                        final issue = (item.issueDescription ?? '').trim();
+                      child: ActionCardFlow(
+                        cards: [
+                          for (final item in filtered)
+                            Builder(
+                              builder: (context) {
+                                final acting = _actingId == item.id;
+                                final colors =
+                                    _statusColors(item.approvalStatus);
+                                final issue =
+                                    (item.issueDescription ?? '').trim();
 
-                        return ApprovalCard(
-                          icon: Icons.build_rounded,
-                          iconBg: AppColors.statOrangeBorder,
-                          iconColor: AppColors.statOrangeText,
-                          title: item.workOrderLabel,
-                          subtitle: issue.isNotEmpty ? issue : 'No issue description',
-                          statusLabel: item.approvalStatus,
-                          statusBg: colors.bg,
-                          statusFg: colors.fg,
-                          metaChips: [
-                            if ((item.unitNumber ?? '').trim().isNotEmpty)
-                              MetaChip(
-                                icon: Icons.local_shipping_outlined,
-                                label: item.unitNumber!,
-                              ),
-                            if ((item.odometer ?? '').trim().isNotEmpty)
-                              MetaChip(
-                                icon: Icons.speed_outlined,
-                                label: '${item.odometer} km',
-                              ),
-                            if ((item.invoiceNumber ?? '').trim().isNotEmpty)
-                              MetaChip(
-                                icon: Icons.receipt_long_outlined,
-                                label: item.invoiceNumber!,
-                              ),
-                            if ((item.usageDescription ?? '').trim().isNotEmpty)
-                              MetaChip(
-                                icon: Icons.notes_outlined,
-                                label: item.usageDescription!,
-                              ),
-                            MetaChip(
-                              icon: Icons.build_circle_outlined,
-                              label: item.repairStatus,
+                                return ActionCard(
+                                  icon: Icons.build_rounded,
+                                  iconBg: AppColors.statOrangeBorder,
+                                  iconColor: AppColors.statOrangeText,
+                                  title: item.workOrderLabel,
+                                  subtitle: issue.isNotEmpty
+                                      ? issue
+                                      : 'No issue description',
+                                  statusLabel: item.approvalStatus,
+                                  statusBg: colors.bg,
+                                  statusFg: colors.fg,
+                                  stripeColor: colors.fg,
+                                  metaChips: [
+                                    if ((item.unitNumber ?? '')
+                                        .trim()
+                                        .isNotEmpty)
+                                      MetaChip(
+                                        icon: Icons.local_shipping_outlined,
+                                        label: item.unitNumber!,
+                                      ),
+                                    if ((item.odometer ?? '')
+                                        .trim()
+                                        .isNotEmpty)
+                                      MetaChip(
+                                        icon: Icons.speed_outlined,
+                                        label: '${item.odometer} km',
+                                      ),
+                                    if ((item.invoiceNumber ?? '')
+                                        .trim()
+                                        .isNotEmpty)
+                                      MetaChip(
+                                        icon: Icons.receipt_long_outlined,
+                                        label: item.invoiceNumber!,
+                                      ),
+                                    if ((item.usageDescription ?? '')
+                                        .trim()
+                                        .isNotEmpty)
+                                      MetaChip(
+                                        icon: Icons.notes_outlined,
+                                        label: item.usageDescription!,
+                                      ),
+                                    MetaChip(
+                                      icon: Icons.build_circle_outlined,
+                                      label: item.repairStatus,
+                                    ),
+                                  ],
+                                  showActions: item.isPending,
+                                  acting: acting,
+                                  onApprove: () => _act(item, true),
+                                  onReject: () => _act(item, false),
+                                );
+                              },
                             ),
-                          ],
-                          pending: item.isPending,
-                          acting: acting,
-                          onApprove: () => _act(item, true),
-                          onReject: () => _act(item, false),
-                        );
-                      },
+                        ],
+                      ),
                     ),
             ),
           ),
@@ -318,13 +329,9 @@ class _ApprovalsScreenState extends State<ApprovalsScreen>
           bottom: false,
           child: Column(
             children: [
-              const WebPageHeader(
-                title: 'Approvals',
-                subtitle: 'Manage and approve deferred repairs.',
-              ),
               if (_showConsentTab) ...[
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                   child: _ApprovalsTabBar(controller: _tabController),
                 ),
                 const SizedBox(height: 4),
@@ -339,7 +346,7 @@ class _ApprovalsScreenState extends State<ApprovalsScreen>
                   ),
                 ),
               ] else ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Expanded(child: _buildLeadApprovals()),
               ],
             ],
