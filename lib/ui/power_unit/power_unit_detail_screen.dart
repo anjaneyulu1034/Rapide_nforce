@@ -26,6 +26,7 @@ import 'package:rapide_nforce/ui/work_orders/work_orders_screen.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_pdf_export.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
+import 'package:rapide_nforce/core/utils/date_format.dart';
 import 'package:rapide_nforce/core/utils/document_download_service.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 
@@ -957,9 +958,8 @@ class _ComplianceTabState extends State<_ComplianceTab> {
   ];
 
   static String _docStatus(TruckDocumentModel d) {
-    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
-    if (expiry != null) {
-      final daysLeft = expiry.difference(DateTime.now()).inDays;
+    final daysLeft = daysUntilIso(d.expiryDateIso);
+    if (daysLeft != null) {
       if (daysLeft < 0) return 'expired';
       if (daysLeft <= 30) return 'expiring';
       return 'active';
@@ -1443,13 +1443,12 @@ class _ComplianceTabState extends State<_ComplianceTab> {
       color = const Color(0xFFDC2626);
       statusText = 'Missing';
     } else {
-      final expiry = DateTime.tryParse(matchingDoc.expiryDateIso ?? '');
-      final daysLeft = expiry?.difference(DateTime.now()).inDays;
-      if (expiry != null && daysLeft! < 0) {
+      final daysLeft = daysUntilIso(matchingDoc.expiryDateIso);
+      if (daysLeft != null && daysLeft < 0) {
         icon = Icons.cancel_outlined;
         color = const Color(0xFFDC2626);
         statusText = 'Expired';
-      } else if (expiry != null && daysLeft! <= 30) {
+      } else if (daysLeft != null && daysLeft <= 30) {
         icon = Icons.access_time_outlined;
         color = const Color(0xFFEA580C);
         statusText = 'Expiring in $daysLeft days';
@@ -1612,9 +1611,8 @@ class _BinderDocCard extends StatelessWidget {
   final VoidCallback onDownload;
 
   static String _status(TruckDocumentModel d) {
-    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
-    if (expiry != null) {
-      final daysLeft = expiry.difference(DateTime.now()).inDays;
+    final daysLeft = daysUntilIso(d.expiryDateIso);
+    if (daysLeft != null) {
       if (daysLeft < 0) return 'expired';
       if (daysLeft <= 30) return 'expiring';
       return 'active';
@@ -1803,9 +1801,8 @@ class _DocumentsTabState extends State<_DocumentsTab> {
   }
 
   static String _docStatus(TruckDocumentModel d) {
-    final expiry = DateTime.tryParse(d.expiryDateIso ?? '');
-    if (expiry != null) {
-      final daysLeft = expiry.difference(DateTime.now()).inDays;
+    final daysLeft = daysUntilIso(d.expiryDateIso);
+    if (daysLeft != null) {
       if (daysLeft < 0) return 'expired';
       if (daysLeft <= 30) return 'expiring';
       return 'active';

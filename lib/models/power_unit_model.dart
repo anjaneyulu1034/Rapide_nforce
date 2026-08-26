@@ -22,6 +22,7 @@ class PowerUnitModel {
     this.companyName,
     this.registrationNumber,
     this.fuelType,
+    this.fuelCapacity,
     this.odometer,
     this.color,
     this.purchaseDate,
@@ -90,6 +91,9 @@ class PowerUnitModel {
   final String? companyName;
   final String? registrationNumber;
   final String? fuelType;
+  /// Always in liters, matching the backend column — see `fuel_unit.dart`
+  /// for the L/gal display conversion used by the form.
+  final double? fuelCapacity;
   final int? odometer;
   final String? color;
   final String? purchaseDate;
@@ -303,6 +307,9 @@ class PowerUnitModel {
       registrationNumber: json['registrationNumber'] as String? ??
           json['rin'] as String?,
       fuelType: json['fuelType'] as String? ?? json['fuel_type'] as String?,
+      fuelCapacity: _toNum(
+        json['fuelCapacity'] ?? json['fuel_capacity'],
+      )?.toDouble(),
       odometer: _toInt(
         json['currentOdometer'] ?? json['current_odometer'] ?? json['odometer'],
       ),

@@ -5,6 +5,7 @@ import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:intl/intl.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/date_format.dart';
+import 'package:rapide_nforce/core/utils/fuel_unit.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/maintenance_policy_model.dart';
 import 'package:rapide_nforce/models/power_unit_model.dart';
@@ -55,6 +56,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   final _imsNumber = TextEditingController();
   final _gvwr = TextEditingController();
   final _transmission = TextEditingController();
+  final _fuelCapacity = TextEditingController();
+  FuelCapacityUnit _fuelCapacityUnit = FuelCapacityUnit.liters;
   final _engineMake = TextEditingController();
   final _engineModel = TextEditingController();
   final _ownerName = TextEditingController();
@@ -337,6 +340,14 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _ownerPhone.text = u.ownerPhone ?? '';
     _ownerAddress.text = u.ownerAddress ?? '';
     _gvwr.text = u.gvwr ?? '';
+    // Always populated in liters (unit toggle defaults to liters), matching
+    // web's edit-mode load in `AddTruckPage.tsx`.
+    _fuelCapacityUnit = FuelCapacityUnit.liters;
+    _fuelCapacity.text = u.fuelCapacity != null
+        ? (u.fuelCapacity == u.fuelCapacity!.roundToDouble()
+              ? u.fuelCapacity!.round().toString()
+              : u.fuelCapacity.toString())
+        : '';
     final rawFuel = u.fuelType?.trim();
     if (rawFuel != null && rawFuel.isNotEmpty) {
       final match = _fuelTypeOptions.firstWhere(
@@ -621,6 +632,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       _imsNumber,
       _gvwr,
       _transmission,
+      _fuelCapacity,
       _engineMake,
       _engineModel,
       _ownerName,
@@ -886,7 +898,14 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       'purchaseDate': _toIsoDate(_purchaseDate.text),
       'purchasePrice': double.tryParse(_purchasePrice.text.trim()),
       'startDate': _toIsoDate(_startDate.text),
-      'status': _status,
+      // Backend strictly requires 0/1 (`data.status === 0 || data.status === 1`,
+      // src/repositories/truck.repository.ts) — anything else is silently
+      // coerced to Active on create, or dropped from the update entirely.
+      'status': _status == 'active' ? 1 : 0,
+      // Always sent in liters, matching web — see fuel_unit.dart.
+      'fuelCapacity': double.tryParse(
+        displayValueToLitersString(_fuelCapacity.text, _fuelCapacityUnit),
+      ),
       if (_assignedDriver.text.trim().isNotEmpty)
         'assignedDriver': _assignedDriver.text.trim(),
       'plateNumber': _plate.text.trim(),
@@ -1427,6 +1446,49 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
             setState(() => _fuelType = v);
             _onFormChanged();
           },
+        ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 110,
+              child: WebDropdownField<FuelCapacityUnit>(
+                label: 'Unit',
+                value: _fuelCapacityUnit,
+                items: FuelCapacityUnit.values,
+                itemLabel: (v) => v.label,
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    _fuelCapacity.text = litersStringToDisplayValue(
+                      displayValueToLitersString(
+                        _fuelCapacity.text,
+                        _fuelCapacityUnit,
+                      ),
+                      v,
+                    );
+                    _fuelCapacityUnit = v;
+                  });
+                  _onFormChanged();
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: WebTextFormField(
+                controller: _fuelCapacity,
+                label: 'Fuel Capacity *',
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                validator: (v) => _nonNegativeNumberValidator(
+                  v,
+                  'Fuel Capacity',
+                  required: true,
+                ),
+              ),
+            ),
+          ],
         ),
         WebTextFormField(
           controller: _transmission,

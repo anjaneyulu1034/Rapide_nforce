@@ -15,6 +15,7 @@ import 'package:rapide_nforce/ui/work_orders/work_order_upload_attachment_sheet.
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
+import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/inventory_service.dart';
 import 'package:rapide_nforce/services/maintenance_service.dart';
@@ -73,6 +74,11 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   final _odometerController = TextEditingController();
   final _endOdometerController = TextEditingController();
   final _costController = TextEditingController();
+  // Once the user types into Estimated Cost, stop silently overwriting it
+  // from the parts total on every repair-line edit — mirrors web's
+  // `isEstimatedCostManual` tracking in WorkOrderViewEditDrawer.tsx.
+  bool _isEstimatedCostManual = false;
+  bool _settingCostProgrammatically = false;
   final _hoursController = TextEditingController();
   final _totalLabourCostController = TextEditingController();
   final _notesController = TextEditingController();
@@ -549,7 +555,14 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       _partLines.isNotEmpty &&
       _partLines.every((l) => l.repairStatus == RepairStatus.completed);
 
+  /// Mirrors web's `getRepairsCompletionError` part-assignment check for a
+  /// Technician/Lead Technician — Flutter has no separate work-order-level
+  /// inventory list (only per-repair-line parts), so this checks repair
+  /// lines directly, matching web's own fallback path for that case.
+  bool _hasAnyRepairPart() => _partLines.any((l) => l.partId != null);
+
   void _recalculateEstimatedCost() {
+    if (_isEstimatedCostManual) return;
     double totalCost = 0;
     for (final line in _partLines) {
       if (line.partId != null) {
@@ -567,7 +580,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       }
     }
     if (totalCost > 0) {
+      _settingCostProgrammatically = true;
       _costController.text = totalCost.toStringAsFixed(2);
+      _settingCostProgrammatically = false;
     }
   }
 
@@ -588,12 +603,24 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       setState(() => _statusFieldGen++);
       return;
     }
-    if (next == WorkOrderStatus.completed && !_allRepairsCompleted()) {
-      AppToast.showError(
-        'All repairs must be completed before closing the work order',
-      );
-      setState(() => _statusFieldGen++);
-      return;
+    if (next == WorkOrderStatus.completed) {
+      if (isTechnicianOrLeadTechnicianRole(
+            AuthService.instance.currentUser?.role,
+          ) &&
+          !_hasAnyRepairPart()) {
+        AppToast.showError(
+          'At least one inventory part must be assigned before completing the Work Order.',
+        );
+        setState(() => _statusFieldGen++);
+        return;
+      }
+      if (!_allRepairsCompleted()) {
+        AppToast.showError(
+          'All repairs must be completed before closing the work order',
+        );
+        setState(() => _statusFieldGen++);
+        return;
+      }
     }
 
     final wasCompleted = _status == WorkOrderStatus.completed;
@@ -733,6 +760,11 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     final rangeError = _odometerRangeError;
     if (rangeError != null) {
       AppToast.showError(rangeError);
+      return;
+    }
+
+    if (_startDate != null && _dueDate != null && _dueDate!.isBefore(_startDate!)) {
+      AppToast.showError('Due Date must be on or after Start Date');
       return;
     }
 
@@ -1572,6 +1604,11 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                                 keyboardType: const TextInputType.numberWithOptions(
                                   decimal: true,
                                 ),
+                                onChanged: (_) {
+                                  if (!_settingCostProgrammatically) {
+                                    _isEstimatedCostManual = true;
+                                  }
+                                },
                                 validator: (v) => v == null || v.trim().isEmpty
                                     ? 'Required'
                                     : null,

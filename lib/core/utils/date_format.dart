@@ -35,3 +35,19 @@ String? formatDateTimeMMDDYYYY(String? value, {String? fallback}) {
   final min = parsed.minute.toString().padLeft(2, '0');
   return '$mm-$dd-${parsed.year} $hh:$min';
 }
+
+/// Days remaining until [isoDate] (negative if already past), normalizing
+/// both sides to local midnight first — matching web's
+/// `daysUntilCalendarDate` (`src/utils/index.ts`). A raw
+/// `DateTime.now()` diff without this normalization undercounts by one
+/// for the rest of any given day.
+int? daysUntilIso(String? isoDate) {
+  final expiry = DateTime.tryParse(isoDate ?? '');
+  if (expiry == null) return null;
+  final today = DateTime.now();
+  return DateTime(
+    expiry.year,
+    expiry.month,
+    expiry.day,
+  ).difference(DateTime(today.year, today.month, today.day)).inDays;
+}

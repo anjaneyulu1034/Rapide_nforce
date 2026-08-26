@@ -7,9 +7,12 @@ class PowerUnitSummaryCards extends StatelessWidget {
 
   final PowerUnitModel unit;
 
+  /// Days remaining until [dateStr] (negative if overdue), normalizing both
+  /// sides to local midnight — matching web's `daysUntilCalendarDate`. A raw
+  /// `DateTime.now()` diff undercounts by one for the rest of any given day.
   int? _daysUntil(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return null;
-    final parsed = DateTime.tryParse(dateStr.replaceAll('/', '-'));
+    DateTime? parsed = DateTime.tryParse(dateStr.replaceAll('/', '-'));
     if (parsed == null) {
       final parts = dateStr.split('-');
       if (parts.length == 3) {
@@ -17,12 +20,17 @@ class PowerUnitSummaryCards extends StatelessWidget {
         final d = int.tryParse(parts[1]);
         final y = int.tryParse(parts[2]);
         if (m != null && d != null && y != null) {
-          return DateTime(y, m, d).difference(DateTime.now()).inDays;
+          parsed = DateTime(y, m, d);
         }
       }
-      return null;
     }
-    return parsed.difference(DateTime.now()).inDays;
+    if (parsed == null) return null;
+    final today = DateTime.now();
+    return DateTime(
+      parsed.year,
+      parsed.month,
+      parsed.day,
+    ).difference(DateTime(today.year, today.month, today.day)).inDays;
   }
 
   static String _withCommas(int value) {

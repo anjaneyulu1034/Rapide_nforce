@@ -132,7 +132,7 @@ class _PartTypesTabState extends State<_PartTypesTab> {
   String? _error;
   List<PartTypeModel> _items = [];
   int _page = 1;
-  final int _limit = 10;
+  final int _limit = 15;
   int _total = 0;
   int _totalPages = 1;
   String _search = '';
@@ -194,7 +194,7 @@ class _PartTypesTabState extends State<_PartTypesTab> {
     if (!_scrollController.hasClients) return;
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
-    if (maxScroll - currentScroll <= 200) {
+    if (maxScroll - currentScroll <= 400) {
       _loadMore();
     }
   }
@@ -925,7 +925,7 @@ class _PartsTabState extends State<_PartsTab> {
   String? _error;
   List<PartModel> _items = [];
   int _page = 1;
-  final int _limit = 10;
+  final int _limit = 15;
   int _total = 0;
   int _totalPages = 1;
   String _search = '';
@@ -984,7 +984,7 @@ class _PartsTabState extends State<_PartsTab> {
     if (!_scrollController.hasClients) return;
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
-    if (maxScroll - currentScroll <= 200) {
+    if (maxScroll - currentScroll <= 400) {
       _loadMore();
     }
   }

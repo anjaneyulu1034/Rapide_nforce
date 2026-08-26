@@ -78,5 +78,69 @@ class RequestService {
 
   }
 
+
+
+  /// Mirrors web's `requestService.getApprovals()` — the Lead Technician
+
+  /// view of the team's pending maintenance requests, as opposed to
+
+  /// [fetchRequests] which only returns the current user's own requests.
+
+  Future<ApiResult<List<MaintenanceRequestModel>>> fetchApprovals({
+
+    int page = 1,
+
+    int limit = 50,
+
+    String? search,
+
+  }) async {
+
+    try {
+
+      final body = await _api.parseJson(
+
+        () => _api.get(
+
+          ApiConstants.maintenanceApprovals,
+
+          params: {
+
+            'page': page,
+
+            'limit': limit,
+
+            if (search != null && search.isNotEmpty) 'search': search,
+
+          },
+
+        ),
+
+        onSuccess: (b) => b,
+
+      );
+
+
+
+      final items = ApiParse.listItems(body)
+
+          .map(MaintenanceRequestModel.fromJson)
+
+          .toList();
+
+      return ApiResult.ok(items);
+
+    } on ApiClientException catch (e) {
+
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+
+    } catch (_) {
+
+      return ApiResult.fail('Failed to load approvals.');
+
+    }
+
+  }
+
 }
 

@@ -102,16 +102,13 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
       return true;
     }).toList();
 
+    // Backend has no sort param and always returns `orderBy: id desc`
+    // (matching what web shows with no sort picked), so "newest"/"oldest"
+    // here means newest/oldest *added* — i.e. by id — not by the business
+    // Start Date field. Sorting by id keeps Flutter's default list order
+    // identical to web's instead of silently reordering by a different key.
     filtered.sort((a, b) {
-      final dateA = _parseDate(a.startDate)?.millisecondsSinceEpoch ?? 0;
-      final dateB = _parseDate(b.startDate)?.millisecondsSinceEpoch ?? 0;
-      int cmp = 0;
-      if (dateA != 0 && dateB != 0) {
-        cmp = dateA.compareTo(dateB);
-      }
-      if (cmp == 0) {
-        cmp = a.id.compareTo(b.id);
-      }
+      final cmp = a.id.compareTo(b.id);
       return _sortOrder == 'oldest' ? cmp : -cmp;
     });
 

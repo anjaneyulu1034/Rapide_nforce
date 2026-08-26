@@ -92,7 +92,10 @@ class PartTypeDetailScreen extends StatelessWidget {
             _DetailCard(
               children: [
                 _Row('Name', partType.name),
-                _Row('Quantity on hand', '${partType.count}'),
+                _Row(
+                  'Quantity on hand',
+                  '${partType.totalQuantity ?? partType.count}',
+                ),
                 _Row('Low stock trigger', '${partType.lowStockTrigger}'),
                 _Row(
                   'Status',

@@ -77,6 +77,7 @@ class ApiConstants {
   static const String partTypes = '/maintenance/part-types';
   static const String partTypesSummary = '/maintenance/part-types-summary';
   static const String parts = '/maintenance/parts';
+  static const String products = '/products';
   static const String samsaraOdometer = '/maintenance/samsara-odometer';
   static const String pmInspectionItems = '/maintenance/pm-inspection-items';
   static const String maintenanceIssues = '/maintenance/maintenance-issues';

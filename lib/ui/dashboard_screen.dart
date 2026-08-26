@@ -5,6 +5,8 @@ import 'package:rapide_nforce/core/enums/app_route.dart';
 import 'package:rapide_nforce/models/dashboard_model.dart';
 import 'package:rapide_nforce/models/inventory_item_model.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
+import 'package:rapide_nforce/core/utils/role_utils.dart';
+import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/dashboard_service.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
@@ -60,6 +62,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildContent(DashboardModel data) {
+    final isLead = isLeadTechnicianRole(AuthService.instance.currentUser?.role);
     return WebListPage(
       title: '',
       onRefresh: _load,
@@ -75,7 +78,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             childAspectRatio: 1.38,
             children: [
               WebStatCard(
-                label: AppStrings.openWorkOrders,
+                label: isLead ? 'Team Open WOs' : AppStrings.openWorkOrders,
                 value: '${data.openWorkOrders}',
                 linkLabel: 'View work orders',
                 icon: Icons.build_outlined,
@@ -105,9 +108,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onTap: () => widget.onNavigate?.call(AppRoute.inventory),
               ),
               WebStatCard(
-                label: AppStrings.pendingRequests,
+                label: isLead ? 'Pending Approvals' : AppStrings.pendingRequests,
                 value: '${data.pendingRequests}',
-                linkLabel: 'View requests',
+                linkLabel: isLead ? 'Review approvals' : 'View requests',
                 icon: Icons.assignment_outlined,
                 gradientStart: AppColors.statRoseBgStart,
                 gradientEnd: AppColors.statRoseBgEnd,
@@ -138,7 +141,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(height: 24),
           WebSectionCard(
-            title: 'Recent Work Orders',
+            title: isLead ? 'Team Work Orders' : 'Recent Work Orders',
             action: TextButton(
               onPressed: () => widget.onNavigate?.call(AppRoute.maintenance),
               style: TextButton.styleFrom(

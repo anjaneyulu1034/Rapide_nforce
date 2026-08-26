@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
+import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/maintenance_request_model.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
+import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/request_service.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
 import 'package:rapide_nforce/ui/widgets/status_chip.dart';
@@ -47,7 +49,10 @@ class _RequestsScreenState extends State<RequestsScreen> {
       _loading = true;
       _error = null;
     });
-    final result = await RequestService.instance.fetchRequests();
+    final isLead = isLeadTechnicianRole(AuthService.instance.currentUser?.role);
+    final result = isLead
+        ? await RequestService.instance.fetchApprovals()
+        : await RequestService.instance.fetchRequests();
     if (!mounted) return;
     setState(() {
       _loading = false;

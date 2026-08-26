@@ -18,7 +18,12 @@ class InventoryItemModel {
   final int lowStockTrigger;
 
   factory InventoryItemModel.fromPartTypeJson(Map<String, dynamic> json) {
+    // `count` is the number of distinct part SKUs with on-hand qty > 0 —
+    // `totalQuantity` is the actual on-hand unit total. Web's "Parts In
+    // Stock" tile sums `totalQuantity`; using `count` here undercounts
+    // whenever a part type has more than one unit per SKU.
     final count = (json['count'] as num?)?.toInt() ?? 0;
+    final totalQuantity = (json['totalQuantity'] as num?)?.toInt() ?? count;
     final trigger = (json['lowStockTrigger'] as num?)?.toInt() ??
         (json['low_stock_trigger'] as num?)?.toInt() ??
         0;
@@ -27,9 +32,9 @@ class InventoryItemModel {
       id: json['id'] as int? ?? 0,
       name: json['name'] as String? ?? '',
       code: json['name'] as String? ?? '',
-      quantity: count,
+      quantity: totalQuantity,
       lowStockTrigger: trigger,
-      stockLevel: computeStockLevel(count, trigger),
+      stockLevel: computeStockLevel(totalQuantity, trigger),
     );
   }
 
@@ -59,9 +64,12 @@ class InventoryItemModel {
     return InventoryItemModel.fromPartJson(json);
   }
 
+  /// Matches the backend's authoritative computation exactly
+  /// (`mapPartTypeOverviewRow`, maintenance.repository.ts): quantity at or
+  /// below the trigger is Low Stock, not just strictly below it.
   static StockLevel computeStockLevel(int count, int trigger) {
     if (count <= 0) return StockLevel.outOfStock;
-    if (trigger > 0 && count < trigger) return StockLevel.low;
+    if (trigger > 0 && count <= trigger) return StockLevel.low;
     return StockLevel.inStock;
   }
 }

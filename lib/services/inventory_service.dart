@@ -77,6 +77,39 @@ class InventoryService {
     return ApiResult.ok(items);
   }
 
+  /// Creates the `products` row backing web's "Part Type Name" dropdown on
+  /// the Add Part form (`AddPartTypeModal.tsx`) — `products` and
+  /// `part_types` are two unrelated tables (no FK between them), matched
+  /// only by name client-side, so a part type created without this call is
+  /// invisible in that dropdown even though it appears fine in the Parts
+  /// Overview grid (which reads `part_types` directly). Tolerates a
+  /// duplicate-name conflict the same way web does — the type still gets
+  /// created either way.
+  Future<void> _ensureProductForPartType({
+    required String name,
+    int? companyId,
+  }) async {
+    try {
+      await _api.parseJson(
+        () => _api.post(
+          ApiConstants.products,
+          body: {
+            'itemCategoryId': 1,
+            'name': name,
+            'itemType': 'NON_INVENTORY',
+            'isActive': true,
+            'companyId': ?companyId,
+            'company_id': ?companyId,
+          },
+          companyId: companyId?.toString(),
+        ),
+        onSuccess: (b) => b,
+      );
+    } on ApiClientException catch (e) {
+      if (!e.message.toLowerCase().contains('already exists')) rethrow;
+    }
+  }
+
   Future<ApiResult<PartTypeModel>> createPartType({
     required String name,
     required int lowStockTrigger,
@@ -84,6 +117,7 @@ class InventoryService {
   }) async {
     final cid = companyId ?? _companyId;
     try {
+      await _ensureProductForPartType(name: name, companyId: cid);
       final body = await _api.parseJson(
         () => _api.post(
           ApiConstants.partTypes,

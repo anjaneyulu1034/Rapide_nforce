@@ -4,6 +4,8 @@ import 'package:rapide_nforce/core/models/api_result.dart';
 
 import 'package:rapide_nforce/core/utils/api_parse.dart';
 
+import 'package:rapide_nforce/core/utils/role_utils.dart';
+
 import 'package:rapide_nforce/models/dashboard_model.dart';
 
 import 'package:rapide_nforce/models/inventory_item_model.dart';
@@ -90,7 +92,12 @@ class DashboardService {
       var pendingRequests = 0;
 
       try {
-        final reqRes = await RequestService.instance.fetchRequests();
+        final isLead = isLeadTechnicianRole(
+          AuthService.instance.currentUser?.role,
+        );
+        final reqRes = isLead
+            ? await RequestService.instance.fetchApprovals()
+            : await RequestService.instance.fetchRequests();
 
         pendingRequests = (reqRes.data ?? [])
             .where(
