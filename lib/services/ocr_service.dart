@@ -39,6 +39,53 @@ class OcrUploadDocItem {
   final String documentType;
 }
 
+/// One `line_items[]` entry extracted from a "Part Invoice" OCR scan —
+/// a Dart port of web's `PartInvoiceOcrItemPrefill` (`ocrPrefillMapper.ts`).
+/// All fields are raw strings (as OCR returns them) for the caller to parse.
+class PartInvoiceOcrItemPrefill {
+  const PartInvoiceOcrItemPrefill({
+    this.code,
+    this.partTypeName,
+    this.quantity,
+    this.cost,
+    this.totalCost,
+  });
+
+  final String? code;
+  final String? partTypeName;
+  final String? quantity;
+  final String? cost;
+  final String? totalCost;
+}
+
+/// Header + line items extracted from an uploaded invoice document — a Dart
+/// port of web's `PartInvoiceOcrDocumentPrefill`. Every uploaded file is
+/// treated as one invoice (web's rare multi-invoice-per-file splitting is
+/// not ported — disproportionate for a mobile OCR helper).
+class PartInvoiceOcrPrefill {
+  const PartInvoiceOcrPrefill({
+    this.invoiceNumber,
+    this.vendorName,
+    this.items = const [],
+  });
+
+  final String? invoiceNumber;
+  final String? vendorName;
+  final List<PartInvoiceOcrItemPrefill> items;
+
+  bool get isEmpty => items.isEmpty && invoiceNumber == null && vendorName == null;
+}
+
+/// Result of a completed part-invoice OCR extraction — the parsed prefill
+/// plus the `uploads.id` of the invoice file, ready to send as
+/// `invoiceFileUploadId` on the Add Part submit payload.
+class PartInvoiceOcrResult {
+  const PartInvoiceOcrResult({required this.prefill, this.invoiceFileUploadId});
+
+  final PartInvoiceOcrPrefill prefill;
+  final int? invoiceFileUploadId;
+}
+
 /// Uploads picked documents via generic `POST /documents` + triggers `POST /ocr/extract_info`
 /// and polls status via `POST /ocr/status` — exact port of web's `documentsService.uploadMultipleDocuments`
 /// and `ocrService.extractInfo`/`getOCRResults` in `Documentupload.tsx`.
@@ -338,6 +385,303 @@ class OcrService {
       debugPrint('[OCR Service] Exception during uploadAndExtractOcr: $e\n$stack');
       return null;
     }
+  }
+
+  /// Uploads invoice document(s) via `POST /documents`
+  /// (`isOcrUpload: true`, `documentType: "Part Invoice"`, `entityType:
+  /// "Part"`), triggers `POST /ocr/extract_info`, and polls `POST
+  /// /ocr/status` for the extracted invoice header + line items — mirrors
+  /// [uploadAndExtractOcr] but returns a [PartInvoiceOcrPrefill] (vendor,
+  /// invoice number, line items) instead of vehicle fields, since a part
+  /// invoice's shape doesn't match [TruckOcrPrefill]'s flat vehicle keys.
+  /// Kept as a standalone method (small, deliberate duplication of the
+  /// upload/extract boilerplate) rather than refactoring
+  /// [uploadAndExtractOcr] to be generic, so the already-working Power
+  /// Unit/Trailer OCR flow is not put at risk by this change.
+  Future<PartInvoiceOcrResult?> uploadAndExtractPartInvoiceOcr({
+    required List<OcrUploadDocItem> documents,
+    String? companyId,
+  }) async {
+    if (documents.isEmpty) return null;
+
+    try {
+      debugPrint(
+        '[OCR Service] Starting part-invoice upload for ${documents.length} document(s)...',
+      );
+      final request = http.MultipartRequest('POST', Uri.parse('dummy'));
+
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      final tenYearsIso =
+          DateTime.now().add(const Duration(days: 3650)).toUtc().toIso8601String();
+
+      final metadataList = <Map<String, dynamic>>[];
+      for (final doc in documents) {
+        metadataList.add({
+          'documentType': 'Part Invoice',
+          'documentTypeId': null,
+          'issueDate': nowIso,
+          'expiryDate': tenYearsIso,
+          'noExpiryDate': false,
+          'isOcrUpload': true,
+          'entityTypeId': 1,
+          'entityType': 'Part',
+          'entityName': 'Part Invoice',
+          'entityId': 1,
+        });
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'files',
+            doc.filePath,
+            filename: doc.fileName,
+            contentType: _contentTypeFor(doc.fileName),
+          ),
+        );
+      }
+      request.fields['documents'] = jsonEncode(metadataList);
+
+      final uploadBody = await _api.parseJson(
+        () => _api.postMultipart(
+          ApiConstants.documents,
+          request,
+          companyId: companyId,
+        ),
+        onSuccess: (b) => b,
+      );
+
+      final bodyMap = ApiParse.asMap(uploadBody) ?? {};
+      final dataMap = ApiParse.asMap(ApiParse.unwrapData(uploadBody)) ?? {};
+      var batchId = (dataMap['batchId'] ??
+              dataMap['batch_id'] ??
+              bodyMap['batchId'] ??
+              bodyMap['batch_id'])
+          ?.toString();
+      if (batchId == null || batchId.isEmpty) return null;
+
+      final returnedData = bodyMap['data'] ?? dataMap['data'];
+      final returnedList = returnedData is List
+          ? returnedData
+          : (returnedData != null ? [returnedData] : []);
+
+      int? firstDocId;
+      final extractDocsList = <Map<String, dynamic>>[];
+      for (var idx = 0; idx < documents.length; idx++) {
+        final d = documents[idx];
+        final matchedDoc = idx < returnedList.length
+            ? returnedList[idx]
+            : (returnedList.isNotEmpty ? returnedList[0] : null);
+        final matchedMap = _asMap(matchedDoc);
+        final rawId =
+            matchedMap?['id'] ?? _asMap(matchedMap?['uploadedDocuments'])?['id'];
+        final parsedId =
+            rawId is num ? rawId.toInt() : int.tryParse(rawId?.toString() ?? '');
+        firstDocId ??= parsedId;
+
+        final resolvedUrl = matchedMap?['fileUrl']?.toString() ??
+            matchedMap?['file_url']?.toString() ??
+            '';
+
+        extractDocsList.add({
+          'documentId': matchedMap?['id']?.toString() ?? 'doc_${idx + 1}',
+          'fileName': d.fileName,
+          'fileType': d.fileName.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
+          'fileUrl': resolvedUrl,
+          'document_type': 'part_invoice',
+          'information_schema': {},
+        });
+      }
+
+      final extractPayload = {
+        'batchId': batchId,
+        'sessionId': 'session_001',
+        'callbackUrl': '',
+        'submittedAt': nowIso,
+        'documents': extractDocsList,
+      };
+
+      String? jobId;
+      try {
+        final extractRes = await _api.parseJson(
+          () => _api.post(ApiConstants.ocrExtractInfo, body: extractPayload),
+          onSuccess: (b) => b,
+        );
+        final extractMap = ApiParse.asMap(extractRes) ?? {};
+        final resData = _asMap(extractMap['data']) ?? extractMap;
+
+        final jobIdsList = resData['job_ids'];
+        if (jobIdsList is List && jobIdsList.isNotEmpty && jobIdsList[0] is Map) {
+          jobId = jobIdsList[0]['job_id']?.toString();
+        } else {
+          jobId = (resData['jobId'] ?? resData['primaryJobId'])?.toString();
+        }
+
+        final extractedBatchId = (resData['batch_id'] ?? resData['batchId'])?.toString();
+        if (extractedBatchId != null && extractedBatchId.isNotEmpty) {
+          batchId = extractedBatchId;
+        }
+      } catch (e) {
+        debugPrint('[OCR Service] Warning: /ocr/extract_info failed (part invoice): $e');
+      }
+
+      for (var attempt = 0; attempt < 60; attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 2500));
+        final poll = await _pollPartInvoiceStatus(batchId!, jobId: jobId);
+        if (!poll.isSuccess) {
+          debugPrint('[OCR Service] Part-invoice polling failed: ${poll.message}');
+          return null;
+        }
+        if (poll.data != null) {
+          return PartInvoiceOcrResult(prefill: poll.data!, invoiceFileUploadId: firstDocId);
+        }
+      }
+
+      debugPrint('[OCR Service] Part-invoice polling timed out after 60 attempts (150s).');
+      return null;
+    } catch (e, stack) {
+      debugPrint(
+        '[OCR Service] Exception during uploadAndExtractPartInvoiceOcr: $e\n$stack',
+      );
+      return null;
+    }
+  }
+
+  /// `POST /ocr/status` poll for the part-invoice flow — same request shape
+  /// and job-state interpretation as [pollStatus], but builds a
+  /// [PartInvoiceOcrPrefill] via [_buildPartInvoicePrefill] instead of a
+  /// vehicle-shaped [TruckOcrPrefill].
+  Future<ApiResult<PartInvoiceOcrPrefill?>> _pollPartInvoiceStatus(
+    String batchId, {
+    String? jobId,
+  }) async {
+    try {
+      final payload = {
+        'batchId': batchId,
+        'sessionId': 'session_001',
+        'job_id': jobId ?? '',
+      };
+      final body = await _api.parseJson(
+        () => _api.post(ApiConstants.ocrStatus, body: payload),
+        onSuccess: (b) => b,
+      );
+      final map = ApiParse.asMap(body) ?? {};
+      final batchStatus = (map['status']?.toString() ??
+              _asMap(map['data'])?['status']?.toString() ??
+              '')
+          .toLowerCase()
+          .trim();
+
+      if (batchStatus == 'failed' || batchStatus == 'error') {
+        return ApiResult.fail('No data could be extracted from the invoice.');
+      }
+
+      final rows = _collectResultRows(map);
+      if (rows.isEmpty) return ApiResult.ok(null); // still processing
+
+      bool anyInProgress = batchStatus == 'processing' ||
+          batchStatus == 'pending' ||
+          batchStatus == 'queued' ||
+          batchStatus == 'in_progress';
+
+      for (final row in rows) {
+        final state = (row['job_state'] ?? row['status'] ?? '')
+            .toString()
+            .toLowerCase()
+            .trim();
+        if (state == 'in_progress' ||
+            state == 'processing' ||
+            state == 'pending' ||
+            state == 'queued' ||
+            state == 'retrying') {
+          anyInProgress = true;
+          break;
+        }
+      }
+
+      PartInvoiceOcrPrefill? found;
+      for (final row in rows) {
+        if (!_isSuccessfulResultRow(row)) continue;
+        final entity = _resultRowEntity(row);
+        if (entity == null) continue;
+        final prefill = _buildPartInvoicePrefill(entity);
+        if (!prefill.isEmpty) {
+          found = prefill;
+          break;
+        }
+      }
+
+      if (found != null) return ApiResult.ok(found);
+      if (anyInProgress) return ApiResult.ok(null); // still in progress
+      return ApiResult.ok(const PartInvoiceOcrPrefill());
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to check OCR status.');
+    }
+  }
+
+  /// Maps a raw `extracted_info` entity (part_invoice OCR schema — see
+  /// backend `OCR_DOCUMENT_SCHEMAS[PART_INVOICE]`) into a
+  /// [PartInvoiceOcrPrefill]. Ported from web's `mapEntityToDocumentPrefill`
+  /// + `normalizePartInvoiceItems` (`ocrPrefillMapper.ts`).
+  PartInvoiceOcrPrefill _buildPartInvoicePrefill(Map<String, dynamic> entity) {
+    final root = _asMap(entity['part_invoice']) ?? entity;
+
+    String? str(dynamic v) {
+      if (v == null) return null;
+      final s = v.toString().trim();
+      return s.isEmpty ? null : s;
+    }
+
+    final invoiceNumber = str(root['invoice_number']) ?? str(root['invoiceNumber']);
+    final vendorName = str(root['vendor_name']) ?? str(root['vendorName']);
+
+    final items = <PartInvoiceOcrItemPrefill>[];
+    final rawItems = root['line_items'] ?? root['lineItems'] ?? root['items'];
+    if (rawItems is List) {
+      for (final raw in rawItems) {
+        final item = _asMap(raw);
+        if (item == null) continue;
+
+        final code = str(item['item']) ?? str(item['code']) ?? str(item['part_code']);
+        final partTypeName = str(item['part_type']) ??
+            str(item['partType']) ??
+            str(item['category']) ??
+            str(item['type']);
+        final quantity = str(item['qty']) ?? str(item['quantity']);
+        final cost = str(item['rate']) ?? str(item['unit_price']) ?? str(item['cost']);
+        final totalCost =
+            str(item['amount']) ?? str(item['total']) ?? str(item['total_cost']);
+
+        final qtyNum = double.tryParse(quantity ?? '');
+        final costNum = double.tryParse(cost ?? '');
+        final totalNum = double.tryParse(totalCost ?? '');
+        if ((qtyNum != null && qtyNum < 0) ||
+            (costNum != null && costNum < 0) ||
+            (totalNum != null && totalNum < 0)) {
+          continue; // drop rows with negative values, mirrors web's filter
+        }
+        if (code == null &&
+            partTypeName == null &&
+            quantity == null &&
+            cost == null &&
+            totalCost == null) {
+          continue;
+        }
+
+        items.add(PartInvoiceOcrItemPrefill(
+          code: code,
+          partTypeName: partTypeName,
+          quantity: quantity,
+          cost: cost,
+          totalCost: totalCost,
+        ));
+      }
+    }
+
+    return PartInvoiceOcrPrefill(
+      invoiceNumber: invoiceNumber,
+      vendorName: vendorName,
+      items: items,
+    );
   }
 
   Future<TruckOcrPrefill?> scanAndExtract({

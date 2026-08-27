@@ -101,15 +101,19 @@ enum RepairPerformedBy {
   }
 }
 
-/// PM inspection result code per checklist item.
+/// PM inspection result code per checklist item. Values match web's
+/// `PM_CODES` (`CreateWorkOrderDrawer.tsx`) exactly — web submits these
+/// full-word values (its UI only *displays* the short glyph ✔/A/G/R/S/X/-),
+/// so a mismatch here means a PM inspection saved on one platform doesn't
+/// read back correctly on the other.
 enum PmResultCode {
   ok('OK', 'OK'),
-  adjusted('A', 'Adjusted'),
-  greased('G', 'Greased & Lubed'),
-  repaired('R', 'Repaired'),
-  serviced('S', 'Serviced'),
-  defective('X', 'Defective'),
-  notApplicable('NA', 'Not Equipped');
+  adjusted('ADJUSTED', 'Adjusted'),
+  greased('GREASED & LUBED', 'Greased & Lubed'),
+  repaired('REPAIRED', 'Repaired'),
+  serviced('SERVICED', 'Serviced'),
+  defective('Defective', 'Defective'),
+  notApplicable('NOT EQUIPPED', 'Not Equipped');
 
   const PmResultCode(this.code, this.label);
 

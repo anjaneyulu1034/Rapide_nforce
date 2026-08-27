@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cunning_document_scanner/cunning_document_scanner.dart';
@@ -11,14 +12,18 @@ import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/odometer_unit.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/source_events_widgets.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/pm_inspection_widgets.dart';
+import 'package:rapide_nforce/ui/work_orders/widgets/voice_translation_field.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_upload_attachment_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
+import 'package:rapide_nforce/models/maintenance_policy_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
+import 'package:rapide_nforce/services/fleet_lookup_service.dart';
 import 'package:rapide_nforce/services/inventory_service.dart';
 import 'package:rapide_nforce/services/maintenance_service.dart';
+import 'package:rapide_nforce/services/voice_translation_service.dart';
 
 class WorkOrderFormScreen extends StatefulWidget {
   const WorkOrderFormScreen({
@@ -46,8 +51,13 @@ class WorkOrderFormScreen extends StatefulWidget {
 class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _scrollController = ScrollController();
-  final List<GlobalKey> _sectionKeys = List.generate(4, (_) => GlobalKey());
+  final List<GlobalKey> _sectionKeys = List.generate(5, (_) => GlobalKey());
   int _activeNavIndex = 0;
+
+  // One id per form session, reused across every voice recording made here
+  // and linked to the work order after it's created — mirrors web's
+  // `voiceSessionIdRef` (`CreateWorkOrderDrawer.tsx`).
+  late final String _voiceSessionId;
 
   bool _loadingMeta = true;
   bool _submitting = false;
@@ -89,6 +99,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   DateTime? _endDate;
 
   final List<_PartLineForm> _partLines = [];
+  final List<_InventoryPartRow> _inventoryPartRows = [];
   final List<PlatformFile> _pendingAttachments = [];
 
   bool _pmLoading = false;
@@ -115,6 +126,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   @override
   void initState() {
     super.initState();
+    _voiceSessionId = widget.existing?.id != null
+        ? 'wo_${widget.existing!.id}'
+        : generateVoiceSessionId();
     _startDate = DateTime.now();
     _dueDate = null;
     _prefillFromExisting();
@@ -204,6 +218,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     _resolutionController.dispose();
     for (final line in _partLines) {
       line.dispose();
+    }
+    for (final row in _inventoryPartRows) {
+      row.dispose();
     }
     super.dispose();
   }
@@ -368,12 +385,17 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     final result = await MaintenanceService.instance.getMaintenanceIssues(
       unitNumber: unit.name,
       vin: unit.vinNumber,
+      companyId: AuthService.instance.selectedCompanyIdInt,
     );
+    final pendingEvents = await _buildPendingPolicyEvents(unit);
     if (!mounted) return;
     setState(() {
       _eventsLoading = false;
-      _events = result.data ?? [];
+      _events = [...(result.data ?? []), ...pendingEvents];
     });
+    if (!result.isSuccess) {
+      ApiFeedback.showError(result, fallback: 'Failed to load source events');
+    }
     _loadEventUploads();
   }
 
@@ -391,6 +413,116 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       _uploadsLoading = false;
       _eventUploads = result.data ?? {};
     });
+  }
+
+  static String _normalizeScheduleKey(String value) => value
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[\s_-]+'), '')
+      .replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  /// Synthesizes "Pending" source-event rows from the unit's assigned
+  /// maintenance-policy schedule — these aren't real DVIR/fault-code/manual
+  /// issue rows, they're a client-side projection of which policy panels
+  /// are due, mirroring web's inline synthesis in
+  /// `CreateWorkOrderDrawer.tsx` (search "issueSource: 'POLICY'"). A panel
+  /// is skipped once the vehicle has a matching, still-current
+  /// `maintenanceRecords[]` entry (a recent `lastDate` or a future
+  /// `nextDate`).
+  Future<List<MaintenanceIssueSummary>> _buildPendingPolicyEvents(
+    EntityModel unit,
+  ) async {
+    if (_entityTypeId == null) return const [];
+
+    final policiesResult = await FleetLookupService.instance
+        .fetchMaintenancePolicyConfigs(entityTypeId: _entityTypeId);
+    final policies = policiesResult.data ?? const [];
+    if (policies.isEmpty) return const [];
+
+    MaintenancePolicyModel? matched;
+    final policyRef = unit.maintenancePolicy?.trim();
+    if (policyRef != null && policyRef.isNotEmpty) {
+      for (final p in policies) {
+        if (p.name.trim().toLowerCase() == policyRef.toLowerCase() ||
+            p.id.toString() == policyRef) {
+          matched = p;
+          break;
+        }
+      }
+    }
+    matched ??= policies.where((p) {
+      final list = (_entityTypeId == 2) ? p.usedInTrailers : p.usedInTrucks;
+      return list.any(
+        (u) => u.trim().toLowerCase() == unit.name.trim().toLowerCase(),
+      );
+    }).firstOrNull;
+    if (matched == null) return const [];
+
+    final records = unit.maintenanceRecords;
+    final result = <MaintenanceIssueSummary>[];
+
+    for (final schedule in matched.schedules) {
+      for (final panel in schedule.panels) {
+        final panelCode = (panel.scheduleTypeCode ?? panel.type).trim();
+        final panelName = (panel.scheduleTypeName ?? '').trim();
+        final normCode = _normalizeScheduleKey(panelCode);
+        final normName = _normalizeScheduleKey(panelName);
+
+        MaintenanceRecordRef? matchedRecord;
+        for (final r in records) {
+          if (panel.scheduleTypeId != null &&
+              r.scheduleTypeId == panel.scheduleTypeId) {
+            matchedRecord = r;
+            break;
+          }
+          final rCode = _normalizeScheduleKey(r.typeCode ?? '');
+          final rName = _normalizeScheduleKey(r.typeName ?? '');
+          if ((normCode.isNotEmpty && (normCode == rCode || normCode == rName)) ||
+              (normName.isNotEmpty && (normName == rName || normName == rCode))) {
+            matchedRecord = r;
+            break;
+          }
+        }
+
+        var upToDate = false;
+        if (matchedRecord != null) {
+          final lastDate = DateTime.tryParse(matchedRecord.lastDate ?? '');
+          final nextDate = DateTime.tryParse(matchedRecord.nextDate ?? '');
+          final hasRecentLastDate = lastDate != null;
+          final hasFutureNextDate =
+              nextDate != null && nextDate.isAfter(DateTime.now());
+          upToDate = hasRecentLastDate || hasFutureNextDate;
+        }
+        if (upToDate) continue;
+
+        final defectName = (panel.scheduleTypeName?.isNotEmpty ?? false)
+            ? panel.scheduleTypeName!
+            : ((panel.scheduleTypeCode?.isNotEmpty ?? false)
+                ? panel.scheduleTypeCode!
+                : panel.type);
+        final scheduleLabel = schedule.name.isNotEmpty
+            ? schedule.name
+            : (schedule.scheduleNumber?.toString() ?? '');
+        final reference = schedule.scheduleNumber?.toString() ??
+            schedule.id.toString();
+
+        result.add(
+          MaintenanceIssueSummary(
+            id: 'policy-${matched.id}-${schedule.id}-${panel.type}'.hashCode,
+            issueSource: 'POLICY',
+            issueName: defectName,
+            issueDescription: '',
+            defect: defectName,
+            category: scheduleLabel,
+            status: 'pending',
+            externalReference: reference,
+            reportedDate: null,
+            reportedBy: '',
+          ),
+        );
+      }
+    }
+    return result;
   }
 
   Future<void> _linkEvent(MaintenanceIssueSummary issue) async {
@@ -559,7 +691,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   /// Technician/Lead Technician — Flutter has no separate work-order-level
   /// inventory list (only per-repair-line parts), so this checks repair
   /// lines directly, matching web's own fallback path for that case.
-  bool _hasAnyRepairPart() => _partLines.any((l) => l.partId != null);
+  bool _hasAnyRepairPart() =>
+      _partLines.any((l) => l.partId != null) ||
+      _inventoryPartRows.any((r) => r.partId != null);
 
   void _recalculateEstimatedCost() {
     if (_isEstimatedCostManual) return;
@@ -575,6 +709,21 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         }
         if (part != null && part.unitCost != null) {
           final qty = double.tryParse(line.quantityController.text.trim()) ?? 0;
+          totalCost += part.unitCost! * qty;
+        }
+      }
+    }
+    for (final row in _inventoryPartRows) {
+      if (row.partId != null) {
+        PartSummary? part;
+        for (final p in _parts) {
+          if (p.id == row.partId) {
+            part = p;
+            break;
+          }
+        }
+        if (part != null && part.unitCost != null) {
+          final qty = double.tryParse(row.quantityController.text.trim()) ?? 0;
           totalCost += part.unitCost! * qty;
         }
       }
@@ -691,27 +840,39 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       resolutionNotes: _resolutionController.text.trim().isEmpty
           ? null
           : _resolutionController.text.trim(),
-      parts: _partLines
-          .where((l) => l.partId != null)
-          .map(
-            (l) => WorkOrderPartPayload(
-              id: l.id,
-              usedPart: l.partId,
-              usageDescription: l.descriptionController.text.trim(),
-              quantity: num.tryParse(l.quantityController.text.trim()) ?? 1,
-              partTypeId: l.partTypeId,
-              repairStatus: l.repairStatus,
-              repairPerformedBy: l.repairPerformedBy,
-              assignedTechnicianId: l.assignedTechnicianId,
-              vendorName: l.vendorNameController.text.trim().isEmpty
-                  ? null
-                  : l.vendorNameController.text.trim(),
-              repairNotes: l.repairNotesController.text.trim().isEmpty
-                  ? null
-                  : l.repairNotesController.text.trim(),
+      parts: [
+        ..._partLines.where((l) => l.partId != null).map(
+              (l) => WorkOrderPartPayload(
+                id: l.id,
+                usedPart: l.partId,
+                usageDescription: l.descriptionController.text.trim(),
+                quantity: num.tryParse(l.quantityController.text.trim()) ?? 1,
+                partTypeId: l.partTypeId,
+                repairStatus: l.repairStatus,
+                repairPerformedBy: l.repairPerformedBy,
+                assignedTechnicianId: l.assignedTechnicianId,
+                vendorName: l.vendorNameController.text.trim().isEmpty
+                    ? null
+                    : l.vendorNameController.text.trim(),
+                repairNotes: l.repairNotesController.text.trim().isEmpty
+                    ? null
+                    : l.repairNotesController.text.trim(),
+              ),
             ),
-          )
-          .toList(),
+        // Standalone "Inventory Parts (Optional)" rows — not tied to a
+        // repair, so no repair status/technician/notes. The backend only
+        // treats parts as repair-only when a top-level `inventoryParts` key
+        // is present in the request; since we don't send one, these are
+        // accepted the same way as any other part-usage row.
+        ..._inventoryPartRows.where((r) => r.partId != null).map(
+              (r) => WorkOrderPartPayload(
+                usedPart: r.partId,
+                usageDescription: '',
+                quantity: num.tryParse(r.quantityController.text.trim()) ?? 1,
+                partTypeId: r.partTypeId,
+              ),
+            ),
+      ],
       pmInspectionResults: (_isPm ?? false) ? _pmResults : const [],
       pmTireMeasurements: (_isPm ?? false) ? _tireMeasurements : const [],
       pmDefects: (_isPm ?? false) ? _defects : const [],
@@ -719,29 +880,30 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   }
 
   void _reduceInventoryForUsedParts() {
-    for (final line in _partLines) {
-      if (line.partId != null) {
-        final usedQty = int.tryParse(line.quantityController.text.trim()) ?? 0;
-        if (usedQty > 0) {
-          PartSummary? part;
-          for (final p in _parts) {
-            if (p.id == line.partId) {
-              part = p;
-              break;
-            }
-          }
-          if (part != null) {
-            final currentQty = part.quantity ?? 0;
-            final newQty =
-                (currentQty - usedQty) < 0 ? 0 : (currentQty - usedQty);
-            InventoryService.instance.updatePart(
-              id: part.id,
-              typeId: part.typeId,
-              code: part.code,
-              quantity: newQty.toInt(),
-            );
-          }
+    final usages = <(int? partId, TextEditingController qtyController)>[
+      for (final line in _partLines) (line.partId, line.quantityController),
+      for (final row in _inventoryPartRows) (row.partId, row.quantityController),
+    ];
+    for (final (partId, qtyController) in usages) {
+      if (partId == null) continue;
+      final usedQty = int.tryParse(qtyController.text.trim()) ?? 0;
+      if (usedQty <= 0) continue;
+      PartSummary? part;
+      for (final p in _parts) {
+        if (p.id == partId) {
+          part = p;
+          break;
         }
+      }
+      if (part != null) {
+        final currentQty = part.quantity ?? 0;
+        final newQty = (currentQty - usedQty) < 0 ? 0 : (currentQty - usedQty);
+        InventoryService.instance.updatePart(
+          id: part.id,
+          typeId: part.typeId,
+          code: part.code,
+          quantity: newQty.toInt(),
+        );
       }
     }
   }
@@ -824,6 +986,17 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     _reduceInventoryForUsedParts();
 
     final newId = result.data ?? 0;
+    if (newId > 0) {
+      // Best-effort: link this session's voice recordings (made before the
+      // work order existed) to the now-created id — mirrors web's
+      // post-create `voiceTranslationService.linkSession` call.
+      unawaited(
+        VoiceTranslationService.instance.linkSession(
+          workOrderId: newId,
+          sessionId: _voiceSessionId,
+        ),
+      );
+    }
     if (newId > 0 && _pendingAttachments.isNotEmpty) {
       final paths = _pendingAttachments
           .map((f) => f.path)
@@ -935,30 +1108,37 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                       children: [
                         _QuickNavChip(
                           icon: Icons.directions_bus_outlined,
-                          label: 'Unit & Source',
+                          label: 'Source',
                           isSelected: _activeNavIndex == 0,
                           onTap: () => _scrollToSection(0),
                         ),
                         const SizedBox(width: 8),
                         _QuickNavChip(
                           icon: Icons.calendar_month_outlined,
-                          label: 'Schedule & Meter',
+                          label: 'Details',
                           isSelected: _activeNavIndex == 1,
                           onTap: () => _scrollToSection(1),
                         ),
                         const SizedBox(width: 8),
                         _QuickNavChip(
                           icon: Icons.build_circle_outlined,
-                          label: 'Details & Repairs',
+                          label: 'Repairs & Parts',
                           isSelected: _activeNavIndex == 2,
                           onTap: () => _scrollToSection(2),
                         ),
                         const SizedBox(width: 8),
                         _QuickNavChip(
-                          icon: Icons.assignment_outlined,
-                          label: 'Checklist & Media',
+                          icon: Icons.notes_rounded,
+                          label: 'Notes & Cost',
                           isSelected: _activeNavIndex == 3,
                           onTap: () => _scrollToSection(3),
+                        ),
+                        const SizedBox(width: 8),
+                        _QuickNavChip(
+                          icon: Icons.attach_file_rounded,
+                          label: 'Attachments',
+                          isSelected: _activeNavIndex == 4,
+                          onTap: () => _scrollToSection(4),
                         ),
                       ],
                     ),
@@ -970,9 +1150,10 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                         controller: _scrollController,
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                         children: [
-                          // ── SECTION 1: UNIT & SOURCE ──
+                          // ── SECTION 1: WORK ORDER SOURCE ──
                           _ModernSectionCard(
                             key: _sectionKeys[0],
+                            sectionNumber: 1,
                             icon: Icons.directions_bus_rounded,
                             iconColor: const Color(0xFF2563EB),
                             title: 'Work Order Source',
@@ -1075,15 +1256,39 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
 
                           const SizedBox(height: 16),
 
-                          // ── SECTION 2: SCHEDULE & METERING ──
+                          // ── SECTION 2: WORK ORDER DETAILS ──
                           _ModernSectionCard(
                             key: _sectionKeys[1],
+                            sectionNumber: 2,
                             icon: Icons.schedule_rounded,
                             iconColor: const Color(0xFFD97706),
-                            title: 'Schedule & Odometer',
+                            title: 'Work Order Details',
                             subtitle:
                                 'Set status, key dates, meter readings and labour cost.',
                             children: [
+                              TextFormField(
+                                controller: _issueController,
+                                decoration: InputDecoration(
+                                  labelText: 'Issue Description *',
+                                  hintText: 'Describe the problem or service required...',
+                                  alignLabelWithHint: true,
+                                  filled: true,
+                                  fillColor: AppColors.inputFill,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: AppColors.border),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: AppColors.border),
+                                  ),
+                                ),
+                                maxLines: 3,
+                                validator: (v) => v == null || v.trim().isEmpty
+                                    ? 'Required'
+                                    : null,
+                              ),
+                              const SizedBox(height: 12),
                               _StyledDropdownField<WorkOrderStatus>(
                                 key: ValueKey('status_${_status.code}_$_statusFieldGen'),
                                 label: 'Status *',
@@ -1227,12 +1432,79 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
 
                           const SizedBox(height: 16),
 
-                          // ── SECTION 3: DETAILS & REPAIRS ──
+                          // ── PM INSPECTION CHECKLIST (IF PM SELECTED) ──
+                          // Slots in between Work Order Details and Repairs,
+                          // matching web's insertion point (not one of its 8
+                          // numbered sections either — it's a conditional
+                          // block gated on Work Order Type = Preventive
+                          // Maintenance).
+                          if (_isPm ?? false) ...[
+                            _ModernSectionCard(
+                              icon: Icons.checklist_rounded,
+                              iconColor: const Color(0xFF059669),
+                              title: 'PM Inspection Checklist',
+                              subtitle:
+                                  'Complete safety & mechanical check items.',
+                              children: [
+                                if (_pmLoading)
+                                  const Center(child: CircularProgressIndicator())
+                                else if (_pmCategories.isEmpty)
+                                  Text(
+                                    'No PM checklist available for this unit type',
+                                    style: TextStyle(color: AppColors.textSecondary),
+                                  )
+                                else ...[
+                                  PmInspectionSection(
+                                    categories: _pmCategories,
+                                    results: _pmResults,
+                                    isTrailer: (_entityTypeId ?? 1) == 2,
+                                    onChanged: () => setState(() {}),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'Tire & Brake Measurements',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  TireBrakeGrid(
+                                    measurements: _tireMeasurements,
+                                    onChanged: () => setState(() {}),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'PM Defects',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  PmDefectsTable(
+                                    defects: _defects,
+                                    onAdd: () => setState(
+                                      () => _defects.add(
+                                          PmDefectModel(rowNo: _defects.length + 1)),
+                                    ),
+                                    onRemove: (i) =>
+                                        setState(() => _defects.removeAt(i)),
+                                    onChanged: () => setState(() {}),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+
+                          // ── SECTION 3: REPAIRS ──
                           _ModernSectionCard(
                             key: _sectionKeys[2],
+                            sectionNumber: 3,
                             icon: Icons.build_circle_rounded,
                             iconColor: const Color(0xFF7C3AED),
-                            title: 'Details & Repairs',
+                            title: 'Repairs',
                             trailing: OutlinedButton.icon(
                               onPressed: _isCompletedRestrictedEdit ? null : _addPartLine,
                               icon: const Icon(Icons.add, size: 18),
@@ -1246,49 +1518,6 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                               ),
                             ),
                             children: [
-                              TextFormField(
-                                controller: _issueController,
-                                decoration: InputDecoration(
-                                  labelText: 'Issue Description *',
-                                  hintText: 'Describe the problem or service required...',
-                                  alignLabelWithHint: true,
-                                  filled: true,
-                                  fillColor: AppColors.inputFill,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                ),
-                                maxLines: 3,
-                                validator: (v) => v == null || v.trim().isEmpty
-                                    ? 'Required'
-                                    : null,
-                              ),
-                              const SizedBox(height: 12),
-                              TextFormField(
-                                controller: _notesController,
-                                decoration: InputDecoration(
-                                  labelText: 'General Notes',
-                                  hintText: 'Enter additional instructions or notes...',
-                                  alignLabelWithHint: true,
-                                  filled: true,
-                                  fillColor: AppColors.inputFill,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                ),
-                                maxLines: 2,
-                              ),
-                              const SizedBox(height: 16),
                               Row(
                                 children: [
                                   Text(
@@ -1389,78 +1618,130 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                             ],
                           ),
 
-                          // ── SECTION 4: PM INSPECTION (IF PM SELECTED) ──
-                          if (_isPm ?? false) ...[
-                            const SizedBox(height: 16),
-                            _ModernSectionCard(
-                              key: _sectionKeys[3],
-                              icon: Icons.checklist_rounded,
-                              iconColor: const Color(0xFF059669),
-                              title: 'PM Inspection Checklist',
-                              subtitle:
-                                  'Complete safety & mechanical check items.',
-                              children: [
-                                if (_pmLoading)
-                                  const Center(child: CircularProgressIndicator())
-                                else if (_pmCategories.isEmpty)
-                                  Text(
-                                    'No PM checklist available for this unit type',
-                                    style: TextStyle(color: AppColors.textSecondary),
-                                  )
-                                else ...[
-                                  PmInspectionSection(
-                                    categories: _pmCategories,
-                                    results: _pmResults,
-                                    isTrailer: (_entityTypeId ?? 1) == 2,
-                                    onChanged: () => setState(() {}),
+                          const SizedBox(height: 16),
+
+                          // ── SECTION 4: INVENTORY PARTS (OPTIONAL) ──
+                          _ModernSectionCard(
+                            sectionNumber: 4,
+                            icon: Icons.inventory_2_rounded,
+                            iconColor: const Color(0xFF0EA5E9),
+                            title: 'Inventory Parts (Optional)',
+                            subtitle:
+                                'Add parts consumed by this work order that aren\'t tied to a specific repair.',
+                            children: [
+                              for (var i = 0; i < _inventoryPartRows.length; i++)
+                                _buildInventoryPartRowCard(i, _inventoryPartRows[i]),
+                              OutlinedButton.icon(
+                                onPressed: _isCompletedRestrictedEdit
+                                    ? null
+                                    : () => setState(
+                                          () => _inventoryPartRows.add(_InventoryPartRow()),
+                                        ),
+                                icon: const Icon(Icons.add, size: 18),
+                                label: const Text('Add Part'),
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'Tire & Brake Measurements',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  TireBrakeGrid(
-                                    measurements: _tireMeasurements,
-                                    onChanged: () => setState(() {}),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'PM Defects',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  PmDefectsTable(
-                                    defects: _defects,
-                                    onAdd: () => setState(
-                                      () => _defects.add(
-                                          PmDefectModel(rowNo: _defects.length + 1)),
-                                    ),
-                                    onRemove: (i) =>
-                                        setState(() => _defects.removeAt(i)),
-                                    onChanged: () => setState(() {}),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ],
+                                ),
+                              ),
+                            ],
+                          ),
 
                           const SizedBox(height: 16),
 
-                          // ── SECTION 5: ATTACHMENTS & FINANCIALS ──
+                          // ── SECTION 5: NOTES ──
                           _ModernSectionCard(
-                            key: (_isPm ?? false) ? null : _sectionKeys[3],
+                            key: _sectionKeys[3],
+                            sectionNumber: 5,
+                            icon: Icons.notes_rounded,
+                            iconColor: const Color(0xFF7C3AED),
+                            title: 'Notes',
+                            children: [
+                              VoiceNotesRecorderRow(
+                                fieldName: 'notes',
+                                sessionId: _voiceSessionId,
+                                workOrderId: widget.existing?.id,
+                                onTranscribed: (text) => setState(() {
+                                  final current = _notesController.text.trim();
+                                  _notesController.text =
+                                      current.isEmpty ? text : '$current $text';
+                                }),
+                              ),
+                              TextFormField(
+                                controller: _notesController,
+                                decoration: InputDecoration(
+                                  labelText: 'General Notes',
+                                  hintText: 'Enter additional instructions or notes...',
+                                  alignLabelWithHint: true,
+                                  filled: true,
+                                  fillColor: AppColors.inputFill,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: AppColors.border),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: AppColors.border),
+                                  ),
+                                ),
+                                maxLines: 3,
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // ── SECTION 6: ESTIMATED COST ──
+                          _ModernSectionCard(
+                            sectionNumber: 6,
+                            icon: Icons.payments_rounded,
+                            iconColor: const Color(0xFF16A34A),
+                            title: 'Estimated Cost',
+                            children: [
+                              TextFormField(
+                                controller: _costController,
+                                decoration: InputDecoration(
+                                  labelText: 'Estimated Total Cost *',
+                                  prefixText: '\$ ',
+                                  prefixIcon: Icon(Icons.payments_outlined,
+                                      size: 18, color: AppColors.textSecondary),
+                                  filled: true,
+                                  fillColor: AppColors.inputFill,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: AppColors.border),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: AppColors.border),
+                                  ),
+                                ),
+                                keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                onChanged: (_) {
+                                  if (!_settingCostProgrammatically) {
+                                    _isEstimatedCostManual = true;
+                                  }
+                                },
+                                validator: (v) => v == null || v.trim().isEmpty
+                                    ? 'Required'
+                                    : null,
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // ── SECTION 7: ATTACHMENTS ──
+                          _ModernSectionCard(
+                            key: _sectionKeys[4],
+                            sectionNumber: 7,
                             icon: Icons.attach_file_rounded,
                             iconColor: const Color(0xFF2563EB),
-                            title: 'Attachments & Financials',
-                            subtitle:
-                                'Upload documents or photos and set estimated cost.',
+                            title: 'Attachments',
+                            subtitle: 'Upload documents or photos.',
                             children: [
                               if (widget.isEdit) ...[
                                 if (widget.existing!.attachments.isEmpty)
@@ -1582,39 +1863,18 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                                     ),
                                 ],
                               ],
-                              const SizedBox(height: 16),
-                              TextFormField(
-                                controller: _costController,
-                                decoration: InputDecoration(
-                                  labelText: 'Estimated Total Cost *',
-                                  prefixText: '\$ ',
-                                  prefixIcon: Icon(Icons.payments_outlined,
-                                      size: 18, color: AppColors.textSecondary),
-                                  filled: true,
-                                  fillColor: AppColors.inputFill,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                ),
-                                keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
-                                onChanged: (_) {
-                                  if (!_settingCostProgrammatically) {
-                                    _isEstimatedCostManual = true;
-                                  }
-                                },
-                                validator: (v) => v == null || v.trim().isEmpty
-                                    ? 'Required'
-                                    : null,
-                              ),
-                              if (_status == WorkOrderStatus.completed) ...[
-                                const SizedBox(height: 12),
+                            ],
+                          ),
+
+                          // ── SECTION 8: RESOLUTION (COMPLETED WORK ORDERS) ──
+                          if (_status == WorkOrderStatus.completed) ...[
+                            const SizedBox(height: 16),
+                            _ModernSectionCard(
+                              sectionNumber: 8,
+                              icon: Icons.task_alt_rounded,
+                              iconColor: const Color(0xFF16A34A),
+                              title: 'Resolution (Completed Work Orders)',
+                              children: [
                                 TextFormField(
                                   controller: _resolutionController,
                                   decoration: InputDecoration(
@@ -1631,8 +1891,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                                   maxLines: 3,
                                 ),
                               ],
-                            ],
-                          ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -2046,6 +2306,105 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       ),
     );
   }
+
+  /// One row of the standalone "Inventory Parts (Optional)" section — a
+  /// part usage entry with no attached repair. Submitted alongside repair
+  /// lines in the same `parts` payload array (see `_buildPayload`); the
+  /// backend only splits parts into a separate `inventoryParts` bucket when
+  /// that key is present in the request, so appending these to `parts`
+  /// keeps the existing repair-line submit path completely unchanged.
+  Widget _buildInventoryPartRowCard(int index, _InventoryPartRow row) {
+    final restricted = _isCompletedRestrictedEdit;
+    final filteredParts = row.partTypeId == null
+        ? _parts
+        : _parts.where((p) => p.typeId == row.partTypeId).toList();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.cardElevated,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Part ${index + 1}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.close, size: 18, color: AppColors.danger),
+                tooltip: 'Remove part',
+                onPressed: restricted
+                    ? null
+                    : () {
+                        setState(() {
+                          _inventoryPartRows.removeAt(index).dispose();
+                          _recalculateEstimatedCost();
+                        });
+                      },
+              ),
+            ],
+          ),
+          WebSearchableDropdownField<PartTypeSummary?>(
+            label: 'Part Type',
+            value: _partTypes.where((t) => t.id == row.partTypeId).firstOrNull,
+            items: [null, ..._partTypes],
+            itemLabel: (t) => t?.name ?? 'Select Category',
+            hint: 'Select Category',
+            onChanged: restricted
+                ? (_) {}
+                : (v) => setState(() {
+                      row.partTypeId = v?.id;
+                      row.partId = null;
+                      _recalculateEstimatedCost();
+                    }),
+          ),
+          const SizedBox(height: 8),
+          WebSearchableDropdownField<PartSummary?>(
+            label: 'Part Name',
+            value: filteredParts.where((p) => p.id == row.partId).firstOrNull,
+            items: [null, ...filteredParts],
+            itemLabel: (p) =>
+                p != null ? '${p.code} (In Stock: ${p.quantity ?? 0})' : 'Select Part',
+            hint: 'Select Part',
+            onChanged: restricted
+                ? (_) {}
+                : (v) => setState(() {
+                      row.partId = v?.id;
+                      _recalculateEstimatedCost();
+                    }),
+          ),
+          const SizedBox(height: 8),
+          TextFormField(
+            controller: row.quantityController,
+            enabled: !restricted,
+            decoration: InputDecoration(
+              labelText: 'Quantity *',
+              filled: true,
+              fillColor: AppColors.inputFill,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: AppColors.border),
+              ),
+            ),
+            keyboardType: TextInputType.number,
+            onChanged: (_) => setState(() => _recalculateEstimatedCost()),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ── MODERN UI WIDGETS & SECTIONS ──
@@ -2116,6 +2475,7 @@ class _QuickNavChip extends StatelessWidget {
 class _ModernSectionCard extends StatelessWidget {
   const _ModernSectionCard({
     super.key,
+    this.sectionNumber,
     required this.icon,
     required this.iconColor,
     required this.title,
@@ -2124,6 +2484,9 @@ class _ModernSectionCard extends StatelessWidget {
     required this.children,
   });
 
+  /// Matches web's numbered section headers (1 Work Order Source … 8
+  /// Resolution) so the two apps read as the same screen.
+  final int? sectionNumber;
   final IconData icon;
   final Color iconColor;
   final String title;
@@ -2153,6 +2516,27 @@ class _ModernSectionCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (sectionNumber != null) ...[
+                Container(
+                  width: 22,
+                  height: 22,
+                  margin: const EdgeInsets.only(top: 7),
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: AppColors.chromeBlue,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '$sectionNumber',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+              ],
               Container(
                 width: 36,
                 height: 36,
@@ -2605,43 +2989,60 @@ class _EventsSection extends StatefulWidget {
 class _EventsSectionState extends State<_EventsSection> {
   @override
   Widget build(BuildContext context) {
+    final hasVin = widget.vin != null && widget.vin!.trim().isNotEmpty;
+    final headerText = hasVin
+        ? 'SOURCE EVENTS FOR THIS VEHICLE (VIN: ${widget.vin})'
+        : 'SOURCE EVENTS FOR THIS VEHICLE';
+
     if (widget.loading) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (widget.events.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.inputFill,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(
-          'No linked DVIR defects or fault codes found for this unit.',
-          style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-        ),
-      );
-    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Unit Defects & Events (Tap to link description)',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+          headerText,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.4,
+            color: AppColors.textSecondary,
+          ),
         ),
         const SizedBox(height: 8),
-        SourceEventsDetailsLink(
-          events: widget.events,
-          vin: widget.vin,
-          unitNumber: widget.unitNumber,
-        ),
-        const SizedBox(height: 8),
-        for (final e in widget.events) _EventCard(
-          issue: e,
-          linked: widget.linkedIds.contains(e.id),
-          uploads: widget.uploads[e.id] ?? const [],
-          uploadsLoading: widget.uploadsLoading,
-          onTap: () => widget.onTap(e),
-        ),
+        if (widget.events.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.inputFill,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              'No linked DVIR defects, fault codes, or pending policy schedules found for this unit.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+          )
+        else ...[
+          Text(
+            'Tap an event to link its description into Issue Description.',
+            style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          SourceEventsDetailsLink(
+            events: widget.events,
+            vin: widget.vin,
+            unitNumber: widget.unitNumber,
+          ),
+          const SizedBox(height: 8),
+          for (final e in widget.events) _EventCard(
+            issue: e,
+            linked: widget.linkedIds.contains(e.id),
+            uploads: widget.uploads[e.id] ?? const [],
+            uploadsLoading: widget.uploadsLoading,
+            onTap: () => widget.onTap(e),
+          ),
+        ],
       ],
     );
   }
@@ -2672,6 +3073,8 @@ class _EventCard extends StatelessWidget {
         return 'General';
       case 'MANUAL':
         return 'Manual';
+      case 'POLICY':
+        return 'Pending Schedule';
       default:
         return source;
     }
@@ -3219,4 +3622,16 @@ class _PartLineForm {
     vendorNameController.dispose();
     repairNotesController.dispose();
   }
+}
+
+/// One row of the standalone "Inventory Parts (Optional)" section — a part
+/// usage entry not tied to any repair line.
+class _InventoryPartRow {
+  _InventoryPartRow() : quantityController = TextEditingController(text: '1');
+
+  int? partTypeId;
+  int? partId;
+  final TextEditingController quantityController;
+
+  void dispose() => quantityController.dispose();
 }

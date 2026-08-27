@@ -47,15 +47,22 @@ class FleetLookupService {
 
   /// Full maintenance-policy records (including PM interval / inspection
   /// frequency configuration), unlike [fetchMaintenancePolicies] which only
-  /// keeps the id/name needed for a plain dropdown.
+  /// keeps the id/name needed for a plain dropdown. Passing [entityTypeId]
+  /// (1=truck, 2=trailer) matches web's `/truck-trailer` call — same
+  /// underlying data/endpoint as this method already uses, just filtered
+  /// and with `usedInVehicles` pruning applied server-side.
   Future<ApiResult<List<MaintenancePolicyModel>>>
-  fetchMaintenancePolicyConfigs({int? companyId}) async {
+  fetchMaintenancePolicyConfigs({int? companyId, int? entityTypeId}) async {
     final cid = companyId ?? AuthService.instance.selectedCompanyIdInt;
     try {
       final body = await _api.parseJson(
         () => _api.get(
           ApiConstants.maintenancePolicies,
-          params: {'isActive': true, 'companyId': ?cid},
+          params: {
+            'isActive': true,
+            'companyId': ?cid,
+            'entityTypeId': ?entityTypeId,
+          },
           companyId: cid?.toString(),
         ),
         onSuccess: (b) => b,

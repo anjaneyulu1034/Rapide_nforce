@@ -8,10 +8,12 @@ import 'package:rapide_nforce/models/part_models.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/inventory_service.dart';
 import 'package:rapide_nforce/services/permission_service.dart';
+import 'package:rapide_nforce/ui/inventory/add_part_screen.dart';
 import 'package:rapide_nforce/ui/inventory/part_detail_screen.dart';
 import 'package:rapide_nforce/ui/inventory/part_form_screen.dart';
 import 'package:rapide_nforce/ui/inventory/part_type_form_screen.dart';
 import 'package:rapide_nforce/ui/inventory/widgets/inventory_stock_badge.dart';
+import 'package:rapide_nforce/ui/inventory/widgets/inventory_value_summary_strip.dart';
 import 'package:rapide_nforce/ui/widgets/icon_only_button.dart';
 import 'package:rapide_nforce/ui/widgets/list_empty_state.dart';
 import 'package:rapide_nforce/ui/widgets/status_badge.dart';
@@ -93,15 +95,22 @@ class InventoryScreenState extends State<InventoryScreen>
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        physics: const NeverScrollableScrollPhysics(),
+      body: Column(
         children: [
-          _PartTypesTab(key: _typesKey, onViewParts: _viewPartsForType),
-          _PartsTab(
-            key: _partsKey,
-            initialSearch: _partsInitialSearch,
-            initialTypeId: _partsInitialTypeId,
+          const InventoryValueSummaryStrip(),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _PartTypesTab(key: _typesKey, onViewParts: _viewPartsForType),
+                _PartsTab(
+                  key: _partsKey,
+                  initialSearch: _partsInitialSearch,
+                  initialTypeId: _partsInitialTypeId,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -1063,7 +1072,7 @@ class _PartsTabState extends State<_PartsTab> {
     }
     final changed = await Navigator.of(
       context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => const PartFormScreen()));
+    ).push<bool>(MaterialPageRoute(builder: (_) => const AddPartScreen()));
     if (changed == true) _load();
   }
 

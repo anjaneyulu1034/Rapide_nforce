@@ -59,6 +59,220 @@ class PartTypeModel {
   }
 }
 
+/// A `products` row (`itemCategoryId: 1`) — backs the "Part Type Name"
+/// dropdown on Add Part. `products` and `part_types` are two unrelated
+/// tables (no FK between them, matched only by name), which is why creating
+/// a new part type from Add Part must upsert both — see
+/// `InventoryService.createProduct`/`createPartType`.
+class ProductModel {
+  const ProductModel({
+    required this.id,
+    required this.name,
+    this.itemCategoryId,
+    this.companyId,
+    this.itemType,
+    this.isActive = true,
+  });
+
+  final int id;
+  final String name;
+  final int? itemCategoryId;
+  final int? companyId;
+  final String? itemType;
+  final bool isActive;
+
+  factory ProductModel.fromJson(Map<String, dynamic> json) => ProductModel(
+        id: (json['id'] as num?)?.toInt() ?? 0,
+        name: json['name'] as String? ?? '',
+        itemCategoryId: (json['itemCategoryId'] as num?)?.toInt() ??
+            (json['item_category_id'] as num?)?.toInt(),
+        companyId: (json['companyId'] as num?)?.toInt() ??
+            (json['company_id'] as num?)?.toInt(),
+        itemType: json['itemType'] as String? ?? json['item_type'] as String?,
+        isActive: json['isActive'] as bool? ?? json['is_active'] as bool? ?? true,
+      );
+}
+
+/// A `part_vendors` row, from `GET /reports/vendors` — note this endpoint
+/// does not return address fields, so a selected vendor can only populate
+/// `vendorName`/`partVendorId` on Add Part, not Origin Country/State.
+class VendorModel {
+  const VendorModel({required this.id, required this.name, this.code, this.companyId});
+
+  final int id;
+  final String name;
+  final String? code;
+  final int? companyId;
+
+  factory VendorModel.fromJson(Map<String, dynamic> json) {
+    final id = (json['id'] as num?)?.toInt() ?? 0;
+    return VendorModel(
+      id: id,
+      name: json['name'] as String? ??
+          json['vendorName'] as String? ??
+          json['vendor_name'] as String? ??
+          'Vendor $id',
+      code: json['code'] as String?,
+      companyId: (json['companyId'] as num?)?.toInt() ??
+          (json['company_id'] as num?)?.toInt(),
+    );
+  }
+}
+
+/// One row from `GET /parts-tax-rates` — the authoritative tax-rate catalog
+/// used for the client-side "Estimated Tax Summary" preview
+/// (`PartTaxEstimator`). `aliases` lets a region be matched by an alternate
+/// name/spelling in addition to its 2-letter `regionCode`.
+class PartTaxRateModel {
+  const PartTaxRateModel({
+    required this.country,
+    required this.regionCode,
+    required this.taxType,
+    required this.totalRate,
+    this.aliases = const [],
+    this.combinedMaxRate,
+  });
+
+  final String country;
+  final String regionCode;
+  final String taxType;
+  final double totalRate;
+  final List<String> aliases;
+  final double? combinedMaxRate;
+
+  factory PartTaxRateModel.fromJson(Map<String, dynamic> json) {
+    final aliasList = <String>[];
+    final rawAliases = json['aliases'];
+    if (rawAliases is List) {
+      for (final a in rawAliases) {
+        if (a is Map && a['alias'] != null) aliasList.add(a['alias'].toString());
+      }
+    }
+    return PartTaxRateModel(
+      country: json['country'] as String? ?? '',
+      regionCode: json['regionCode'] as String? ?? json['region_code'] as String? ?? '',
+      taxType: json['taxType'] as String? ?? json['tax_type'] as String? ?? 'TAX',
+      totalRate: (json['totalRate'] as num?)?.toDouble() ??
+          (json['total_rate'] as num?)?.toDouble() ??
+          0,
+      aliases: aliasList,
+      combinedMaxRate: (json['combinedMaxRate'] as num?)?.toDouble() ??
+          (json['combined_max_rate'] as num?)?.toDouble(),
+    );
+  }
+}
+
+/// One row of the Add Part submit payload — mirrors web's
+/// `CreatePartPayload` (`maintenance.service.ts`), posted as a plain JSON
+/// array to `POST /maintenance/parts` (see `InventoryService.createParts`).
+class PartDraft {
+  const PartDraft({
+    required this.typeId,
+    required this.code,
+    required this.quantity,
+    required this.destinationCountry,
+    required this.destinationState,
+    this.cost,
+    this.totalCost,
+    this.invoiceNumber,
+    this.vendorName,
+    this.partVendorId,
+    this.companyId,
+    this.originCountry,
+    this.originState,
+    this.taxExempt = false,
+    this.additionalLocalRate,
+  });
+
+  final int typeId;
+  final String code;
+  final int quantity;
+  final String destinationCountry;
+  final String destinationState;
+  final double? cost;
+  final double? totalCost;
+  final String? invoiceNumber;
+  final String? vendorName;
+  final int? partVendorId;
+  final int? companyId;
+  final String? originCountry;
+  final String? originState;
+  final bool taxExempt;
+  final double? additionalLocalRate;
+
+  Map<String, dynamic> toJson() => {
+        'typeId': typeId,
+        'code': code,
+        'quantity': quantity,
+        if (cost != null) 'cost': cost,
+        if (totalCost != null) 'totalCost': totalCost,
+        if (invoiceNumber != null && invoiceNumber!.isNotEmpty)
+          'invoiceNumber': invoiceNumber,
+        if (vendorName != null && vendorName!.isNotEmpty) 'vendorName': vendorName,
+        if (partVendorId != null) 'partVendorId': partVendorId,
+        if (companyId != null) 'company_id': companyId,
+        'destinationCountry': destinationCountry,
+        'destinationState': destinationState,
+        if (originCountry != null && originCountry!.isNotEmpty)
+          'originCountry': originCountry,
+        if (originState != null && originState!.isNotEmpty) 'originState': originState,
+        'taxExempt': taxExempt,
+        if (additionalLocalRate != null) 'additionalLocalRate': additionalLocalRate,
+      };
+}
+
+/// One `inventory.byCategory` entry from `GET /reports/maintenance-analytics`
+/// — used by the "Top Categories by Value" stat box above the Inventory
+/// tabs (mirrors web's `InventoryValueSummary.tsx`).
+class InventoryCategoryValue {
+  const InventoryCategoryValue({
+    required this.category,
+    required this.quantity,
+    required this.value,
+  });
+
+  final String category;
+  final double quantity;
+  final double value;
+
+  factory InventoryCategoryValue.fromJson(Map<String, dynamic> json) => InventoryCategoryValue(
+        category: json['category'] as String? ?? 'Uncategorised',
+        quantity: (json['quantity'] as num?)?.toDouble() ?? 0,
+        value: (json['value'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+/// The `inventory` sub-object of `GET /reports/maintenance-analytics` —
+/// backs the three stat boxes (Total Stock Value, Units In Stock, Top
+/// Categories by Value) shown above the Inventory tabs, matching web's
+/// `InventoryValueSummary.tsx`, which reuses this same analytics endpoint
+/// rather than a dedicated aggregation.
+class InventoryValueSummaryModel {
+  const InventoryValueSummaryModel({
+    required this.partCount,
+    required this.totalQuantityInStock,
+    required this.totalStockValue,
+    this.byCategory = const [],
+  });
+
+  final int partCount;
+  final double totalQuantityInStock;
+  final double totalStockValue;
+  final List<InventoryCategoryValue> byCategory;
+
+  factory InventoryValueSummaryModel.fromJson(Map<String, dynamic> json) =>
+      InventoryValueSummaryModel(
+        partCount: (json['partCount'] as num?)?.toInt() ?? 0,
+        totalQuantityInStock: (json['totalQuantityInStock'] as num?)?.toDouble() ?? 0,
+        totalStockValue: (json['totalStockValue'] as num?)?.toDouble() ?? 0,
+        byCategory: (json['byCategory'] as List?)
+                ?.whereType<Map>()
+                .map((e) => InventoryCategoryValue.fromJson(Map<String, dynamic>.from(e)))
+                .toList() ??
+            const [],
+      );
+}
+
 class PartUsedInWorkOrder {
   const PartUsedInWorkOrder({
     required this.id,

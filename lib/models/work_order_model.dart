@@ -569,12 +569,46 @@ class EntityTypeModel {
   }
 }
 
+/// One entry of an entity's `maintenanceRecords[]` — the vehicle's actual
+/// last/next-due tracking for a policy schedule type, used to decide
+/// whether a policy panel is "pending" or "up to date" on the Work Order
+/// Source screen. Mirrors web's inline record shape read in
+/// `CreateWorkOrderDrawer.tsx` (`scheduleTypeId`/`typeCode`/`typeName`/
+/// `lastDate`/`nextDate`).
+class MaintenanceRecordRef {
+  const MaintenanceRecordRef({
+    this.scheduleTypeId,
+    this.typeCode,
+    this.typeName,
+    this.lastDate,
+    this.nextDate,
+  });
+
+  final int? scheduleTypeId;
+  final String? typeCode;
+  final String? typeName;
+  final String? lastDate;
+  final String? nextDate;
+
+  factory MaintenanceRecordRef.fromJson(Map<String, dynamic> json) {
+    return MaintenanceRecordRef(
+      scheduleTypeId: (json['scheduleTypeId'] as num?)?.toInt(),
+      typeCode: json['typeCode'] as String?,
+      typeName: json['typeName'] as String?,
+      lastDate: json['lastDate'] as String?,
+      nextDate: json['nextDate'] as String?,
+    );
+  }
+}
+
 class EntityModel {
   const EntityModel({
     required this.id,
     required this.name,
     this.vinNumber,
     this.odometer,
+    this.maintenancePolicy,
+    this.maintenanceRecords = const [],
   });
 
   final int id;
@@ -582,13 +616,24 @@ class EntityModel {
   final String? vinNumber;
   final String? odometer;
 
+  /// The assigned maintenance policy's *name* (not an id — the backend
+  /// stores this as a plain string column on the truck/trailer row).
+  final String? maintenancePolicy;
+  final List<MaintenanceRecordRef> maintenanceRecords;
+
   factory EntityModel.fromJson(Map<String, dynamic> json) {
+    final recordsRaw = json['maintenanceRecords'] as List? ?? const [];
     return EntityModel(
       id: json['id'] as int? ?? 0,
       name: json['name'] as String? ?? '',
       vinNumber: json['vinNumber'] as String? ?? json['vin_number'] as String?,
       odometer: json['odometer']?.toString() ??
           json['current_odometer']?.toString(),
+      maintenancePolicy: json['maintenancePolicy'] as String?,
+      maintenanceRecords: recordsRaw
+          .whereType<Map>()
+          .map((r) => MaintenanceRecordRef.fromJson(Map<String, dynamic>.from(r)))
+          .toList(),
     );
   }
 }

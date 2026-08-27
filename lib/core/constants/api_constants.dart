@@ -87,6 +87,11 @@ class ApiConstants {
       '/maintenance/work-order-labour-entries';
   static const String workOrderLabourTimerLogs =
       '/maintenance/work-order-labour-timer-logs';
+
+  // Voice-to-text (Notes field on Create/Edit Work Order — record → server
+  // transcribes + translates to English)
+  static const String voiceTranslate = '/maintenance/voice/translate';
+  static const String voiceLinkSessionSuffix = '/voice/link-session';
   static const String entityTypes = '/entity-types';
   static const String entities = '/entities';
   static const String companies = '/companies';
@@ -102,6 +107,11 @@ class ApiConstants {
   // Reports
   static const String reportsOcrAuditLogs = '/reports/ocr-audit-logs';
   static const String reportsTruckSafety = '/reports/trucks/safety-pdf-table';
+  static const String reportsVendors = '/reports/vendors';
+  static const String reportsMaintenanceAnalytics = '/reports/maintenance-analytics';
+
+  // Parts tax rate catalog (Add Part "Estimated Tax Summary" preview)
+  static const String partsTaxRates = '/parts-tax-rates';
 
   // Legacy
   static const String dashboard = '/dashboard/summary';

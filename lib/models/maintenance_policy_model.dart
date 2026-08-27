@@ -9,18 +9,33 @@ class PolicySchedulePanel {
   const PolicySchedulePanel({
     required this.type,
     required this.name,
+    this.scheduleTypeId,
+    this.scheduleTypeCode,
+    this.scheduleTypeName,
     this.days,
     this.months,
     this.km,
+    this.engineHours,
     this.nextDueDate,
     this.nextDueOdometer,
   });
 
   final String type;
   final String name;
+
+  /// Fields identifying the schedule *type* this panel represents (e.g. "PM
+  /// Inspection", "Oil Change") — used to match against a vehicle's
+  /// `maintenanceRecords[]` when deciding whether a panel is pending or
+  /// already up to date (see `_buildPendingPolicyEvents` in
+  /// `work_order_form_screen.dart`).
+  final int? scheduleTypeId;
+  final String? scheduleTypeCode;
+  final String? scheduleTypeName;
+
   final int? days;
   final int? months;
   final int? km;
+  final int? engineHours;
   final String? nextDueDate;
   final int? nextDueOdometer;
 
@@ -41,9 +56,13 @@ class PolicySchedulePanel {
     return PolicySchedulePanel(
       type: type,
       name: name,
+      scheduleTypeId: _asInt(json['scheduleTypeId']),
+      scheduleTypeCode: json['scheduleTypeCode'] as String?,
+      scheduleTypeName: json['scheduleTypeName'] as String?,
       days: _asInt(cfg['days']),
       months: _asInt(cfg['months']),
       km: _asInt(cfg['kilometers'] ?? cfg['km']),
+      engineHours: _asInt(cfg['engineHours']),
       nextDueDate:
           json['nextDueDate'] as String? ?? json['next_due_date'] as String?,
       nextDueOdometer:
@@ -58,12 +77,18 @@ class PolicySchedule {
     required this.name,
     required this.isActive,
     required this.panels,
+    this.scheduleNumber,
   });
 
   final int id;
   final String name;
   final bool isActive;
   final List<PolicySchedulePanel> panels;
+
+  /// Display index computed by the backend (`totalCount - index`, highest
+  /// first) — used as a fallback reference label when a schedule has no
+  /// meaningful `name`.
+  final int? scheduleNumber;
 
   factory PolicySchedule.fromJson(Map<String, dynamic> json) {
     final panelsRaw =
@@ -72,6 +97,7 @@ class PolicySchedule {
       id: _asInt(json['id']) ?? 0,
       name: (json['name'] as String? ?? 'Schedule').trim(),
       isActive: json['isActive'] != false && json['active'] != false,
+      scheduleNumber: _asInt(json['scheduleNumber']),
       panels: panelsRaw
           .whereType<Map>()
           .map((p) => PolicySchedulePanel.fromJson(Map<String, dynamic>.from(p)))
@@ -92,6 +118,8 @@ class MaintenancePolicyModel {
     this.pmIntervalKm,
     this.inspectionFrequency,
     this.schedules = const [],
+    this.usedInTrucks = const [],
+    this.usedInTrailers = const [],
   });
 
   final int id;
@@ -100,6 +128,12 @@ class MaintenancePolicyModel {
   final int? pmIntervalKm;
   final String? inspectionFrequency;
   final List<PolicySchedule> schedules;
+
+  /// Unit-number strings this policy is assigned to — the fallback match
+  /// used when a vehicle's own `maintenancePolicy` name doesn't resolve to
+  /// any loaded policy (see `_buildPendingPolicyEvents`).
+  final List<String> usedInTrucks;
+  final List<String> usedInTrailers;
 
   /// Helper getter to find PM panel across schedules
   PolicySchedulePanel? get pmPanel {
@@ -145,6 +179,10 @@ class MaintenancePolicyModel {
         ? Map<String, dynamic>.from(rawConfig)
         : const <String, dynamic>{};
 
+    final usedIn = json['usedInVehicles'] is Map
+        ? Map<String, dynamic>.from(json['usedInVehicles'])
+        : const <String, dynamic>{};
+
     return MaintenancePolicyModel(
       id: json['id'] as int? ?? 0,
       name: (json['name'] as String? ?? '').trim(),
@@ -152,6 +190,10 @@ class MaintenancePolicyModel {
       pmIntervalKm: pmPanel?.km ?? _asInt(config['pmIntervalKm']),
       inspectionFrequency: (config['inspectionFrequency'] as String?)?.trim(),
       schedules: schedules,
+      usedInTrucks:
+          (usedIn['trucks'] as List?)?.whereType<String>().toList() ?? const [],
+      usedInTrailers:
+          (usedIn['trailers'] as List?)?.whereType<String>().toList() ?? const [],
     );
   }
 }
