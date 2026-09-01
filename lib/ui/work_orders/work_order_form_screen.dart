@@ -31,10 +31,17 @@ class WorkOrderFormScreen extends StatefulWidget {
     this.existing,
     this.initialIssueDescription,
     this.linkedDefects,
+    this.initialUnitNumber,
   });
 
   final WorkOrderModel? existing;
   final String? initialIssueDescription;
+  // Pre-selects the Unit field on open — used when launching "Create Work
+  // Order" from a vehicle's detail screen, matching web's `unitNumber` query
+  // param on the work order route (`VehicleDetail.tsx`'s Create Work Order
+  // action). Ignored when `existing` or `linkedDefects` is set — those
+  // already drive their own unit selection.
+  final String? initialUnitNumber;
   // When set, this work order is created via the backend's from-source
   // endpoint instead of the generic create endpoint — each entry becomes a
   // linked repair line (no inventory part attached), and the first entry's
@@ -336,6 +343,42 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
           _fetchOdometer();
           _loadEvents();
         }
+      }
+    } else if (existing == null &&
+        (widget.linkedDefects?.isEmpty ?? true) &&
+        (widget.initialUnitNumber?.trim().isNotEmpty ?? false) &&
+        mounted) {
+      final targetUnitNumber = widget.initialUnitNumber!.trim();
+      EntityModel? matchedEntity;
+      try {
+        matchedEntity = _entities.firstWhere((e) => e.name == targetUnitNumber);
+      } catch (_) {}
+
+      if (matchedEntity == null) {
+        for (final type in _entityTypes) {
+          if (type.id == _entityTypeId) continue;
+          final otherRes = await MaintenanceService.instance.getEntities(type.id);
+          if (otherRes.isSuccess && otherRes.data != null) {
+            try {
+              final found =
+                  otherRes.data!.firstWhere((e) => e.name == targetUnitNumber);
+              if (mounted) {
+                setState(() {
+                  _entityTypeId = type.id;
+                  _entities = otherRes.data!;
+                });
+              }
+              matchedEntity = found;
+              break;
+            } catch (_) {}
+          }
+        }
+      }
+
+      if (matchedEntity != null && mounted) {
+        setState(() => _selectedEntityId = matchedEntity!.id);
+        _fetchOdometer();
+        _loadEvents();
       }
     }
   }

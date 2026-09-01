@@ -46,6 +46,81 @@ String documentStatusLabel(String status) {
   }
 }
 
+/// Yellow "Compliance Status: Action Required" banner — mirrors web's
+/// `VehicleDetail.tsx` compliance status banner, shown whenever any binder
+/// document is expired or expiring within 30 days. Shared by the Power Unit
+/// and Trailer Compliance tabs.
+class ComplianceActionRequiredBanner extends StatelessWidget {
+  const ComplianceActionRequiredBanner({
+    super.key,
+    required this.missingCount,
+    required this.expiringCount,
+    required this.daysUntilExpiry,
+  });
+
+  final int missingCount;
+  final int expiringCount;
+  final int daysUntilExpiry;
+
+  @override
+  Widget build(BuildContext context) {
+    final buffer = StringBuffer();
+    if (missingCount > 0) {
+      buffer.write('Critical: $missingCount document(s) expired. ');
+    }
+    if (expiringCount > 0) {
+      buffer.write(
+        'Expiring: $expiringCount document(s) expire in $daysUntilExpiry days. ',
+      );
+    }
+    if (missingCount > 0) buffer.write('Upload missing documents and ');
+    if (expiringCount > 0) buffer.write('renew expiring permits immediately.');
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: Color(0xFFCA8A04),
+            size: 20,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Compliance Status: Action Required',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: Color(0xFF78350F),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  buffer.toString().trim(),
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFF92400E),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Status filter chip box (ACTIVE / EXPIRING / EXPIRED counts)
 // ---------------------------------------------------------------------------

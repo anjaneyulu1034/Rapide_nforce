@@ -53,8 +53,11 @@ class _TrailersScreenState extends State<TrailersScreen> {
 
   static const Map<String, String> _sortColumns = {
     'trailerNumber': 'Unit #',
+    'startDate': 'Start Date',
+    'type': 'Type',
     'vinNumber': 'VIN',
     'licensePlate': 'Plate',
+    'registrationExpiry': 'Registration Expiry',
     'status': 'Status',
   };
 
@@ -63,15 +66,29 @@ class _TrailersScreenState extends State<TrailersScreen> {
     if (column == null) return _items;
     int compareStrings(String? a, String? b) =>
         (a ?? '').toLowerCase().compareTo((b ?? '').toLowerCase());
+    int compareDates(String? a, String? b) {
+      final ad = a == null || a.isEmpty ? null : DateTime.tryParse(a);
+      final bd = b == null || b.isEmpty ? null : DateTime.tryParse(b);
+      if (ad == null && bd == null) return 0;
+      if (ad == null) return -1;
+      if (bd == null) return 1;
+      return ad.compareTo(bd);
+    }
 
     int cmp(TrailerModel a, TrailerModel b) {
       switch (column) {
         case 'trailerNumber':
           return compareStrings(a.trailerNumber, b.trailerNumber);
+        case 'startDate':
+          return compareDates(a.startDate, b.startDate);
+        case 'type':
+          return compareStrings(a.type, b.type);
         case 'vinNumber':
           return compareStrings(a.vinNumber, b.vinNumber);
         case 'licensePlate':
           return compareStrings(a.licensePlate, b.licensePlate);
+        case 'registrationExpiry':
+          return compareDates(a.registrationExpiry, b.registrationExpiry);
         case 'status':
           return (a.isActive ? 1 : 0).compareTo(b.isActive ? 1 : 0);
         default:
@@ -818,6 +835,44 @@ class _TrailersScreenState extends State<TrailersScreen> {
                                     color: AppColors.textTertiary,
                                   ),
                                 ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: _GridCell(
+                                label: 'Start Date',
+                                child: Text(
+                                  t.startDate ?? '—',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _GridCell(
+                                label: 'Registration Expiry',
+                                child: Text(
+                                  t.registrationExpiry ?? '—',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: _expiryColor(t.registrationExpiry) ??
+                                        AppColors.textPrimary,
+                                  ),
+                                ),
                               ),
                             ),
                           ],

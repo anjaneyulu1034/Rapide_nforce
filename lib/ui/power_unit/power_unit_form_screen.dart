@@ -85,9 +85,12 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
   final _pmInterval = TextEditingController();
   final _nextPmDue = TextEditingController();
   final _nextPmOdometer = TextEditingController();
+  final _lastPmEndOdometer = TextEditingController();
   final _telematicsProvider = TextEditingController();
   final _eldProvider = TextEditingController();
   String _telematicsEnabled = 'active';
+  bool _sendMaintenanceNotificationsToOwner = false;
+  String? _telematicsLastSynced;
   String? _selectedPolicy;
   final List<TruckPermitModel> _permits = [];
   String? _selectedPermitType;
@@ -193,6 +196,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _pmInterval,
     _nextPmDue,
     _nextPmOdometer,
+    _lastPmEndOdometer,
     _telematicsProvider,
     _eldProvider,
     _permitNumber,
@@ -339,6 +343,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _ownerEmail.text = u.ownerEmail ?? '';
     _ownerPhone.text = u.ownerPhone ?? '';
     _ownerAddress.text = u.ownerAddress ?? '';
+    _sendMaintenanceNotificationsToOwner =
+        u.raw?['sendMaintenanceNotificationsToOwner'] == true;
     _gvwr.text = u.gvwr ?? '';
     // Always populated in liters (unit toggle defaults to liters), matching
     // web's edit-mode load in `AddTruckPage.tsx`.
@@ -375,6 +381,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
     _pmInterval.text = u.pmInterval ?? '';
     _nextPmDue.text = _toIsoDate(u.nextPmDue ?? u.raw?['nextPmDue'] as String?);
     _nextPmOdometer.text = u.nextPmOdometer ?? '';
+    _lastPmEndOdometer.text = u.lastPmEndOdometer ?? '';
+    _telematicsLastSynced = u.telematicsLastSynced;
     _telematicsProvider.text = u.telematicsProvider ?? '';
     _telematicsEnabled =
         (u.telematicsEnabled ?? 'active').toLowerCase().contains('inact')
@@ -840,9 +848,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       if (_req(_maintenancePolicy.text, 'Maintenance Policy') != null) missing.add('Maintenance Policy');
       if (_req(_cviExpiry.text, 'CVIP Due') != null) missing.add('CVIP Due');
       if (_req(_currentOdometer.text, 'Current Odometer') != null) missing.add('Current Odometer');
-      if (_req(_lastInspection.text, 'Last Inspection') != null) missing.add('Last Inspection');
-      if (_req(_nextPmDue.text, 'Next PM Due') != null) missing.add('Next PM Due');
-      if (_req(_nextPmOdometer.text, 'Next PM Odometer') != null) missing.add('Next PM Odometer');
       if (_req(_telematicsProvider.text, 'Telematics Provider') != null) missing.add('Telematics Provider');
       if (_req(_eldProvider.text, 'ELD Provider') != null) missing.add('ELD Provider');
       if (missing.isNotEmpty) {
@@ -868,7 +873,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       if (_req(_certificateNumber.text, 'Certificate Number') != null) missing.add('Certificate Number');
       if (_req(_inspectionDate.text, 'Inspection Date') != null) missing.add('Inspection Date');
       if (_req(_expiryDate.text, 'Expiry Date') != null) missing.add('Expiry Date');
-      if (_req(_nextInspectionDue.text, 'Next Inspection Due') != null) missing.add('Next Inspection Due');
       if (_req(_inspectorName.text, 'Inspector Name') != null) missing.add('Inspector Name');
       if (_req(_inspectorLicense.text, 'Inspector License') != null) missing.add('Inspector License');
       if (_req(_inspectionFacility.text, 'Inspection Facility') != null) missing.add('Inspection Facility');
@@ -926,6 +930,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         'ownerEmail': _ownerEmail.text.trim(),
         'ownerPhone': _ownerPhone.text.trim(),
         'ownerAddress': _ownerAddress.text.trim(),
+        'sendMaintenanceNotificationsToOwner':
+            _sendMaintenanceNotificationsToOwner,
       },
       'gvwr': toInt(_gvwr.text),
       if (_fuelType != null) 'fuelType': _fuelType,
@@ -941,6 +947,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
       'pmInterval': toInt(_pmInterval.text),
       'nextPmDue': _toIsoDate(_nextPmDue.text),
       'nextPmOdometer': toInt(_nextPmOdometer.text),
+      'lastPmEndOdometer': toInt(_lastPmEndOdometer.text),
       'telematicsProvider': _telematicsProvider.text.trim(),
       'telematicsEnabled': _telematicsEnabled,
       'eldProvider': _eldProvider.text.trim(),
@@ -1234,6 +1241,7 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           label: 'VIN *',
           validator: _vinValidator,
           autovalidateMode: AutovalidateMode.onUserInteraction,
+          readOnly: widget.isEdit,
         ),
         WebTextFormField(
           controller: _make,
@@ -1423,6 +1431,42 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
             label: 'Owner Address *',
             validator: (v) => _req(v, 'Owner Address'),
           ),
+          InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () {
+              setState(
+                () => _sendMaintenanceNotificationsToOwner =
+                    !_sendMaintenanceNotificationsToOwner,
+              );
+              _onFormChanged();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Checkbox(
+                    value: _sendMaintenanceNotificationsToOwner,
+                    onChanged: (v) {
+                      setState(
+                        () => _sendMaintenanceNotificationsToOwner =
+                            v ?? false,
+                      );
+                      _onFormChanged();
+                    },
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Send Maintenance Notifications to Owner Operator',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ],
     ),
@@ -1532,8 +1576,8 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         : (isReefer ? 'Next Reefer Due' : 'Next PM Due');
 
     final odoLabel = isOil
-        ? 'Next Oil Odometer *'
-        : (isReefer ? 'Next Reefer Hours *' : 'Next PM Odometer *');
+        ? 'Next Oil Odometer'
+        : (isReefer ? 'Next Reefer Hours' : 'Next PM Odometer');
 
     final unitLabel = isReefer ? 'hrs' : 'km';
 
@@ -1703,8 +1747,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
           WebDateField(
             controller: _lastInspection,
             label: 'Last Inspection',
-            required: true,
-            validator: (v) => _req(v, 'Last Inspection'),
             onChanged: (_) => _applyMaintenancePolicyDefaults(),
           ),
           WebTextFormField(
@@ -1732,34 +1774,43 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
                   : null,
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: Colors.blue.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline, size: 16, color: Colors.blue),
-                const SizedBox(width: 8),
-                Text(
-                  'Last Sync (24 Hours)',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.blue.shade800,
-                  ),
-                ),
-              ],
-            ),
+          WebTextFormField(
+            controller: _lastPmEndOdometer,
+            label: 'Last PM Odometer',
+            keyboardType: TextInputType.number,
+            validator: (v) =>
+                _nonNegativeNumberValidator(v, 'Last PM Odometer'),
           ),
+          if (_telematicsLastSynced != null &&
+              _telematicsLastSynced!.trim().isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Last Sync (24 Hours): $_telematicsLastSynced',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue.shade800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           WebDateField(
             controller: _nextPmDue,
             label: dueLabel,
-            required: true,
-            validator: (v) => _req(v, dueLabel),
           ),
           WebTextFormField(
             controller: _nextPmOdometer,
@@ -1768,7 +1819,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
             validator: (v) => _nonNegativeNumberValidator(
               v,
               odoLabel.replaceAll(' *', ''),
-              required: true,
             ),
           ),
           WebTextFormField(
@@ -1962,8 +2012,6 @@ class _PowerUnitFormScreenState extends State<PowerUnitFormScreen> {
         WebDateField(
           controller: _nextInspectionDue,
           label: 'Next Inspection Due',
-          required: true,
-          validator: (v) => _req(v, 'Next Inspection Due'),
         ),
         WebTextFormField(
           controller: _inspectorName,

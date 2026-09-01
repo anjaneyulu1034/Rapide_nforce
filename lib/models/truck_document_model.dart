@@ -10,6 +10,7 @@ class TruckDocumentModel {
     this.documentType,
     this.documentCategory,
     this.location,
+    this.jurisdiction,
     this.issueDate,
     this.expiryDate,
     this.issueDateIso,
@@ -28,6 +29,7 @@ class TruckDocumentModel {
   final String? documentType;
   final String? documentCategory;
   final String? location;
+  final String? jurisdiction;
   final String? issueDate;
   final String? expiryDate;
   /// Raw (unformatted) ISO dates — used to prefill editable date fields.
@@ -56,6 +58,7 @@ class TruckDocumentModel {
       documentCategory: json['documentCategory'] as String? ??
           json['document_category'] as String?,
       location: json['location'] as String?,
+      jurisdiction: json['jurisdiction'] as String?,
       issueDate: _formatDate(issueRaw),
       expiryDate: _formatDate(expiryRaw),
       issueDateIso: _isoDate(issueRaw),

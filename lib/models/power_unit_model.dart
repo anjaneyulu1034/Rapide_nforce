@@ -53,6 +53,8 @@ class PowerUnitModel {
     this.telematicsProvider,
     this.telematicsEnabled,
     this.telematicsLastSynced,
+    this.telematicsSyncMessage,
+    this.telematicsSyncSuccess,
     this.eldProvider,
     this.samsaraVehicleId,
     this.certificateNumber,
@@ -124,6 +126,8 @@ class PowerUnitModel {
   final String? telematicsProvider;
   final String? telematicsEnabled;
   final String? telematicsLastSynced;
+  final String? telematicsSyncMessage;
+  final bool? telematicsSyncSuccess;
   final String? eldProvider;
   final String? samsaraVehicleId;
   final String? certificateNumber;
@@ -350,6 +354,10 @@ class PowerUnitModel {
         json['telematicsLastSynced'] as String? ??
             json['telematics_last_synced'] as String?,
       ),
+      telematicsSyncMessage:
+          (json['telematicsSync'] as Map?)?['message'] as String?,
+      telematicsSyncSuccess:
+          (json['telematicsSync'] as Map?)?['success'] as bool?,
       eldProvider: json['eldProvider'] as String?,
       samsaraVehicleId: json['samsaraVehicleId'] as String?,
       certificateNumber: json['certificateNumber'] as String?,

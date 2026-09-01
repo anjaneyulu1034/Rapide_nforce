@@ -8,6 +8,7 @@ import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/core/utils/api_feedback.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/compact_date_picker.dart';
+import 'package:rapide_nforce/core/utils/date_format.dart';
 import 'package:rapide_nforce/core/utils/document_download_service.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/trailer_model.dart';
@@ -25,6 +26,7 @@ import 'package:rapide_nforce/ui/widgets/qr_code_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
 import 'package:rapide_nforce/ui/widgets/status_chip.dart';
 import 'package:rapide_nforce/ui/widgets/vehicle_info_section.dart';
+import 'package:rapide_nforce/ui/work_orders/work_order_detail_screen.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_form_screen.dart';
 
 enum _Tab { overview, compliance, documents, maintenance, specifications }
@@ -418,9 +420,13 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
   }
 
   Future<void> _onCreateWorkOrder() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const WorkOrderFormScreen()));
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WorkOrderFormScreen(
+          initialUnitNumber: _trailer?.trailerNumber,
+        ),
+      ),
+    );
     _loadMaintenance();
   }
 
@@ -474,7 +480,10 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
               if (_canDelete)
                 IconButton(
                   onPressed: _deleteTrailer,
-                  icon: Icon(Icons.delete_outline_rounded, color: AppColors.danger),
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    color: AppColors.danger,
+                  ),
                   tooltip: 'Delete Trailer',
                 ),
               const SizedBox(width: 8),
@@ -626,7 +635,7 @@ class _TrailerDetailScreenState extends State<TrailerDetailScreen> {
   Widget _buildTabContent(TrailerModel trailer) {
     switch (_tab) {
       case _Tab.overview:
-        return _OverviewTab(trailer: trailer);
+        return _OverviewTab(trailer: trailer, documents: _documents);
       case _Tab.compliance:
         return _ComplianceTab(
           trailer: trailer,
@@ -857,10 +866,41 @@ class _SCard extends StatelessWidget {
 // ─── Overview Tab ───────────────────────────────────────────────────────────────
 
 class _OverviewTab extends StatelessWidget {
-  const _OverviewTab({required this.trailer});
+  const _OverviewTab({required this.trailer, this.documents = const []});
   final TrailerModel trailer;
+  final List<TruckDocumentModel> documents;
 
   static const _red = Color(0xFFBA1A1A);
+
+  /// Finds the Annual Safety/CVIP certificate among uploaded documents and
+  /// derives one of 4 states (REQUIRED/EXPIRED/EXPIRING SOON/PASSED) —
+  /// mirrors web's `annualSafetyDoc`/`annualSafetyUi` in `VehicleDetail.tsx`,
+  /// and the same port done for Power Unit's `_OverviewTab`.
+  ({String label, Color color})? _annualSafetyStatus() {
+    final matches = documents.where((d) {
+      final t = '${d.documentType ?? ''} ${d.fileType ?? ''}'.toLowerCase();
+      return t.contains('annual safety') &&
+          (t.contains('certificate') ||
+              t.contains('inspection') ||
+              t.contains('asc') ||
+              t.contains('cvip'));
+    }).toList();
+    if (matches.isEmpty) return null;
+    matches.sort((a, b) {
+      final ad = DateTime.tryParse(a.expiryDateIso ?? '') ?? DateTime(0);
+      final bd = DateTime.tryParse(b.expiryDateIso ?? '') ?? DateTime(0);
+      return bd.compareTo(ad);
+    });
+    final doc = matches.first;
+    final daysLeft = daysUntilIso(doc.expiryDateIso);
+    if (daysLeft != null && daysLeft < 0) {
+      return (label: 'EXPIRED', color: _red);
+    }
+    if (daysLeft != null && daysLeft <= 30) {
+      return (label: 'EXPIRING SOON', color: const Color(0xFF8B5E00));
+    }
+    return (label: 'PASSED', color: const Color(0xFF1B7A3E));
+  }
 
   static bool _isExpired(String? s) {
     if (s == null || s.isEmpty) return false;
@@ -883,8 +923,33 @@ class _OverviewTab extends StatelessWidget {
     ).isBefore(DateTime(today.year, today.month, today.day));
   }
 
+  static int? _daysUntil(String? s) {
+    if (s == null || s.isEmpty) return null;
+    DateTime? d = DateTime.tryParse(s);
+    if (d == null) {
+      final p = s.split('-');
+      if (p.length == 3) {
+        final m = int.tryParse(p[0]);
+        final day = int.tryParse(p[1]);
+        final y = int.tryParse(p[2]);
+        if (m != null && day != null && y != null) d = DateTime(y, m, day);
+      }
+    }
+    if (d == null) return null;
+    final today = DateTime.now();
+    return DateTime(
+      d.year,
+      d.month,
+      d.day,
+    ).difference(DateTime(today.year, today.month, today.day)).inDays;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final annualSafety = _annualSafetyStatus();
+    final certStatusLabel = annualSafety?.label ?? 'REQUIRED';
+    final certStatusColor = annualSafety?.color ?? _red;
+    final nextInspectionDays = _daysUntil(trailer.nextInspectionDue);
     final regExp = _isExpired(trailer.registrationExpiry);
     final cvipExp = _isExpired(trailer.cviExpiry ?? trailer.expiryDate);
     final inspExp = _isExpired(trailer.annualInspectionDue);
@@ -1001,8 +1066,8 @@ class _OverviewTab extends StatelessWidget {
           rows: [
             VehicleInfoRow(
               label: 'Certificate Status',
-              value: cvipExp ? 'EXPIRED' : 'Valid',
-              valueColor: cvipExp ? _red : null,
+              value: certStatusLabel,
+              valueColor: certStatusLabel == 'PASSED' ? null : certStatusColor,
             ),
             VehicleInfoRow(
               label: 'Certificate Number',
@@ -1045,8 +1110,43 @@ class _OverviewTab extends StatelessWidget {
               label: 'Advisory Items',
               value: '${trailer.advisoryItems ?? 0}',
             ),
+            if ((trailer.inspectionSummary ?? '').trim().isNotEmpty)
+              VehicleInfoRow(
+                label: 'Inspection Summary',
+                value: trailer.inspectionSummary!,
+              ),
           ],
         ),
+        if (nextInspectionDays != null) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFBFDBFE)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.info_outline,
+                  size: 18,
+                  color: Color(0xFF2563EB),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Next inspection due: ${TrailerModel.displayOrDash(trailer.nextInspectionDue)} ($nextInspectionDays days)',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF1E3A8A),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         if (trailer.ownerName != null) ...[
           const SizedBox(height: 12),
           VehicleInfoSection(
@@ -1173,10 +1273,10 @@ class _ComplianceTabState extends State<_ComplianceTab> {
   Widget build(BuildContext context) {
     final documents = widget.documents;
     final loading = widget.loading;
-    final expired = documents.where((d) {
-      final s = (d.statusLabel ?? '').toLowerCase();
-      return s.contains('expired');
-    }).length;
+    final expired = documents.where((d) => documentStatus(d) == 'expired').length;
+    final expiringSoon =
+        documents.where((d) => documentStatus(d) == 'expiring').length;
+    final current = documents.where((d) => documentStatus(d) == 'active').length;
     final missing = _ComplianceTab._requiredDocs.length - documents.length;
 
     return ListView(
@@ -1219,10 +1319,24 @@ class _ComplianceTabState extends State<_ComplianceTab> {
         Row(
           children: [
             _statBox('Total', '${documents.length}'),
-            _statBox('Expired', '$expired'),
+            _statBox('Current', '$current'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            _statBox('Expiring Soon', '$expiringSoon'),
             _statBox('Missing', '${missing < 0 ? 0 : missing}'),
           ],
         ),
+        if (expired > 0 || expiringSoon > 0) ...[
+          const SizedBox(height: 12),
+          ComplianceActionRequiredBanner(
+            missingCount: expired,
+            expiringCount: expiringSoon,
+            daysUntilExpiry: _earliestExpiringDaysLeft(documents),
+          ),
+        ],
         const SizedBox(height: 16),
         if (loading)
           const Center(child: CircularProgressIndicator())
@@ -1332,6 +1446,16 @@ class _ComplianceTabState extends State<_ComplianceTab> {
         ),
       ],
     );
+  }
+
+  int _earliestExpiringDaysLeft(List<TruckDocumentModel> documents) {
+    int? earliest;
+    for (final d in documents) {
+      if (documentStatus(d) != 'expiring') continue;
+      final daysLeft = daysUntilIso(d.expiryDateIso) ?? 0;
+      if (earliest == null || daysLeft < earliest) earliest = daysLeft;
+    }
+    return earliest ?? 0;
   }
 
   Widget _statBox(String label, String value) => Expanded(
@@ -2455,6 +2579,7 @@ class _TWoCard extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(12),
@@ -2467,138 +2592,154 @@ class _TWoCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    displayNum,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: wo.status.backgroundColor,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    wo.status.label,
-                    style: TextStyle(
-                      color: wo.status.textColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => WorkOrderDetailScreen(workOrderId: wo.id),
             ),
-            const SizedBox(height: 2),
-            Text(
-              [
-                wo.issueDescription,
-                wo.companyName,
-              ].where((s) => s != null && s.isNotEmpty).join(' · '),
-              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 10),
-            Divider(height: 1, color: AppColors.border),
-            const SizedBox(height: 10),
-            Row(
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _TInfoCell(
-                    label: 'COST',
-                    value: _fmtCost(details?.estimatedCost),
-                  ),
-                ),
-                Expanded(
-                  child: _TInfoCell(
-                    label: 'ODOMETER',
-                    value: _fmtOdo(details?.odometer ?? details?.startOdometer),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _TInfoCell(
-                    label: 'START DATE',
-                    value: _fmtDate(details?.startDate),
-                  ),
-                ),
-                Expanded(
-                  child: _TInfoCell(
-                    label: 'DUE DATE',
-                    value: _fmtDate(details?.dueDate),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Divider(height: 1, color: AppColors.border),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF1A1A1A),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      initials,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        displayNum,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    tech ?? 'Unassigned',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: wo.status.backgroundColor,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        wo.status.label,
+                        style: TextStyle(
+                          color: wo.status.textColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-                if (details?.dueDate != null) ...[
-                  Icon(
-                    Icons.access_time_outlined,
-                    size: 14,
+                const SizedBox(height: 2),
+                Text(
+                  [
+                    wo.issueDescription,
+                    wo.companyName,
+                  ].where((s) => s != null && s.isNotEmpty).join(' · '),
+                  style: TextStyle(
+                    fontSize: 12,
                     color: AppColors.textSecondary,
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Due ${_fmtDate(details?.dueDate)}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
+                ),
+                const SizedBox(height: 10),
+                Divider(height: 1, color: AppColors.border),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _TInfoCell(
+                        label: 'COST',
+                        value: _fmtCost(details?.estimatedCost),
+                      ),
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: _TInfoCell(
+                        label: 'ODOMETER',
+                        value: _fmtOdo(
+                          details?.odometer ?? details?.startOdometer,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _TInfoCell(
+                        label: 'START DATE',
+                        value: _fmtDate(details?.startDate),
+                      ),
+                    ),
+                    Expanded(
+                      child: _TInfoCell(
+                        label: 'DUE DATE',
+                        value: _fmtDate(details?.dueDate),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Divider(height: 1, color: AppColors.border),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Container(
+                      width: 26,
+                      height: 26,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF1A1A1A),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          initials,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        tech ?? 'Unassigned',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (details?.dueDate != null) ...[
+                      Icon(
+                        Icons.access_time_outlined,
+                        size: 14,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Due ${_fmtDate(details?.dueDate)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
-          ],
+          ),
         ),
       ),
     );

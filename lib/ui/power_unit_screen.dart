@@ -102,6 +102,14 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
       return true;
     }).toList();
 
+    if (_sortColumn != null) {
+      filtered.sort((a, b) {
+        final cmp = _compareByColumn(a, b, _sortColumn!);
+        return _sortAscending ? cmp : -cmp;
+      });
+      return filtered;
+    }
+
     // Backend has no sort param and always returns `orderBy: id desc`
     // (matching what web shows with no sort picked), so "newest"/"oldest"
     // here means newest/oldest *added* — i.e. by id — not by the business
@@ -113,6 +121,42 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     });
 
     return filtered;
+  }
+
+  /// Matches web's per-column sort on the Trucks grid (`TrucksPage.tsx`) —
+  /// Unit #, VIN, Plate, Registration Expiry, Status.
+  static const Map<String, String> _sortColumnLabels = {
+    'unitNumber': 'Unit #',
+    'vinNumber': 'VIN',
+    'licensePlate': 'Plate',
+    'registrationExpiry': 'Registration Expiry',
+    'status': 'Status',
+  };
+
+  int _compareByColumn(PowerUnitModel a, PowerUnitModel b, String column) {
+    switch (column) {
+      case 'unitNumber':
+        return a.unitNumber.toLowerCase().compareTo(b.unitNumber.toLowerCase());
+      case 'vinNumber':
+        return (a.vinNumber ?? '').toLowerCase().compareTo(
+          (b.vinNumber ?? '').toLowerCase(),
+        );
+      case 'licensePlate':
+        return (a.licensePlate ?? '').toLowerCase().compareTo(
+          (b.licensePlate ?? '').toLowerCase(),
+        );
+      case 'registrationExpiry':
+        final aDate = _parseDate(a.registrationExpiry);
+        final bDate = _parseDate(b.registrationExpiry);
+        if (aDate == null && bDate == null) return 0;
+        if (aDate == null) return -1;
+        if (bDate == null) return 1;
+        return aDate.compareTo(bDate);
+      case 'status':
+        return a.status.toLowerCase().compareTo(b.status.toLowerCase());
+      default:
+        return 0;
+    }
   }
 
   @override
@@ -375,6 +419,80 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                         sortChip('oldest', 'Oldest'),
                       ],
                     ),
+                    const SizedBox(height: 18),
+                    Text(
+                      'SORT BY COLUMN',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final entry in _sortColumnLabels.entries)
+                          ChoiceChip(
+                            label: Text(entry.value),
+                            selected: tempColumn == entry.key,
+                            onSelected: (_) => setSheetState(() {
+                              tempColumn = tempColumn == entry.key
+                                  ? null
+                                  : entry.key;
+                            }),
+                            selectedColor: AppColors.primary.withValues(
+                              alpha: 0.15,
+                            ),
+                            labelStyle: TextStyle(
+                              color: tempColumn == entry.key
+                                  ? AppColors.primary
+                                  : AppColors.textPrimary,
+                              fontWeight: tempColumn == entry.key
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              fontSize: 13,
+                            ),
+                            side: BorderSide(
+                              color: tempColumn == entry.key
+                                  ? AppColors.primary
+                                  : AppColors.border,
+                            ),
+                            backgroundColor: AppColors.inputFill,
+                          ),
+                      ],
+                    ),
+                    if (tempColumn != null) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('Ascending'),
+                            selected: tempAscending,
+                            onSelected: (_) =>
+                                setSheetState(() => tempAscending = true),
+                            selectedColor: AppColors.primary.withValues(
+                              alpha: 0.15,
+                            ),
+                            backgroundColor: AppColors.inputFill,
+                          ),
+                          ChoiceChip(
+                            label: const Text('Descending'),
+                            selected: !tempAscending,
+                            onSelected: (_) =>
+                                setSheetState(() => tempAscending = false),
+                            selectedColor: AppColors.primary.withValues(
+                              alpha: 0.15,
+                            ),
+                            backgroundColor: AppColors.inputFill,
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     Row(
                       children: [
@@ -926,7 +1044,11 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                                         ],
                                       ),
                                     ),
-                                  ] else if (u.companyName != null &&
+                                  ],
+                                  if ((_isSuperAdmin ||
+                                          u.licensePlate == null ||
+                                          u.licensePlate!.isEmpty) &&
+                                      u.companyName != null &&
                                       u.companyName!.isNotEmpty) ...[
                                     const SizedBox(height: 2),
                                     Text(
@@ -1108,6 +1230,20 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
                     ),
                   ),
+                TextButton.icon(
+                  onPressed: _openAdd,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 0),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  icon: const Icon(Icons.add_circle_outline, size: 16),
+                  label: const Text(
+                    'Add Power Unit',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

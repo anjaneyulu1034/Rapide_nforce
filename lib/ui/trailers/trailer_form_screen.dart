@@ -196,7 +196,9 @@ class _TrailerFormScreenState extends State<TrailerFormScreen> {
     setState(() {
       _countries = lookups[0].data as List<LookupOption>? ?? [];
       _policies = lookups[1].data as List<MaintenancePolicyModel>? ?? [];
-      _trucks = trucks.data?.items ?? [];
+      // Only active trucks are assignable — matches web's client-side
+      // filter in AddTrailerPage.tsx.
+      _trucks = (trucks.data?.items ?? []).where((t) => t.isActive).toList();
     });
 
     // Default country to Canada if not set (for new trailer)

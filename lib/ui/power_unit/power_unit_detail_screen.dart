@@ -364,9 +364,13 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
   }
 
   Future<void> _onCreateWorkOrder() async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const WorkOrderFormScreen()));
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WorkOrderFormScreen(
+          initialUnitNumber: _unit?.unitNumber,
+        ),
+      ),
+    );
     _loadMaintenance();
   }
 
@@ -632,7 +636,7 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
   Widget _buildTabContent(PowerUnitModel unit) {
     switch (_tab) {
       case PowerUnitDetailTab.overview:
-        return _OverviewTab(unit: unit);
+        return _OverviewTab(unit: unit, documents: _documents);
       case PowerUnitDetailTab.compliance:
         return _ComplianceTab(
           unit: unit,
@@ -662,8 +666,40 @@ class _PowerUnitDetailScreenState extends State<PowerUnitDetailScreen> {
 // ---------------------------------------------------------------------------
 
 class _OverviewTab extends StatelessWidget {
-  const _OverviewTab({required this.unit});
+  const _OverviewTab({required this.unit, this.documents = const []});
   final PowerUnitModel unit;
+  final List<TruckDocumentModel> documents;
+
+  /// Finds the Annual Safety/CVIP certificate among uploaded documents and
+  /// derives one of 4 states (REQUIRED/EXPIRED/EXPIRING SOON/PASSED) —
+  /// mirrors web's `annualSafetyDoc`/`annualSafetyUi` in `VehicleDetail.tsx`,
+  /// instead of Flutter's previous binary EXPIRED/Valid check on the raw
+  /// date field alone (which couldn't detect a missing certificate).
+  ({String label, Color color})? _annualSafetyStatus() {
+    final matches = documents.where((d) {
+      final t = '${d.documentType ?? ''} ${d.fileType ?? ''}'.toLowerCase();
+      return t.contains('annual safety') &&
+          (t.contains('certificate') ||
+              t.contains('inspection') ||
+              t.contains('asc') ||
+              t.contains('cvip'));
+    }).toList();
+    if (matches.isEmpty) return null;
+    matches.sort((a, b) {
+      final ad = DateTime.tryParse(a.expiryDateIso ?? '') ?? DateTime(0);
+      final bd = DateTime.tryParse(b.expiryDateIso ?? '') ?? DateTime(0);
+      return bd.compareTo(ad);
+    });
+    final doc = matches.first;
+    final daysLeft = daysUntilIso(doc.expiryDateIso);
+    if (daysLeft != null && daysLeft < 0) {
+      return (label: 'EXPIRED', color: _expiredRed);
+    }
+    if (daysLeft != null && daysLeft <= 30) {
+      return (label: 'EXPIRING SOON', color: const Color(0xFF8B5E00));
+    }
+    return (label: 'PASSED', color: const Color(0xFF1B7A3E));
+  }
 
   static bool _isExpired(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return false;
@@ -696,6 +732,9 @@ class _OverviewTab extends StatelessWidget {
     final inspExpired = _isExpired(
       unit.annualInspectionDue ?? unit.nextInspectionDue,
     );
+    final annualSafety = _annualSafetyStatus();
+    final certStatusLabel = annualSafety?.label ?? 'REQUIRED';
+    final certStatusColor = annualSafety?.color ?? _expiredRed;
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -746,6 +785,38 @@ class _OverviewTab extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
+        if (unit.telematicsSyncSuccess == false &&
+            (unit.telematicsSyncMessage ?? '').trim().isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFFBEB),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFFDE68A)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.sync_problem_rounded,
+                  size: 18,
+                  color: Color(0xFFCA8A04),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    unit.telematicsSyncMessage!,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Color(0xFF92400E),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
         VehicleInfoSection(
           title: 'Inspection & Maintenance',
           titleIcon: inspExpired
@@ -845,8 +916,8 @@ class _OverviewTab extends StatelessWidget {
           rows: [
             VehicleInfoRow(
               label: 'Certificate Status',
-              value: cvipExpired ? 'EXPIRED' : 'Valid',
-              valueColor: cvipExpired ? _expiredRed : null,
+              value: certStatusLabel,
+              valueColor: certStatusLabel == 'PASSED' ? null : certStatusColor,
             ),
             VehicleInfoRow(
               label: 'Certificate Number',
@@ -1082,12 +1153,20 @@ class _ComplianceTabState extends State<_ComplianceTab> {
     final docs = widget.documents;
     int currentCount = 0;
     int expiringCount = 0;
+    int expiredCount = 0;
+    int earliestExpiringDaysLeft = 0;
     for (final d in docs) {
       final s = _docStatus(d);
       if (s == 'active') {
         currentCount++;
       } else if (s == 'expiring') {
         expiringCount++;
+        final daysLeft = daysUntilIso(d.expiryDateIso) ?? 0;
+        if (expiringCount == 1 || daysLeft < earliestExpiringDaysLeft) {
+          earliestExpiringDaysLeft = daysLeft;
+        }
+      } else if (s == 'expired') {
+        expiredCount++;
       }
     }
     final uploadedTypes = docs
@@ -1187,6 +1266,14 @@ class _ComplianceTabState extends State<_ComplianceTab> {
             ),
           ],
         ),
+        if (expiredCount > 0 || expiringCount > 0) ...[
+          const SizedBox(height: 16),
+          ComplianceActionRequiredBanner(
+            missingCount: expiredCount,
+            expiringCount: expiringCount,
+            daysUntilExpiry: earliestExpiringDaysLeft,
+          ),
+        ],
         const SizedBox(height: 16),
         for (final category in _categoryOrder) _buildCategorySection(category),
         _buildReadinessSection(),
@@ -1711,7 +1798,10 @@ class _BinderDocCard extends StatelessWidget {
               ),
               Expanded(
                 child: isPermit
-                    ? const SizedBox.shrink()
+                    ? _InfoCell(
+                        label: 'JURISDICTION',
+                        value: doc.jurisdiction ?? doc.location ?? 'N/A',
+                      )
                     : _InfoCell(
                         label: 'LOCATION',
                         value: doc.location ?? 'In Vehicle',
