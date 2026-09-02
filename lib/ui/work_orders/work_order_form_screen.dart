@@ -13,6 +13,7 @@ import 'package:rapide_nforce/core/utils/odometer_unit.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/source_events_widgets.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/pm_inspection_widgets.dart';
 import 'package:rapide_nforce/ui/work_orders/widgets/voice_translation_field.dart';
+import 'package:rapide_nforce/ui/work_orders/work_order_add_part_sheet.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_upload_attachment_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
@@ -108,6 +109,17 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   final List<_PartLineForm> _partLines = [];
   final List<_InventoryPartRow> _inventoryPartRows = [];
   final List<PlatformFile> _pendingAttachments = [];
+
+  // ── Inventory Parts quick-add staging row — mirrors web's persistent
+  // Part Type / Part Name / Quantity / "+" row above the Inventory Parts
+  // list (`newRepairPartTypeId`/`newRepairPartId`/`newRepairQuantity` in
+  // `CreateWorkOrderDrawer.tsx`), kept separate from the "+ Add Part" popup
+  // which only offers Upload Invoice / Manually Add New Part.
+  int? _quickAddPartTypeId;
+  int? _quickAddPartId;
+  final TextEditingController _quickAddQuantityController =
+      TextEditingController(text: '1');
+  String? _quickAddError;
 
   bool _pmLoading = false;
   List<PmInspectionCategory> _pmCategories = [];
@@ -223,6 +235,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     _totalLabourCostController.dispose();
     _notesController.dispose();
     _resolutionController.dispose();
+    _quickAddQuantityController.dispose();
     for (final line in _partLines) {
       line.dispose();
     }
@@ -1653,22 +1666,40 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                             subtitle:
                                 'Add parts consumed by this work order that aren\'t tied to a specific repair.',
                             children: [
-                              for (var i = 0; i < _inventoryPartRows.length; i++)
-                                _buildInventoryPartRowCard(i, _inventoryPartRows[i]),
-                              OutlinedButton.icon(
-                                onPressed: _isCompletedRestrictedEdit
-                                    ? null
-                                    : () => setState(
-                                          () => _inventoryPartRows.add(_InventoryPartRow()),
-                                        ),
-                                icon: const Icon(Icons.add, size: 18),
-                                label: const Text('Add Part'),
-                                style: OutlinedButton.styleFrom(
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(10),
+                              _buildQuickAddInventoryPartRow(),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: _isCompletedRestrictedEdit
+                                        ? null
+                                        : () => _openAddPartSheet(),
+                                    icon: const Icon(Icons.add, size: 18),
+                                    label: const Text('Add Part'),
+                                    style: OutlinedButton.styleFrom(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Click the + button to add more parts.',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: AppColors.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
+                              if (_inventoryPartRows.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                for (var i = 0; i < _inventoryPartRows.length; i++)
+                                  _buildInventoryPartRowCard(i, _inventoryPartRows[i]),
+                              ],
                             ],
                           ),
 
@@ -2334,6 +2365,167 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     );
   }
 
+  /// Commits the always-visible quick-add row (Part Type / Part Name /
+  /// Quantity + "+") into `_inventoryPartRows` — web parity for
+  /// `addInventoryPart()` in `CreateWorkOrderDrawer.tsx`, kept separate from
+  /// the "+ Add Part" popup (which only offers Upload Invoice / Manually Add
+  /// New Part, matching web's `AddPartChoiceModal`).
+  void _commitQuickAddPart() {
+    if (_quickAddPartTypeId == null) {
+      setState(() => _quickAddError = 'Please select a Part Type');
+      return;
+    }
+    final filtered =
+        _parts.where((p) => p.typeId == _quickAddPartTypeId).toList();
+    if (filtered.isNotEmpty && _quickAddPartId == null) {
+      setState(() => _quickAddError = 'Please select a Part');
+      return;
+    }
+    final qty = int.tryParse(_quickAddQuantityController.text.trim());
+    if (qty == null || qty < 1 || qty > 100) {
+      setState(() => _quickAddError = 'Quantity must be between 1 and 100');
+      return;
+    }
+    final isDuplicate = _quickAddPartId != null &&
+        _inventoryPartRows.any((r) => r.partId == _quickAddPartId);
+    if (isDuplicate) {
+      setState(() => _quickAddError = 'This item is already added');
+      return;
+    }
+
+    setState(() {
+      final row = _InventoryPartRow()
+        ..partTypeId = _quickAddPartTypeId
+        ..partId = _quickAddPartId;
+      row.quantityController.text = qty.toString();
+      _inventoryPartRows.add(row);
+
+      _quickAddPartTypeId = null;
+      _quickAddPartId = null;
+      _quickAddQuantityController.text = '1';
+      _quickAddError = null;
+      _recalculateEstimatedCost();
+    });
+  }
+
+  Widget _buildQuickAddInventoryPartRow() {
+    final restricted = _isCompletedRestrictedEdit;
+    final filteredParts = _quickAddPartTypeId == null
+        ? _parts
+        : _parts.where((p) => p.typeId == _quickAddPartTypeId).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        WebSearchableDropdownField<PartTypeSummary?>(
+          label: 'Part Type',
+          value: _partTypes.where((t) => t.id == _quickAddPartTypeId).firstOrNull,
+          items: [null, ..._partTypes],
+          itemLabel: (t) => t?.name ?? 'Select',
+          hint: 'Select',
+          onChanged: restricted
+              ? (_) {}
+              : (v) => setState(() {
+                    _quickAddPartTypeId = v?.id;
+                    _quickAddPartId = null;
+                    _quickAddError = null;
+                  }),
+        ),
+        const SizedBox(height: 8),
+        WebSearchableDropdownField<PartSummary?>(
+          label: 'Part Name',
+          value: filteredParts.where((p) => p.id == _quickAddPartId).firstOrNull,
+          items: [null, ...filteredParts],
+          itemLabel: (p) =>
+              p != null ? '${p.code} (In Stock: ${p.quantity ?? 0})' : 'Select Part',
+          hint: 'Select Part',
+          onChanged: restricted
+              ? (_) {}
+              : (v) => setState(() {
+                    _quickAddPartId = v?.id;
+                    _quickAddError = null;
+                  }),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _quickAddQuantityController,
+                enabled: !restricted,
+                decoration: InputDecoration(
+                  labelText: 'Quantity',
+                  filled: true,
+                  fillColor: AppColors.inputFill,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide(color: AppColors.border),
+                  ),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: FilledButton(
+                  onPressed: restricted ? null : _commitQuickAddPart,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: EdgeInsets.zero,
+                    shape: const CircleBorder(),
+                  ),
+                  child: const Icon(Icons.add, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        ),
+        if (_quickAddError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              _quickAddError!,
+              style: const TextStyle(color: AppColors.danger, fontSize: 11.5),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Opens the "Add Part" sheet — web parity for `AddPartChoiceModal`
+  /// (Upload Invoice via OCR, or manually creating a brand-new part
+  /// type/part). Selecting an *existing* part is handled by the always
+  /// visible quick-add row above ([_buildQuickAddInventoryPartRow]), not
+  /// this popup — matching web, where the popup only ever offers those two
+  /// choices. Both may create/upsert real inventory records, so the sheet
+  /// hands back refreshed `_partTypes`/`_parts` that must be adopted before
+  /// the new rows are appended — otherwise [_recalculateEstimatedCost]'s
+  /// lookup by `partId` would miss them.
+  Future<void> _openAddPartSheet() async {
+    final result = await showWorkOrderAddPartSheet(
+      context,
+      partTypes: _partTypes,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _partTypes = result.partTypes;
+      _parts = result.parts;
+      for (final entry in result.entries) {
+        final row = _InventoryPartRow()
+          ..partTypeId = entry.partTypeId
+          ..partId = entry.partId;
+        row.quantityController.text = entry.quantity.toString();
+        _inventoryPartRows.add(row);
+      }
+      _recalculateEstimatedCost();
+    });
+  }
+
   /// One row of the standalone "Inventory Parts (Optional)" section — a
   /// part usage entry with no attached repair. Submitted alongside repair
   /// lines in the same `parts` payload array (see `_buildPayload`); the
@@ -2387,8 +2579,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
             label: 'Part Type',
             value: _partTypes.where((t) => t.id == row.partTypeId).firstOrNull,
             items: [null, ..._partTypes],
-            itemLabel: (t) => t?.name ?? 'Select Category',
-            hint: 'Select Category',
+            itemLabel: (t) => t?.name ?? 'Select',
+            hint: 'Select',
             onChanged: restricted
                 ? (_) {}
                 : (v) => setState(() {
