@@ -477,7 +477,11 @@ class _SearchableDropdownContent<T> extends StatelessWidget {
     if (onTap != null) {
       onTap!();
     }
-    if (items.isEmpty && !isLoading) {
+    // While options are still loading, the closed field's own spinner
+    // (suffixIcon below) already says "wait" — popping open a sheet just to
+    // show a second, bigger "Loading options..." spinner on top of it reads
+    // as a glitch. No-op the tap instead; it opens normally once loaded.
+    if (isLoading || items.isEmpty) {
       return;
     }
     final selected = await showModalBottomSheet<T>(

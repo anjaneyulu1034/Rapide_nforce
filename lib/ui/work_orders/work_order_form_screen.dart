@@ -968,7 +968,11 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       return;
     }
 
-    if (_startDate != null && _dueDate != null && _dueDate!.isBefore(_startDate!)) {
+    if (_dueDate == null) {
+      AppToast.showError('Due Date is required');
+      return;
+    }
+    if (_startDate != null && _dueDate!.isBefore(_startDate!)) {
       AppToast.showError('Due Date must be on or after Start Date');
       return;
     }
@@ -1309,29 +1313,6 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                             subtitle:
                                 'Set status, key dates, meter readings and labour cost.',
                             children: [
-                              TextFormField(
-                                controller: _issueController,
-                                decoration: InputDecoration(
-                                  labelText: 'Issue Description *',
-                                  hintText: 'Describe the problem or service required...',
-                                  alignLabelWithHint: true,
-                                  filled: true,
-                                  fillColor: AppColors.inputFill,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                ),
-                                maxLines: 3,
-                                validator: (v) => v == null || v.trim().isEmpty
-                                    ? 'Required'
-                                    : null,
-                              ),
-                              const SizedBox(height: 12),
                               _StyledDropdownField<WorkOrderStatus>(
                                 key: ValueKey('status_${_status.code}_$_statusFieldGen'),
                                 label: 'Status *',
@@ -1366,7 +1347,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: _ModernDateField(
-                                      label: 'Due Date',
+                                      label: 'Due Date *',
                                       value: _dueDate,
                                       onTap: () => _pickDate(
                                         initial: _dueDate,
@@ -1714,8 +1695,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                               TextFormField(
                                 controller: _notesController,
                                 decoration: InputDecoration(
-                                  labelText: 'General Notes',
-                                  hintText: 'Enter additional instructions or notes...',
+                                  hintText: 'Enter any additional notes...',
                                   alignLabelWithHint: true,
                                   filled: true,
                                   fillColor: AppColors.inputFill,
@@ -1745,7 +1725,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                               TextFormField(
                                 controller: _costController,
                                 decoration: InputDecoration(
-                                  labelText: 'Estimated Total Cost *',
+                                  labelText: 'Estimated Cost *',
                                   prefixText: '\$ ',
                                   prefixIcon: Icon(Icons.payments_outlined,
                                       size: 18, color: AppColors.textSecondary),
@@ -1910,32 +1890,36 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                           ),
 
                           // ── SECTION 8: RESOLUTION (COMPLETED WORK ORDERS) ──
-                          if (_status == WorkOrderStatus.completed) ...[
-                            const SizedBox(height: 16),
-                            _ModernSectionCard(
-                              sectionNumber: 8,
-                              icon: Icons.task_alt_rounded,
-                              iconColor: const Color(0xFF16A34A),
-                              title: 'Resolution (Completed Work Orders)',
-                              children: [
-                                TextFormField(
-                                  controller: _resolutionController,
-                                  decoration: InputDecoration(
-                                    labelText: 'Resolution Notes (Completed)',
-                                    hintText: 'Describe how the issue was resolved...',
-                                    alignLabelWithHint: true,
-                                    filled: true,
-                                    fillColor: AppColors.inputFill,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                      borderSide: BorderSide(color: AppColors.border),
-                                    ),
+                          // Always shown, matching web's `EnhancedResolutionSection` —
+                          // only the field's enabled state / placeholder toggle on
+                          // status, the section itself never disappears.
+                          const SizedBox(height: 16),
+                          _ModernSectionCard(
+                            sectionNumber: 8,
+                            icon: Icons.task_alt_rounded,
+                            iconColor: const Color(0xFF16A34A),
+                            title: 'Resolution (Completed Work Orders)',
+                            children: [
+                              TextFormField(
+                                controller: _resolutionController,
+                                enabled: _status == WorkOrderStatus.completed,
+                                decoration: InputDecoration(
+                                  labelText: 'Resolution Notes',
+                                  hintText: _status == WorkOrderStatus.completed
+                                      ? 'Enter resolution notes'
+                                      : 'Available when work order is completed',
+                                  alignLabelWithHint: true,
+                                  filled: true,
+                                  fillColor: AppColors.inputFill,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(color: AppColors.border),
                                   ),
-                                  maxLines: 3,
                                 ),
-                              ],
-                            ),
-                          ],
+                                maxLines: 3,
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),

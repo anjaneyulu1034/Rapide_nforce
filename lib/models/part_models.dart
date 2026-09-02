@@ -182,6 +182,7 @@ class PartDraft {
     this.originState,
     this.taxExempt = false,
     this.additionalLocalRate,
+    this.labourCost,
   });
 
   final int typeId;
@@ -199,6 +200,7 @@ class PartDraft {
   final String? originState;
   final bool taxExempt;
   final double? additionalLocalRate;
+  final double? labourCost;
 
   Map<String, dynamic> toJson() => {
         'typeId': typeId,
@@ -218,6 +220,10 @@ class PartDraft {
         if (originState != null && originState!.isNotEmpty) 'originState': originState,
         'taxExempt': taxExempt,
         if (additionalLocalRate != null) 'additionalLocalRate': additionalLocalRate,
+        if (labourCost != null && labourCost! > 0) ...{
+          'labourCost': labourCost!.toStringAsFixed(2),
+          'labour_cost': labourCost!.toStringAsFixed(2),
+        },
       };
 }
 

@@ -53,7 +53,6 @@ class VoiceTranslationService {
     required String sourceLanguage,
     required String sessionId,
     int? workOrderId,
-    String? browserTranscript,
   }) async {
     try {
       final request = http.MultipartRequest('POST', Uri.parse('dummy'));
@@ -62,13 +61,6 @@ class VoiceTranslationService {
       request.fields['sessionId'] = sessionId;
       if (workOrderId != null) {
         request.fields['workOrderId'] = '$workOrderId';
-      }
-      // Lets the backend's text-translation fallback handle this note when
-      // Azure Speech isn't configured server-side — mirrors web's desktop-dev
-      // path (`browserTranscript` in `useVoiceTranslation.ts`), produced here
-      // by on-device `speech_to_text` instead of the browser's own engine.
-      if (browserTranscript != null && browserTranscript.trim().isNotEmpty) {
-        request.fields['browserTranscript'] = browserTranscript.trim();
       }
       request.files.add(await http.MultipartFile.fromPath('audio', audioPath));
 

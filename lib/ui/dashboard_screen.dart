@@ -8,6 +8,7 @@ import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/dashboard_service.dart';
+import 'package:rapide_nforce/ui/dashboard/dashboard_analytics_cards.dart';
 import 'package:rapide_nforce/ui/widgets/screen_state_builder.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_detail_screen.dart';
@@ -248,6 +249,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       );
                     }).toList(),
                   ),
+          ),
+          const SizedBox(height: 24),
+          WorkOrderStatusDistributionCard(workOrders: data.allWorkOrders),
+          const SizedBox(height: 24),
+          WorkActivityOverviewCard(workOrders: data.allWorkOrders),
+          const SizedBox(height: 24),
+          PartsInventoryStatusCard(
+            inventoryItems: data.allInventoryItems,
+            onManage: () => widget.onNavigate?.call(AppRoute.inventory),
+          ),
+          const SizedBox(height: 24),
+          PerformanceMetricsCard(
+            workOrders: data.allWorkOrders,
+            isLead: isLead,
           ),
           const SizedBox(height: 56),
         ]),

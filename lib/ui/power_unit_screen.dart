@@ -48,12 +48,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
   DateTime? _startDateTo;
   String _sortOrder = 'newest'; // newest | oldest
 
-  // Column sort — applied client-side over the fetched batch, mirroring the
-  // web list's clickable-column-header sort (which is also client-side).
-  // null = no column selected, falls back to _sortOrder (newest/oldest).
-  String? _sortColumn;
-  bool _sortAscending = true;
-
   bool get _isSuperAdmin =>
       isSuperAdminRole(AuthService.instance.currentUser?.role);
   bool get _isAdminOrAbove =>
@@ -102,14 +96,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
       return true;
     }).toList();
 
-    if (_sortColumn != null) {
-      filtered.sort((a, b) {
-        final cmp = _compareByColumn(a, b, _sortColumn!);
-        return _sortAscending ? cmp : -cmp;
-      });
-      return filtered;
-    }
-
     // Backend has no sort param and always returns `orderBy: id desc`
     // (matching what web shows with no sort picked), so "newest"/"oldest"
     // here means newest/oldest *added* — i.e. by id — not by the business
@@ -121,42 +107,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     });
 
     return filtered;
-  }
-
-  /// Matches web's per-column sort on the Trucks grid (`TrucksPage.tsx`) —
-  /// Unit #, VIN, Plate, Registration Expiry, Status.
-  static const Map<String, String> _sortColumnLabels = {
-    'unitNumber': 'Unit #',
-    'vinNumber': 'VIN',
-    'licensePlate': 'Plate',
-    'registrationExpiry': 'Registration Expiry',
-    'status': 'Status',
-  };
-
-  int _compareByColumn(PowerUnitModel a, PowerUnitModel b, String column) {
-    switch (column) {
-      case 'unitNumber':
-        return a.unitNumber.toLowerCase().compareTo(b.unitNumber.toLowerCase());
-      case 'vinNumber':
-        return (a.vinNumber ?? '').toLowerCase().compareTo(
-          (b.vinNumber ?? '').toLowerCase(),
-        );
-      case 'licensePlate':
-        return (a.licensePlate ?? '').toLowerCase().compareTo(
-          (b.licensePlate ?? '').toLowerCase(),
-        );
-      case 'registrationExpiry':
-        final aDate = _parseDate(a.registrationExpiry);
-        final bDate = _parseDate(b.registrationExpiry);
-        if (aDate == null && bDate == null) return 0;
-        if (aDate == null) return -1;
-        if (bDate == null) return 1;
-        return aDate.compareTo(bDate);
-      case 'status':
-        return a.status.toLowerCase().compareTo(b.status.toLowerCase());
-      default:
-        return 0;
-    }
   }
 
   @override
@@ -214,8 +164,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
     DateTime? tempFrom = _startDateFrom;
     DateTime? tempTo = _startDateTo;
     String tempSort = _sortOrder;
-    String? tempColumn = _sortColumn;
-    bool tempAscending = _sortAscending;
 
     await showModalBottomSheet<void>(
       context: context,
@@ -419,80 +367,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                         sortChip('oldest', 'Oldest'),
                       ],
                     ),
-                    const SizedBox(height: 18),
-                    Text(
-                      'SORT BY COLUMN',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final entry in _sortColumnLabels.entries)
-                          ChoiceChip(
-                            label: Text(entry.value),
-                            selected: tempColumn == entry.key,
-                            onSelected: (_) => setSheetState(() {
-                              tempColumn = tempColumn == entry.key
-                                  ? null
-                                  : entry.key;
-                            }),
-                            selectedColor: AppColors.primary.withValues(
-                              alpha: 0.15,
-                            ),
-                            labelStyle: TextStyle(
-                              color: tempColumn == entry.key
-                                  ? AppColors.primary
-                                  : AppColors.textPrimary,
-                              fontWeight: tempColumn == entry.key
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                              fontSize: 13,
-                            ),
-                            side: BorderSide(
-                              color: tempColumn == entry.key
-                                  ? AppColors.primary
-                                  : AppColors.border,
-                            ),
-                            backgroundColor: AppColors.inputFill,
-                          ),
-                      ],
-                    ),
-                    if (tempColumn != null) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          ChoiceChip(
-                            label: const Text('Ascending'),
-                            selected: tempAscending,
-                            onSelected: (_) =>
-                                setSheetState(() => tempAscending = true),
-                            selectedColor: AppColors.primary.withValues(
-                              alpha: 0.15,
-                            ),
-                            backgroundColor: AppColors.inputFill,
-                          ),
-                          ChoiceChip(
-                            label: const Text('Descending'),
-                            selected: !tempAscending,
-                            onSelected: (_) =>
-                                setSheetState(() => tempAscending = false),
-                            selectedColor: AppColors.primary.withValues(
-                              alpha: 0.15,
-                            ),
-                            backgroundColor: AppColors.inputFill,
-                          ),
-                        ],
-                      ),
-                    ],
                     const SizedBox(height: 24),
                     Row(
                       children: [
@@ -506,8 +380,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                                 _startDateFrom = null;
                                 _startDateTo = null;
                                 _sortOrder = 'newest';
-                                _sortColumn = null;
-                                _sortAscending = true;
                                 _page = 1;
                               });
                               Navigator.pop(sheetContext);
@@ -533,8 +405,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                                 _startDateFrom = tempFrom;
                                 _startDateTo = tempTo;
                                 _sortOrder = tempSort;
-                                _sortColumn = tempColumn;
-                                _sortAscending = tempAscending;
                               });
                               Navigator.pop(sheetContext);
                               _load();
@@ -1266,8 +1136,6 @@ class _PowerUnitScreenState extends State<PowerUnitScreen> {
                             _startDateFrom = null;
                             _startDateTo = null;
                             _sortOrder = 'newest';
-                            _sortColumn = null;
-                            _sortAscending = true;
                             _page = 1;
                           });
                           _load();

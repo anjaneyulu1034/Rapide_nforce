@@ -8,7 +8,6 @@ import 'package:rapide_nforce/core/constants/voice_languages.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/services/voice_translation_service.dart';
 import 'package:record/record.dart';
-import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 /// Generates a session id shared by every voice recording made within one
 /// form session — mirrors web's `voiceSessionIdRef` (one id per drawer
@@ -41,12 +40,9 @@ class VoiceNotesRecorderRow extends StatefulWidget {
 
 class _VoiceNotesRecorderRowState extends State<VoiceNotesRecorderRow> {
   final AudioRecorder _recorder = AudioRecorder();
-  final stt.SpeechToText _speech = stt.SpeechToText();
   String _language = kVoiceDefaultSourceLanguage;
   bool _recording = false;
   bool _uploading = false;
-  bool _speechReady = false;
-  String _liveTranscript = '';
   Duration _elapsed = Duration.zero;
   Timer? _timer;
 
@@ -54,54 +50,7 @@ class _VoiceNotesRecorderRowState extends State<VoiceNotesRecorderRow> {
   void dispose() {
     _timer?.cancel();
     _recorder.dispose();
-    if (_speech.isListening) _speech.stop();
     super.dispose();
-  }
-
-  /// Picks the on-device recognizer locale matching [_language]'s language
-  /// prefix (e.g. `pa-IN` → any installed `pa_*` locale). Engines vary by
-  /// device/OS, so this degrades to the device default rather than failing.
-  Future<String?> _resolveLocaleId(List<stt.LocaleName> locales) async {
-    final prefix = _language.split('-').first.toLowerCase();
-    for (final locale in locales) {
-      if (locale.localeId.toLowerCase().startsWith(prefix)) {
-        return locale.localeId;
-      }
-    }
-    return null;
-  }
-
-  /// Runs on-device speech recognition alongside the audio recording so a
-  /// transcript can be sent as `browserTranscript` — the same field web's
-  /// desktop build fills from `webkitSpeechRecognition`. The backend already
-  /// falls back to translating that text when server-side Azure Speech isn't
-  /// configured, so this is what makes voice notes work without any backend
-  /// changes. Best-effort: any failure here just leaves browserTranscript
-  /// empty and voice notes behaves as before.
-  Future<void> _startLiveTranscription() async {
-    _liveTranscript = '';
-    try {
-      _speechReady = await _speech.initialize(
-        onError: (_) {},
-        onStatus: (_) {},
-      );
-      if (!_speechReady) return;
-      final locales = await _speech.locales();
-      final localeId = await _resolveLocaleId(locales);
-      await _speech.listen(
-        onResult: (result) => _liveTranscript = result.recognizedWords,
-        listenOptions: stt.SpeechListenOptions(
-          localeId: localeId,
-          listenMode: stt.ListenMode.dictation,
-          partialResults: true,
-          cancelOnError: false,
-          listenFor: const Duration(minutes: 5),
-          pauseFor: const Duration(minutes: 5),
-        ),
-      );
-    } catch (_) {
-      _speechReady = false;
-    }
   }
 
   Future<void> _startRecording() async {
@@ -117,7 +66,6 @@ class _VoiceNotesRecorderRowState extends State<VoiceNotesRecorderRow> {
       const RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000, numChannels: 1),
       path: path,
     );
-    unawaited(_startLiveTranscription());
     if (!mounted) return;
     setState(() {
       _recording = true;
@@ -131,20 +79,26 @@ class _VoiceNotesRecorderRowState extends State<VoiceNotesRecorderRow> {
 
   Future<void> _stopRecording() async {
     _timer?.cancel();
-    if (_speech.isListening) await _speech.stop();
     final path = await _recorder.stop();
     if (!mounted) return;
     setState(() => _recording = false);
     if (path == null) return;
 
     setState(() => _uploading = true);
+    // Sends only the real recording — no client-side speech-recognition hint.
+    // Mirrors web's `useVoiceTranslation.ts` (PR 2020 "Voice IN WEB"): running
+    // on-device speech recognition concurrently with the audio recorder
+    // starves the recorder of the mic on phones/tablets (one exclusive mic
+    // consumer at a time), producing a silent recording and NO_SPEECH — this
+    // app used to do exactly that. The backend's Azure Speech path transcribes
+    // the real audio directly and covers every source language on every
+    // device, so there's nothing for a client-side hint to add here.
     final result = await VoiceTranslationService.instance.translateAudio(
       audioPath: path,
       fieldName: widget.fieldName,
       sourceLanguage: _language,
       sessionId: widget.sessionId,
       workOrderId: widget.workOrderId,
-      browserTranscript: _liveTranscript,
     );
     if (!mounted) return;
     setState(() => _uploading = false);

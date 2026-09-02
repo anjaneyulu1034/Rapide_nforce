@@ -74,7 +74,9 @@ class _AddPartScreenState extends State<AddPartScreen> {
   bool _loadingLookups = true;
 
   final TextEditingController _invoiceController = TextEditingController();
+  final TextEditingController _labourCostController = TextEditingController();
   final TextEditingController _localRateController = TextEditingController();
+  String? _ocrLabourCost;
 
   VendorModel? _selectedVendor;
   String? _ocrVendorNameUnmatched;
@@ -108,11 +110,21 @@ class _AddPartScreenState extends State<AddPartScreen> {
       row.dispose();
     }
     _invoiceController.dispose();
+    _labourCostController.dispose();
     _localRateController.dispose();
     super.dispose();
   }
 
   String _nextRowId() => 'row_${_rowIdCounter++}';
+
+  /// Parses a labour cost amount, discarding $/commas and non-positive
+  /// values — mirrors web's `invoiceLabourAmountForSave` (`ocrPrefillMapper.ts`).
+  static double? _labourAmountForSave(String? value) {
+    if (value == null) return null;
+    final n = double.tryParse(value.replaceAll(RegExp(r'[$,]'), '').trim());
+    if (n == null || n <= 0) return null;
+    return n;
+  }
 
   double get _subtotal => _rows.fold(0.0, (sum, r) => sum + r.rowTotal);
 
@@ -368,6 +380,14 @@ class _AddPartScreenState extends State<AddPartScreen> {
         _invoiceController.text = invoiceNum!;
       }
 
+      final labourFromOcr = _labourAmountForSave(prefill.labourCost);
+      if (labourFromOcr != null) {
+        _ocrLabourCost = labourFromOcr.toStringAsFixed(2);
+        if (_labourAmountForSave(_labourCostController.text) == null) {
+          _labourCostController.text = labourFromOcr.toStringAsFixed(2);
+        }
+      }
+
       final vendorFromOcr = prefill.vendorName;
       if (_selectedVendor == null &&
           _ocrVendorNameUnmatched == null &&
@@ -454,6 +474,8 @@ class _AddPartScreenState extends State<AddPartScreen> {
     final vendorName = _selectedVendor?.name ?? _ocrVendorNameUnmatched;
     final invoiceNumber = _invoiceController.text.trim();
     final localRate = double.tryParse(_localRateController.text.trim());
+    final labourCost = _labourAmountForSave(_labourCostController.text) ??
+        _labourAmountForSave(_ocrLabourCost);
 
     for (final row in _rows) {
       final typeId = await _resolveTypeId(row.product!.name, cache);
@@ -485,6 +507,7 @@ class _AddPartScreenState extends State<AddPartScreen> {
         originCountry: _originCountry.isEmpty ? null : _originCountry,
         originState: _originState.isEmpty ? null : _originState,
         taxExempt: _taxExempt,
+        labourCost: labourCost,
         additionalLocalRate: _destinationCountry == 'US' ? localRate : null,
       ));
     }
@@ -617,6 +640,12 @@ class _AddPartScreenState extends State<AddPartScreen> {
                             style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
                           ),
                         ),
+                      WebTextFormField(
+                        controller: _labourCostController,
+                        label: 'Labour Cost (\$)',
+                        hint: '0.00',
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
                     ],
                   ),
                   WebFormSection(

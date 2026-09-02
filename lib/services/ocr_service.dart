@@ -66,11 +66,13 @@ class PartInvoiceOcrPrefill {
   const PartInvoiceOcrPrefill({
     this.invoiceNumber,
     this.vendorName,
+    this.labourCost,
     this.items = const [],
   });
 
   final String? invoiceNumber;
   final String? vendorName;
+  final String? labourCost;
   final List<PartInvoiceOcrItemPrefill> items;
 
   bool get isEmpty => items.isEmpty && invoiceNumber == null && vendorName == null;
@@ -633,6 +635,12 @@ class OcrService {
 
     final invoiceNumber = str(root['invoice_number']) ?? str(root['invoiceNumber']);
     final vendorName = str(root['vendor_name']) ?? str(root['vendorName']);
+    final labourCost = str(root['labour_cost']) ??
+        str(root['labor_cost']) ??
+        str(root['labourCost']) ??
+        str(root['laborCost']) ??
+        str(root['labour_amount']) ??
+        str(root['labor_amount']);
 
     final items = <PartInvoiceOcrItemPrefill>[];
     final rawItems = root['line_items'] ?? root['lineItems'] ?? root['items'];
@@ -680,6 +688,7 @@ class OcrService {
     return PartInvoiceOcrPrefill(
       invoiceNumber: invoiceNumber,
       vendorName: vendorName,
+      labourCost: labourCost,
       items: items,
     );
   }

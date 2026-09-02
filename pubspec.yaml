@@ -31,7 +31,6 @@ dependencies:
   cunning_document_scanner: ^2.5.0
   mobile_scanner: ^6.0.2
   record: ^6.0.0
-  speech_to_text: ^7.4.0
 
 dev_dependencies:
   flutter_test:

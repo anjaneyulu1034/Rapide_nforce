@@ -119,6 +119,10 @@ class DashboardService {
           recentWorkOrders: workOrders.take(5).toList(),
 
           inventoryItems: inventoryItems.take(5).toList(),
+
+          allWorkOrders: workOrders,
+
+          allInventoryItems: inventoryItems,
         ),
       );
     } catch (_) {

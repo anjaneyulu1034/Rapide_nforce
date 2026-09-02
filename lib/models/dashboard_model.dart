@@ -9,6 +9,8 @@ class DashboardModel {
     required this.completedMtd,
     required this.recentWorkOrders,
     required this.inventoryItems,
+    this.allWorkOrders = const [],
+    this.allInventoryItems = const [],
   });
 
   final int openWorkOrders;
@@ -17,6 +19,14 @@ class DashboardModel {
   final int completedMtd;
   final List<WorkOrderModel> recentWorkOrders;
   final List<InventoryItemModel> inventoryItems;
+
+  /// Full (untruncated) fetched work orders / part types — backs the
+  /// Work Order Status Distribution, Work Activity Overview, Parts
+  /// Inventory Status and Performance Metrics analytics cards, which all
+  /// need more than the 5-row preview lists above. Mirrors web's
+  /// `workOrders`/`partTypesForStockStatus` state in `TechnicianDashboard.tsx`.
+  final List<WorkOrderModel> allWorkOrders;
+  final List<InventoryItemModel> allInventoryItems;
 
   factory DashboardModel.fromJson(Map<String, dynamic> json) {
     return DashboardModel(
