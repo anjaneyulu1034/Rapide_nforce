@@ -1,5 +1,4 @@
 import 'package:cunning_document_scanner/cunning_document_scanner.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/tax_regions.dart';
@@ -10,6 +9,7 @@ import 'package:rapide_nforce/services/auth_service.dart';
 import 'package:rapide_nforce/services/inventory_service.dart';
 import 'package:rapide_nforce/services/ocr_service.dart';
 import 'package:rapide_nforce/ui/widgets/barcode_scanner_sheet.dart';
+import 'package:rapide_nforce/ui/widgets/part_invoice_upload_documents_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 
@@ -246,15 +246,14 @@ class _AddPartScreenState extends State<AddPartScreen> {
 
   // ── Upload Invoice / OCR ──
 
+  /// Opens the shared "Upload Documents" sheet (Document Type + Browse File
+  /// gate, web parity for `Documentupload.tsx`'s drawer — the same one
+  /// `InventoryTab.tsx`'s own "Upload Invoice" ▸ Browse files opens) and, once
+  /// the user submits one or more files there, runs OCR on all of them.
   Future<void> _pickInvoiceFile() async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
-    );
-    if (picked == null || picked.files.isEmpty) return;
-    final file = picked.files.first;
-    if (file.path == null) return;
-    await _handlePickedInvoice(file.path!, file.name);
+    final documents = await showPartInvoiceUploadDocumentsSheet(context, maxFiles: 3);
+    if (documents == null || documents.isEmpty || !mounted) return;
+    await _runOcrExtraction(documents);
   }
 
   Future<void> _scanInvoiceWithCamera() async {
@@ -310,18 +309,26 @@ class _AddPartScreenState extends State<AddPartScreen> {
     );
   }
 
-  Future<void> _handlePickedInvoice(String path, String name) async {
+  Future<void> _handlePickedInvoice(String path, String name) => _runOcrExtraction([
+        OcrUploadDocItem(filePath: path, fileName: name, documentType: 'Part Invoice'),
+      ]);
+
+  /// Shared OCR pipeline for both the Capture flow (single scanned page) and
+  /// the "Upload Documents" sheet (one or more browsed files, each already
+  /// tagged "Part Invoice" there) — mirrors the work order Add Part popup's
+  /// `_runOcrExtraction`.
+  Future<void> _runOcrExtraction(List<OcrUploadDocItem> documents) async {
     setState(() {
-      _invoiceFilePath = path;
-      _invoiceFileName = name;
+      _invoiceFilePath = documents.first.filePath;
+      _invoiceFileName = documents.length > 1
+          ? '${documents.first.fileName} (+${documents.length - 1} more)'
+          : documents.first.fileName;
       _invoiceFileUploadId = null;
     });
 
     _showExtractingDialog();
     final result = await OcrService.instance.uploadAndExtractPartInvoiceOcr(
-      documents: [
-        OcrUploadDocItem(filePath: path, fileName: name, documentType: 'Part Invoice'),
-      ],
+      documents: documents,
       companyId: AuthService.instance.selectedCompanyId,
     );
 

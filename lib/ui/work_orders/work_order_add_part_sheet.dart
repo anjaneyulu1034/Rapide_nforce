@@ -13,6 +13,7 @@ import 'package:rapide_nforce/services/maintenance_service.dart';
 import 'package:rapide_nforce/services/ocr_service.dart';
 import 'package:rapide_nforce/ui/widgets/barcode_scanner_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
+import 'package:rapide_nforce/ui/widgets/part_invoice_upload_documents_sheet.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 
 /// One row to append to the work order's "Inventory Parts (Optional)" list
@@ -64,24 +65,7 @@ Future<WorkOrderAddPartResult?> showWorkOrderAddPartSheet(
   );
 }
 
-enum _Step { choice, uploadDocuments, ocrReview, manual }
-
-/// Web parity for `allowedDocumentTypeValues={['Part Invoice']}` on the
-/// "Upload Documents" drawer (`Documentupload.tsx`) reached from this
-/// popup's "Upload Invoice" ▸ Browse Files — the only document type this
-/// context accepts.
-const List<String> _kInvoiceDocumentTypes = ['Part Invoice'];
-
-/// Max files accepted per web's `DocumentUpload maxFiles={6}`.
-const int _kMaxInvoiceFiles = 6;
-
-/// One row of the "Upload Documents" step — a document type paired with a
-/// locally-picked file, mirroring web's per-row `doc.fileType`/`doc.file`.
-class _UploadDocRow {
-  String? documentType;
-  String? filePath;
-  String? fileName;
-}
+enum _Step { choice, ocrReview, manual }
 
 /// One editable row shared by the OCR-review and manual-entry steps.
 /// [partType] drives the manual step's dropdown; [partTypeNameController]
@@ -133,8 +117,6 @@ class _AddPartSheetState extends State<_AddPartSheet> {
   _Step _step = _Step.choice;
   bool _submitting = false;
 
-  final List<_UploadDocRow> _uploadDocRows = [_UploadDocRow()];
-
   final List<_PendingPartRow> _ocrRows = [];
   final TextEditingController _invoiceNumberController = TextEditingController();
   final TextEditingController _vendorNameController = TextEditingController();
@@ -175,64 +157,16 @@ class _AddPartSheetState extends State<_AddPartSheet> {
 
   void _close([WorkOrderAddPartResult? result]) => Navigator.pop(context, result);
 
-  // ── Upload Documents (web parity for `Documentupload.tsx`'s drawer,
-  // reached from "Upload Invoice" ▸ Browse Files) ──
-
-  void _openUploadDocumentsStep() {
-    setState(() {
-      _uploadDocRows
-        ..clear()
-        ..add(_UploadDocRow());
-      _step = _Step.uploadDocuments;
-    });
-  }
-
-  void _addUploadDocRow() {
-    if (_uploadDocRows.length >= _kMaxInvoiceFiles) return;
-    setState(() => _uploadDocRows.add(_UploadDocRow()));
-  }
-
-  void _removeUploadDocRow(_UploadDocRow row) {
-    setState(() => _uploadDocRows.remove(row));
-  }
-
-  Future<void> _pickFileForUploadRow(_UploadDocRow row) async {
-    if ((row.documentType ?? '').isEmpty) {
-      AppToast.showError('Please select a document type first.');
-      return;
-    }
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['pdf', 'png', 'jpg', 'jpeg'],
-    );
-    if (picked == null || picked.files.isEmpty) return;
-    final file = picked.files.first;
-    if (file.path == null) return;
-    setState(() {
-      row.filePath = file.path;
-      row.fileName = file.name;
-    });
-  }
-
-  Future<void> _submitUploadDocuments() async {
-    final validRows =
-        _uploadDocRows.where((r) => r.filePath != null && r.documentType != null).toList();
-    if (validRows.isEmpty) {
-      AppToast.showError('Please browse and select at least one document before submitting.');
-      return;
-    }
-    await _runOcrExtraction(
-      validRows
-          .map((r) => OcrUploadDocItem(
-                filePath: r.filePath!,
-                fileName: r.fileName!,
-                documentType: r.documentType!,
-              ))
-          .toList(),
-    );
-  }
-
   // ── Upload Invoice / OCR ──
+
+  /// Opens the shared "Upload Documents" sheet (Document Type + Browse File
+  /// gate, web parity for `Documentupload.tsx`'s drawer) and, once the user
+  /// submits one or more files there, runs OCR on all of them.
+  Future<void> _openUploadDocumentsStep() async {
+    final documents = await showPartInvoiceUploadDocumentsSheet(context, maxFiles: 6);
+    if (documents == null || documents.isEmpty || !mounted) return;
+    await _runOcrExtraction(documents);
+  }
 
   Future<void> _scanInvoiceWithCamera() async {
     try {
@@ -664,7 +598,6 @@ class _AddPartSheetState extends State<_AddPartSheet> {
           title: Text(
             switch (_step) {
               _Step.choice => 'Add Part',
-              _Step.uploadDocuments => 'Upload Documents',
               _Step.ocrReview => 'Review Extracted Parts',
               _Step.manual => 'Manually Add Part',
             },
@@ -683,7 +616,6 @@ class _AddPartSheetState extends State<_AddPartSheet> {
         body: SafeArea(
           child: switch (_step) {
             _Step.choice => _buildChoiceStep(),
-            _Step.uploadDocuments => _buildUploadDocumentsStep(),
             _Step.ocrReview => _buildOcrReviewStep(),
             _Step.manual => _buildManualStep(),
           },
@@ -732,139 +664,6 @@ class _AddPartSheetState extends State<_AddPartSheet> {
           onTap: _openManualStep,
         ),
       ],
-    );
-  }
-
-  /// Web parity for the "Upload Documents" drawer (`Documentupload.tsx`)
-  /// reached from "Upload Invoice" ▸ Browse Files — a Document Type +
-  /// Browse File row per file (locked to "Part Invoice" here), with
-  /// add/remove rows and a single Submit that kicks off OCR extraction for
-  /// every valid row at once.
-  Widget _buildUploadDocumentsStep() {
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            children: [
-              Text(
-                'Attach required files and confirm to trigger OCR extraction.',
-                style: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Supported formats: JPG, JPEG, PNG, PDF',
-                style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              for (var i = 0; i < _uploadDocRows.length; i++)
-                _buildUploadDocRowCard(_uploadDocRows[i], isLast: i == _uploadDocRows.length - 1),
-            ],
-          ),
-        ),
-        _buildSubmitBar(label: 'Submit', onPressed: _submitUploadDocuments),
-      ],
-    );
-  }
-
-  Widget _buildUploadDocRowCard(_UploadDocRow row, {required bool isLast}) {
-    final typeLocked = row.fileName != null;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.cardElevated,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Document Type',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          IgnorePointer(
-            ignoring: typeLocked,
-            child: Opacity(
-              opacity: typeLocked ? 0.6 : 1,
-              child: WebDropdownField<String>(
-                label: '',
-                value: row.documentType,
-                items: _kInvoiceDocumentTypes,
-                itemLabel: (v) => v,
-                hint: 'Select document type',
-                onChanged: (v) => setState(() => row.documentType = v),
-              ),
-            ),
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: row.fileName == null
-                    ? SizedBox(
-                        height: 40,
-                        child: FilledButton(
-                          onPressed: (row.documentType ?? '').isEmpty
-                              ? null
-                              : () => _pickFileForUploadRow(row),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                          ),
-                          child: const Text(
-                            'Browse File',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                      )
-                    : Container(
-                        height: 40,
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        decoration: BoxDecoration(
-                          color: AppColors.inputFill,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.description_outlined, size: 16, color: AppColors.primary),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                row.fileName!,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                onPressed: () => _removeUploadDocRow(row),
-                icon: Icon(Icons.close, size: 18, color: AppColors.danger),
-                tooltip: 'Remove document',
-              ),
-              if (isLast)
-                IconButton(
-                  onPressed: _uploadDocRows.length >= _kMaxInvoiceFiles ? null : _addUploadDocRow,
-                  icon: const Icon(Icons.add_circle_outline, size: 20),
-                  color: AppColors.primary,
-                  tooltip: 'Add document',
-                ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 
