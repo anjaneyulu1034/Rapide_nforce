@@ -73,6 +73,7 @@ class ApiConstants {
   static const String maintenanceApprovals = '/maintenance/approvals';
   static const String deferredRepairs = '/maintenance/repairs/deferred';
   static const String maintenanceLogs = '/maintenance/logs';
+  static const String entityAuditTrail = '/maintenance/entity-audit-trail';
   static const String techniciansSummary = '/maintenance/technicians-summary';
   static const String partTypes = '/maintenance/part-types';
   static const String partTypesSummary = '/maintenance/part-types-summary';

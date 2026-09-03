@@ -15,6 +15,7 @@ import 'package:rapide_nforce/ui/work_orders/widgets/pm_inspection_widgets.dart'
 import 'package:rapide_nforce/ui/work_orders/widgets/voice_translation_field.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_add_part_sheet.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_upload_attachment_sheet.dart';
+import 'package:rapide_nforce/ui/widgets/audit_trail_dialog.dart';
 import 'package:rapide_nforce/ui/widgets/gradient_page_background.dart';
 import 'package:rapide_nforce/ui/widgets/web_form_field.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
@@ -301,9 +302,12 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
           .getWorkOrderFromSourcePrefill(sourceId: defectId);
       final prefill = prefillRes.isSuccess ? prefillRes.data : null;
 
-      final targetUnitNumber = prefill?.unitNumber?.trim() ??
-          widget.linkedDefects!.first.unitNumber?.trim();
-      final targetEntityTypeId = prefill?.entityTypeId;
+      final targetUnitNumber = (prefill?.unitNumber?.trim().isNotEmpty ?? false)
+          ? prefill!.unitNumber!.trim()
+          : (widget.linkedDefects!.first.unitNumber?.trim() ?? '');
+      final targetVin = (prefill?.vin?.trim().isNotEmpty ?? false)
+          ? prefill!.vin!.trim()
+          : (widget.linkedDefects!.first.vin?.trim() ?? '');
 
       if (prefill?.priority != null) {
         final p = WorkOrderPriority.fromCode(prefill!.priority);
@@ -315,44 +319,88 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         _issueController.text = prefill!.issueDescription!.trim();
       }
 
-      if (targetEntityTypeId != null &&
-          _entityTypes.any((t) => t.id == targetEntityTypeId)) {
-        if (mounted) setState(() => _entityTypeId = targetEntityTypeId);
-        await _loadEntities(targetEntityTypeId);
+      // Resolve which Unit Type to prefill: the defect's own entityTypeId if
+      // it's a known type, else fall back to "Power Unit" by name, else the
+      // first non-driver type — mirrors web's `matchingType` fallback chain
+      // (`CreateWorkOrderDrawer.tsx`) so a defect with a null/stale
+      // entityTypeId still lands on a sensible Unit Type instead of
+      // whatever the form's arbitrary default happened to be.
+      final rawTargetEntityTypeId = prefill?.entityTypeId;
+      final resolvedType = (rawTargetEntityTypeId != null
+              ? _entityTypes.where((t) => t.id == rawTargetEntityTypeId).firstOrNull
+              : null) ??
+          _entityTypes
+              .where((t) => t.name.trim().toLowerCase() == 'power unit')
+              .firstOrNull ??
+          _entityTypes.firstOrNull;
+
+      if (resolvedType != null && resolvedType.id != _entityTypeId) {
+        if (mounted) setState(() => _entityTypeId = resolvedType.id);
+        await _loadEntities(resolvedType.id);
+      } else if (resolvedType != null && _entities.isEmpty) {
+        await _loadEntities(resolvedType.id);
       }
 
-      if (targetUnitNumber != null && targetUnitNumber.isNotEmpty) {
-        EntityModel? matchedEntity;
-        try {
-          matchedEntity = _entities.firstWhere((e) => e.name == targetUnitNumber);
-        } catch (_) {}
+      if (targetUnitNumber.isNotEmpty) {
+        final normalizedTarget = targetUnitNumber.toLowerCase();
+        final normalizedVin = targetVin.toLowerCase();
 
+        // 1. Match by unit number AND VIN — mirrors web's first pass.
+        EntityModel? matchedEntity = _entities.where((e) {
+          final name = e.name.trim().toLowerCase();
+          final vin = (e.vinNumber ?? '').trim().toLowerCase();
+          return name == normalizedTarget &&
+              (normalizedVin.isEmpty || vin == normalizedVin);
+        }).firstOrNull;
+
+        // 2. Fallback: unit number only, case-insensitive/trimmed (the
+        // previous exact `==` compare here silently failed to prefill
+        // whenever casing/whitespace differed from the defect record).
+        matchedEntity ??= _entities
+            .where((e) => e.name.trim().toLowerCase() == normalizedTarget)
+            .firstOrNull;
+
+        // 3. Fallback: search every other entity type for a name match, in
+        // case the resolved type above was wrong for this company's data.
         if (matchedEntity == null) {
           for (final type in _entityTypes) {
             if (type.id == _entityTypeId) continue;
-            final otherRes =
-                await MaintenanceService.instance.getEntities(type.id);
-            if (otherRes.isSuccess && otherRes.data != null) {
-              try {
-                final found = otherRes.data!
-                    .firstWhere((e) => e.name == targetUnitNumber);
-                if (mounted) {
-                  setState(() {
-                    _entityTypeId = type.id;
-                    _entities = otherRes.data!;
-                  });
-                }
-                matchedEntity = found;
-                break;
-              } catch (_) {}
+            final otherRes = await MaintenanceService.instance.getEntities(type.id);
+            if (!otherRes.isSuccess || otherRes.data == null) continue;
+            final found = otherRes.data!
+                .where((e) => e.name.trim().toLowerCase() == normalizedTarget)
+                .firstOrNull;
+            if (found != null) {
+              if (mounted) {
+                setState(() {
+                  _entityTypeId = type.id;
+                  _entities = otherRes.data!;
+                });
+              }
+              matchedEntity = found;
+              break;
             }
           }
         }
 
-        if (matchedEntity != null && mounted) {
-          setState(() {
-            _selectedEntityId = matchedEntity!.id;
-          });
+        // 4. Last resort: this vehicle isn't in the currently-scoped entity
+        // list at all (e.g. belongs to a different company) — still show
+        // the defect's own unit number/VIN as a synthetic entry rather than
+        // leaving Unit Number blank, matching web's `placeholderEntity`
+        // fallback exactly.
+        if (matchedEntity == null) {
+          matchedEntity = EntityModel(
+            id: -DateTime.now().millisecondsSinceEpoch,
+            name: targetUnitNumber,
+            vinNumber: targetVin.isEmpty ? null : targetVin,
+          );
+          if (mounted) {
+            setState(() => _entities = [..._entities, matchedEntity!]);
+          }
+        }
+
+        if (mounted) {
+          setState(() => _selectedEntityId = matchedEntity!.id);
           _fetchOdometer();
           _loadEvents();
         }
@@ -362,28 +410,28 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         (widget.initialUnitNumber?.trim().isNotEmpty ?? false) &&
         mounted) {
       final targetUnitNumber = widget.initialUnitNumber!.trim();
-      EntityModel? matchedEntity;
-      try {
-        matchedEntity = _entities.firstWhere((e) => e.name == targetUnitNumber);
-      } catch (_) {}
+      final normalizedTarget = targetUnitNumber.toLowerCase();
+      EntityModel? matchedEntity = _entities
+          .where((e) => e.name.trim().toLowerCase() == normalizedTarget)
+          .firstOrNull;
 
       if (matchedEntity == null) {
         for (final type in _entityTypes) {
           if (type.id == _entityTypeId) continue;
           final otherRes = await MaintenanceService.instance.getEntities(type.id);
-          if (otherRes.isSuccess && otherRes.data != null) {
-            try {
-              final found =
-                  otherRes.data!.firstWhere((e) => e.name == targetUnitNumber);
-              if (mounted) {
-                setState(() {
-                  _entityTypeId = type.id;
-                  _entities = otherRes.data!;
-                });
-              }
-              matchedEntity = found;
-              break;
-            } catch (_) {}
+          if (!otherRes.isSuccess || otherRes.data == null) continue;
+          final found = otherRes.data!
+              .where((e) => e.name.trim().toLowerCase() == normalizedTarget)
+              .firstOrNull;
+          if (found != null) {
+            if (mounted) {
+              setState(() {
+                _entityTypeId = type.id;
+                _entities = otherRes.data!;
+              });
+            }
+            matchedEntity = found;
+            break;
           }
         }
       }
@@ -1219,6 +1267,17 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                             title: 'Work Order Source',
                             subtitle:
                                 'Select a unit to load source events and linked defects.',
+                            trailing: (widget.linkedDefects?.isNotEmpty ?? false)
+                                ? _ViewAuditTrailButton(
+                                    onPressed: () => showAuditTrailDialog(
+                                      context,
+                                      entityType: 'dvir_defect',
+                                      entityId: widget.linkedDefects!.first.defectId,
+                                      subtitle:
+                                          'DVIR Defect ${widget.linkedDefects!.first.defectId}',
+                                    ),
+                                  )
+                                : null,
                             children: [
                               _StyledDropdownField<int>(
                                 label: 'Unit Type *',
@@ -2685,6 +2744,45 @@ class _QuickNavChip extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Web parity for the "View Audit Trail" pill shown in the Work Order
+/// Source section header when the work order was opened from a DVIR defect
+/// (`CreateWorkOrderDrawer.tsx`'s `EnhancedSectionHeading` action slot).
+class _ViewAuditTrailButton extends StatelessWidget {
+  const _ViewAuditTrailButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.primary,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(8),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.receipt_long_outlined, size: 15, color: Colors.white),
+              SizedBox(width: 5),
+              Text(
+                'View Audit Trail',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

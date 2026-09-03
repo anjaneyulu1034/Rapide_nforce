@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:rapide_nforce/core/constants/api_constants.dart';
 import 'package:rapide_nforce/core/models/api_result.dart';
 import 'package:rapide_nforce/core/models/paginated_result.dart';
+import 'package:rapide_nforce/models/audit_trail_model.dart';
 import 'package:rapide_nforce/models/work_order_model.dart';
 import 'package:rapide_nforce/services/api_client.dart';
 
@@ -141,6 +142,64 @@ class MaintenanceService {
       return ApiResult.fail(e.message, statusCode: e.statusCode);
     } catch (_) {
       return ApiResult.fail('Failed to delete work order.');
+    }
+  }
+
+  /// Timeline of link/status-change events for one entity (`work_order`,
+  /// `dvir_defect`, `fault_code`) — web parity for `maintenanceService
+  /// .getEntityAuditTrail` / the "View Audit Trail" popup shown on the
+  /// Create Work Order screen when it was opened from a DVIR defect.
+  Future<ApiResult<PaginatedResult<AuditTrailEntry>>> getEntityAuditTrail({
+    required String entityType,
+    required String entityId,
+    int page = 1,
+    int limit = 50,
+  }) async {
+    try {
+      final data = await _api.parseJson(
+        () => _api.get(
+          ApiConstants.entityAuditTrail,
+          params: {
+            'entityType': entityType,
+            'entityId': entityId,
+            'page': page,
+            'limit': limit,
+          },
+        ),
+        onSuccess: (body) => body,
+      );
+
+      final root = data as Map<String, dynamic>? ?? {};
+      final inner = root['data'] as Map<String, dynamic>? ?? root;
+      final list = inner['data'] as List<dynamic>? ?? [];
+      final pagination =
+          inner['pagination'] as Map<String, dynamic>? ??
+          root['pagination'] as Map<String, dynamic>? ??
+          const {};
+
+      final items = list
+          .whereType<Map>()
+          .map((e) => AuditTrailEntry.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+
+      final total = pagination['total'] as int? ?? items.length;
+      final currentPage = pagination['page'] as int? ?? page;
+      final currentLimit = pagination['limit'] as int? ?? limit;
+      final totalPages = pagination['totalPages'] as int? ?? 1;
+
+      return ApiResult.ok(
+        PaginatedResult(
+          items: items,
+          total: total,
+          page: currentPage,
+          limit: currentLimit,
+          totalPages: totalPages,
+        ),
+      );
+    } on ApiClientException catch (e) {
+      return ApiResult.fail(e.message, statusCode: e.statusCode);
+    } catch (_) {
+      return ApiResult.fail('Failed to load audit trail.');
     }
   }
 

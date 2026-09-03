@@ -190,7 +190,10 @@ class _DvirScreenState extends State<DvirScreen>
   int _defectsPage = 1;
   int _defectsTotalPages = 1;
   String _severityFilter = 'all';
-  String _defectStatusFilter = 'open';
+  // Web's DvirDefectsPage defaults `statusFilter` to 'all' — matching here
+  // so mobile loads the same full defect list (Open + Resolved) on first
+  // view instead of silently filtering down to Open-only.
+  String _defectStatusFilter = 'all';
   String _sourceFilter = 'all';
 
   // Multi-select state for bundling several open defects (same vehicle)
@@ -286,7 +289,7 @@ class _DvirScreenState extends State<DvirScreen>
   bool get _hasActiveDefectFilters =>
       _search.isNotEmpty ||
       _severityFilter != 'all' ||
-      _defectStatusFilter != 'open' ||
+      _defectStatusFilter != 'all' ||
       _sourceFilter != 'all';
 
   Widget _filterChip({
@@ -356,7 +359,7 @@ class _DvirScreenState extends State<DvirScreen>
                             onPressed: () {
                               setSheetState(() {
                                 tempSeverity = 'all';
-                                tempStatus = 'open';
+                                tempStatus = 'all';
                                 tempSource = 'all';
                               });
                             },
