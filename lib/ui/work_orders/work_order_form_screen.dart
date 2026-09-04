@@ -60,8 +60,6 @@ class WorkOrderFormScreen extends StatefulWidget {
 class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   final _formKey = GlobalKey<FormState>();
   final _scrollController = ScrollController();
-  final List<GlobalKey> _sectionKeys = List.generate(5, (_) => GlobalKey());
-  int _activeNavIndex = 0;
 
   // One id per form session, reused across every voice recording made here
   // and linked to the work order after it's created — mirrors web's
@@ -162,11 +160,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
           .where((d) => d.trim().isNotEmpty)
           .join('; ');
       for (final d in widget.linkedDefects!) {
-        _partLines.add(
-          _PartLineForm(
-            description: d.description,
-          ),
-        );
+        _partLines.add(_PartLineForm(description: d.description));
       }
     }
     _loadMeta();
@@ -282,6 +276,19 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       if (_entityTypeId == null && _entityTypes.isNotEmpty) {
         _entityTypeId = _entityTypes.first.id;
       }
+
+      // Web parity for `resolveAssigneeSelection` (`workOrderAssignee.ts`) —
+      // once technicians are loaded, any repair line still missing an
+      // assignee (e.g. lines pre-created from a linked DVIR defect) defaults
+      // to the logged-in Technician, matching web's "Assign To" auto-fill.
+      if (widget.existing == null) {
+        final defaultTechId = _resolveLoggedInTechnicianAssigneeId();
+        if (defaultTechId != null) {
+          for (final line in _partLines) {
+            line.assignedTechnicianId ??= defaultTechId;
+          }
+        }
+      }
     });
 
     if (_entityTypeId != null) {
@@ -314,8 +321,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         if (mounted) setState(() => _priority = p);
       }
 
-      if ((prefill?.issueDescription?.trim().isNotEmpty ?? false) &&
-          mounted) {
+      if ((prefill?.issueDescription?.trim().isNotEmpty ?? false) && mounted) {
         _issueController.text = prefill!.issueDescription!.trim();
       }
 
@@ -326,8 +332,11 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       // entityTypeId still lands on a sensible Unit Type instead of
       // whatever the form's arbitrary default happened to be.
       final rawTargetEntityTypeId = prefill?.entityTypeId;
-      final resolvedType = (rawTargetEntityTypeId != null
-              ? _entityTypes.where((t) => t.id == rawTargetEntityTypeId).firstOrNull
+      final resolvedType =
+          (rawTargetEntityTypeId != null
+              ? _entityTypes
+                    .where((t) => t.id == rawTargetEntityTypeId)
+                    .firstOrNull
               : null) ??
           _entityTypes
               .where((t) => t.name.trim().toLowerCase() == 'power unit')
@@ -365,7 +374,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         if (matchedEntity == null) {
           for (final type in _entityTypes) {
             if (type.id == _entityTypeId) continue;
-            final otherRes = await MaintenanceService.instance.getEntities(type.id);
+            final otherRes = await MaintenanceService.instance.getEntities(
+              type.id,
+            );
             if (!otherRes.isSuccess || otherRes.data == null) continue;
             final found = otherRes.data!
                 .where((e) => e.name.trim().toLowerCase() == normalizedTarget)
@@ -418,7 +429,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       if (matchedEntity == null) {
         for (final type in _entityTypes) {
           if (type.id == _entityTypeId) continue;
-          final otherRes = await MaintenanceService.instance.getEntities(type.id);
+          final otherRes = await MaintenanceService.instance.getEntities(
+            type.id,
+          );
           if (!otherRes.isSuccess || otherRes.data == null) continue;
           final found = otherRes.data!
               .where((e) => e.name.trim().toLowerCase() == normalizedTarget)
@@ -460,10 +473,14 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     });
   }
 
-  Future<void> _loadPmChecklist(int entityTypeId, {WorkOrderModel? existingOrder}) async {
+  Future<void> _loadPmChecklist(
+    int entityTypeId, {
+    WorkOrderModel? existingOrder,
+  }) async {
     setState(() => _pmLoading = true);
-    final result =
-        await MaintenanceService.instance.getPMInspectionItems(entityTypeId: entityTypeId);
+    final result = await MaintenanceService.instance.getPMInspectionItems(
+      entityTypeId: entityTypeId,
+    );
     if (!mounted) return;
     setState(() {
       _pmLoading = false;
@@ -510,8 +527,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       return;
     }
     setState(() => _uploadsLoading = true);
-    final result =
-        await MaintenanceService.instance.getMaintenanceIssueUploads(ids);
+    final result = await MaintenanceService.instance.getMaintenanceIssueUploads(
+      ids,
+    );
     if (!mounted) return;
     setState(() {
       _uploadsLoading = false;
@@ -581,8 +599,10 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
           }
           final rCode = _normalizeScheduleKey(r.typeCode ?? '');
           final rName = _normalizeScheduleKey(r.typeName ?? '');
-          if ((normCode.isNotEmpty && (normCode == rCode || normCode == rName)) ||
-              (normName.isNotEmpty && (normName == rName || normName == rCode))) {
+          if ((normCode.isNotEmpty &&
+                  (normCode == rCode || normCode == rName)) ||
+              (normName.isNotEmpty &&
+                  (normName == rName || normName == rCode))) {
             matchedRecord = r;
             break;
           }
@@ -602,13 +622,13 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         final defectName = (panel.scheduleTypeName?.isNotEmpty ?? false)
             ? panel.scheduleTypeName!
             : ((panel.scheduleTypeCode?.isNotEmpty ?? false)
-                ? panel.scheduleTypeCode!
-                : panel.type);
+                  ? panel.scheduleTypeCode!
+                  : panel.type);
         final scheduleLabel = schedule.name.isNotEmpty
             ? schedule.name
             : (schedule.scheduleNumber?.toString() ?? '');
-        final reference = schedule.scheduleNumber?.toString() ??
-            schedule.id.toString();
+        final reference =
+            schedule.scheduleNumber?.toString() ?? schedule.id.toString();
 
         result.add(
           MaintenanceIssueSummary(
@@ -646,8 +666,14 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Issue description already has text',
-            style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 16)),
+        title: Text(
+          'Issue description already has text',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+          ),
+        ),
         content: Text(
           'Append this event\'s description, or replace the existing text?',
           style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
@@ -698,12 +724,14 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       if (photo == null) return;
       final bytes = await photo.readAsBytes();
       setState(() {
-        _pendingAttachments.add(PlatformFile(
-          path: photo.path,
-          name: photo.name,
-          size: bytes.length,
-          bytes: bytes,
-        ));
+        _pendingAttachments.add(
+          PlatformFile(
+            path: photo.path,
+            name: photo.name,
+            size: bytes.length,
+            bytes: bytes,
+          ),
+        );
       });
     } catch (e) {
       AppToast.showError('Failed to capture image: $e');
@@ -721,12 +749,14 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       final file = File(path);
       final bytes = await file.readAsBytes();
       setState(() {
-        _pendingAttachments.add(PlatformFile(
-          path: path,
-          name: path.split('/').last,
-          size: bytes.length,
-          bytes: bytes,
-        ));
+        _pendingAttachments.add(
+          PlatformFile(
+            path: path,
+            name: path.split('/').last,
+            size: bytes.length,
+            bytes: bytes,
+          ),
+        );
       });
     } catch (e) {
       AppToast.showError('Failed to scan document: $e');
@@ -906,9 +936,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-                  primary: AppColors.primary,
-                ),
+            colorScheme: Theme.of(
+              context,
+            ).colorScheme.copyWith(primary: AppColors.primary),
           ),
           child: child!,
         );
@@ -945,7 +975,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
           ? null
           : _resolutionController.text.trim(),
       parts: [
-        ..._partLines.where((l) => l.partId != null).map(
+        ..._partLines
+            .where((l) => l.partId != null)
+            .map(
               (l) => WorkOrderPartPayload(
                 id: l.id,
                 usedPart: l.partId,
@@ -968,7 +1000,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         // treats parts as repair-only when a top-level `inventoryParts` key
         // is present in the request; since we don't send one, these are
         // accepted the same way as any other part-usage row.
-        ..._inventoryPartRows.where((r) => r.partId != null).map(
+        ..._inventoryPartRows
+            .where((r) => r.partId != null)
+            .map(
               (r) => WorkOrderPartPayload(
                 usedPart: r.partId,
                 usageDescription: '',
@@ -986,7 +1020,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   void _reduceInventoryForUsedParts() {
     final usages = <(int? partId, TextEditingController qtyController)>[
       for (final line in _partLines) (line.partId, line.quantityController),
-      for (final row in _inventoryPartRows) (row.partId, row.quantityController),
+      for (final row in _inventoryPartRows)
+        (row.partId, row.quantityController),
     ];
     for (final (partId, qtyController) in usages) {
       if (partId == null) continue;
@@ -1018,7 +1053,17 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       return;
     }
     if (_entityTypeId == null || _selectedEntity == null) {
-      AppToast.showError('Complete all required fields (Unit Type & Unit Number)');
+      AppToast.showError(
+        'Complete all required fields (Unit Type & Unit Number)',
+      );
+      return;
+    }
+    // Web parity for `validateForm`'s `errors.priority = 'Priority is
+    // required'` (`CreateWorkOrderDrawer.tsx`) — the pill selector has no
+    // default for a brand-new work order, so without this check `_priority`
+    // could silently fall back to Medium at submit time instead of blocking.
+    if (_priority == null) {
+      AppToast.showError('Priority is required');
       return;
     }
     _assigneeId ??= AuthService.instance.currentUser?.id ?? 0;
@@ -1035,6 +1080,22 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     }
     if (_startDate != null && _dueDate!.isBefore(_startDate!)) {
       AppToast.showError('Due Date must be on or after Start Date');
+      return;
+    }
+
+    // Web parity for `getRepairsValidationError` (`CreateWorkOrderDrawer
+    // .tsx`) — every work order needs at least one repair line, and every
+    // repair line needs a valid (0 or greater) Hours value.
+    if (_partLines.isEmpty) {
+      AppToast.showError('At least one repair is required');
+      return;
+    }
+    final invalidHoursLine = _partLines.any((l) {
+      final hours = double.tryParse(l.hoursController.text.trim());
+      return hours == null || hours < 0;
+    });
+    if (invalidHoursLine) {
+      AppToast.showError('Hours are required for each repair (0 or greater)');
       return;
     }
 
@@ -1111,11 +1172,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
           .whereType<String>()
           .toList();
       if (paths.isNotEmpty) {
-        final uploadResult =
-            await MaintenanceService.instance.uploadWorkOrderAttachments(
-          workOrderId: newId,
-          filePaths: paths,
-        );
+        final uploadResult = await MaintenanceService.instance
+            .uploadWorkOrderAttachments(workOrderId: newId, filePaths: paths);
         if (!uploadResult.isSuccess) {
           AppToast.showError(
             'Work order created, but attachments failed to upload.',
@@ -1130,21 +1188,30 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
     Navigator.of(context).pop(true);
   }
 
-  void _addPartLine() {
-    setState(() => _partLines.add(_PartLineForm()));
+  /// Web parity for `resolveLoggedInTechnicianAssigneeId` (`workOrderAssignee
+  /// .ts`) — the logged-in user only self-assigns a new repair line when
+  /// their role is Technician (an Admin/Dispatcher creating a work order for
+  /// someone else shouldn't have the field silently defaulted to themself).
+  int? _resolveLoggedInTechnicianAssigneeId() {
+    final user = AuthService.instance.currentUser;
+    if (user == null || !isTechnicianRole(user.role) || _technicians.isEmpty) {
+      return null;
+    }
+    final match = _technicians
+        .where((t) => (t.userId != 0 && t.userId == user.id) || t.id == user.id)
+        .firstOrNull;
+    if (match == null) return null;
+    return match.userId != 0 ? match.userId : match.id;
   }
 
-  void _scrollToSection(int index) {
-    setState(() => _activeNavIndex = index);
-    final context = _sectionKeys[index].currentContext;
-    if (context != null) {
-      Scrollable.ensureVisible(
-        context,
-        duration: const Duration(milliseconds: 350),
-        curve: Curves.easeInOut,
-        alignment: 0.04,
-      );
-    }
+  void _addPartLine() {
+    setState(
+      () => _partLines.add(
+        _PartLineForm(
+          assignedTechnicianId: _resolveLoggedInTechnicianAssigneeId(),
+        ),
+      ),
+    );
   }
 
   @override
@@ -1185,14 +1252,20 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
               ),
               if (widget.isEdit)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Text(
-                    widget.existing?.workOrderNumber ?? '#${widget.existing?.id}',
+                    widget.existing?.workOrderNumber ??
+                        '#${widget.existing?.id}',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -1205,816 +1278,816 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
         ),
         body: _loadingMeta
             ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  // ── Quick-Jump Section Navigation Bar ──
-                  Container(
-                    height: 46,
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
+            : Form(
+                key: _formKey,
+                child: ListView(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                  children: [
+                    // ── SECTION 1: WORK ORDER SOURCE ──
+                    _ModernSectionCard(
+                      sectionNumber: 1,
+                      icon: Icons.directions_bus_rounded,
+                      iconColor: const Color(0xFF2563EB),
+                      title: 'Work Order Source',
+                      subtitle:
+                          'Select a unit to load source events and linked defects.',
+                      trailing: (widget.linkedDefects?.isNotEmpty ?? false)
+                          ? _ViewAuditTrailButton(
+                              onPressed: () => showAuditTrailDialog(
+                                context,
+                                entityType: 'dvir_defect',
+                                entityId: widget.linkedDefects!.first.defectId,
+                                subtitle:
+                                    'DVIR Defect ${widget.linkedDefects!.first.defectId}',
+                              ),
+                            )
+                          : null,
                       children: [
-                        _QuickNavChip(
-                          icon: Icons.directions_bus_outlined,
-                          label: 'Source',
-                          isSelected: _activeNavIndex == 0,
-                          onTap: () => _scrollToSection(0),
+                        _StyledDropdownField<int>(
+                          label: 'Unit Type *',
+                          hint: 'Select Unit Type',
+                          value: _entityTypeId,
+                          enabled:
+                              !widget.isEdit &&
+                              (widget.linkedDefects == null ||
+                                  widget.linkedDefects!.isEmpty),
+                          items: _entityTypes
+                              .map(
+                                (t) => DropdownMenuItem(
+                                  value: t.id,
+                                  child: Text(t.name),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) async {
+                            setState(() {
+                              _entityTypeId = v;
+                              _selectedEntityId = null;
+                            });
+                            if (v != null) await _loadEntities(v);
+                          },
+                          validator: (v) => v == null ? 'Required' : null,
                         ),
-                        const SizedBox(width: 8),
-                        _QuickNavChip(
-                          icon: Icons.calendar_month_outlined,
-                          label: 'Details',
-                          isSelected: _activeNavIndex == 1,
-                          onTap: () => _scrollToSection(1),
+                        _StyledDropdownField<int>(
+                          label: 'Unit Number *',
+                          hint: 'Select Unit Number',
+                          value: _selectedEntityId,
+                          enabled: !widget.isEdit,
+                          items: _entities
+                              .map(
+                                (e) => DropdownMenuItem(
+                                  value: e.id,
+                                  child: Text(e.name),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (v) {
+                            setState(() => _selectedEntityId = v);
+                            if (v != null) _loadEvents();
+                          },
+                          validator: (v) => v == null ? 'Required' : null,
                         ),
-                        const SizedBox(width: 8),
-                        _QuickNavChip(
-                          icon: Icons.build_circle_outlined,
-                          label: 'Repairs & Parts',
-                          isSelected: _activeNavIndex == 2,
-                          onTap: () => _scrollToSection(2),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Priority *',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
                         ),
-                        const SizedBox(width: 8),
-                        _QuickNavChip(
-                          icon: Icons.notes_rounded,
-                          label: 'Notes & Cost',
-                          isSelected: _activeNavIndex == 3,
-                          onTap: () => _scrollToSection(3),
+                        const SizedBox(height: 6),
+                        _PriorityPillSelector(
+                          priority: _priority,
+                          enabled: _entityTypeId != null,
+                          onChanged: (p) => setState(() => _priority = p),
                         ),
-                        const SizedBox(width: 8),
-                        _QuickNavChip(
-                          icon: Icons.attach_file_rounded,
-                          label: 'Attachments',
-                          isSelected: _activeNavIndex == 4,
-                          onTap: () => _scrollToSection(4),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Work Order Type *',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        _WorkOrderTypeSelector(
+                          isPm: _isPm ?? false,
+                          enabled: !widget.isEdit && _entityTypeId != null,
+                          onChanged: (val) {
+                            setState(() => _isPm = val);
+                            if ((_isPm ?? false) && _pmCategories.isEmpty) {
+                              _loadPmChecklist(_entityTypeId ?? 1);
+                            }
+                          },
+                        ),
+                        if (_selectedEntityId != null) ...[
+                          const SizedBox(height: 14),
+                          _EventsSection(
+                            loading: _eventsLoading,
+                            events: _events,
+                            linkedIds: _linkedEventIds,
+                            uploads: _eventUploads,
+                            uploadsLoading: _uploadsLoading,
+                            onTap: _linkEvent,
+                            vin: _selectedEntity?.vinNumber,
+                            unitNumber: _selectedEntity?.name,
+                          ),
+                        ],
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // ── SECTION 2: WORK ORDER DETAILS ──
+                    _ModernSectionCard(
+                      sectionNumber: 2,
+                      icon: Icons.schedule_rounded,
+                      iconColor: const Color(0xFFD97706),
+                      title: 'Work Order Details',
+                      subtitle:
+                          'Set status, key dates, meter readings and labour cost.',
+                      children: [
+                        _StyledDropdownField<WorkOrderStatus>(
+                          key: ValueKey(
+                            'status_${_status.code}_$_statusFieldGen',
+                          ),
+                          label: 'Status *',
+                          value: _status,
+                          items:
+                              (widget.isEdit
+                                      ? WorkOrderStatus.values
+                                      : [
+                                          WorkOrderStatus.notStarted,
+                                          WorkOrderStatus.inProgress,
+                                        ])
+                                  .map(
+                                    (s) => DropdownMenuItem(
+                                      value: s,
+                                      child: Text(s.label),
+                                    ),
+                                  )
+                                  .toList(),
+                          onChanged: _onStatusChanged,
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ModernDateField(
+                                label: 'Start Date *',
+                                value: _startDate,
+                                onTap: () => _pickDate(
+                                  initial: _startDate,
+                                  onPicked: (d) =>
+                                      setState(() => _startDate = d),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _ModernDateField(
+                                label: 'Due Date *',
+                                value: _dueDate,
+                                onTap: () => _pickDate(
+                                  initial: _dueDate,
+                                  onPicked: (d) => setState(() => _dueDate = d),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_status == WorkOrderStatus.completed) ...[
+                          _ModernDateField(
+                            label: 'End Date *',
+                            value: _endDate,
+                            enabled: false,
+                            onTap: () {},
+                          ),
+                        ],
+                        if (_showOdometerFields) ...[
+                          _OdometerField(
+                            label: 'Start Odometer',
+                            kmController: _odometerController,
+                            unit: _odometerUnit,
+                            onUnitChanged: (u) =>
+                                setState(() => _odometerUnit = u),
+                            onKmChanged: () => setState(() {}),
+                            loading: _fetchingOdometer,
+                            onFetch: _fetchOdometer,
+                          ),
+                          const SizedBox(height: 8),
+                          _OdometerField(
+                            label: 'End Odometer',
+                            kmController: _endOdometerController,
+                            unit: _odometerUnit,
+                            onUnitChanged: (u) =>
+                                setState(() => _odometerUnit = u),
+                            onKmChanged: () => setState(() {}),
+                            enabled: _status == WorkOrderStatus.completed,
+                            disabledHint: 'Available when status is Completed',
+                            loading: _fetchingEndOdometer,
+                            onFetch: _fetchEndOdometer,
+                            errorText: _odometerRangeError,
+                          ),
+                        ],
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _hoursController,
+                                decoration: InputDecoration(
+                                  labelText: 'Total Labour Hours',
+                                  prefixIcon: Icon(
+                                    Icons.access_time_rounded,
+                                    size: 18,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  filled: true,
+                                  fillColor: AppColors.inputFill,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: AppColors.border,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: AppColors.border,
+                                    ),
+                                  ),
+                                ),
+                                keyboardType: TextInputType.number,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _totalLabourCostController,
+                                decoration: InputDecoration(
+                                  labelText: 'Total Labour Cost',
+                                  prefixText: '\$ ',
+                                  prefixIcon: Icon(
+                                    Icons.attach_money_rounded,
+                                    size: 18,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                  filled: true,
+                                  fillColor: AppColors.inputFill,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: AppColors.border,
+                                    ),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                    borderSide: BorderSide(
+                                      color: AppColors.border,
+                                    ),
+                                  ),
+                                ),
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ),
-                  Expanded(
-                    child: Form(
-                      key: _formKey,
-                      child: ListView(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+
+                    if (widget.linkedDefects?.isNotEmpty ?? false) ...[
+                      const SizedBox(height: 16),
+                      WebInfoBanner(
+                        title:
+                            'Linked to DVIR defect${widget.linkedDefects!.length == 1 ? '' : 's'}',
+                        message: widget.linkedDefects!.length == 1
+                            ? 'This work order will be linked back to the source defect.'
+                            : '${widget.linkedDefects!.length} selected defects will each be added as a repair line on this work order.',
+                      ),
+                    ],
+
+                    const SizedBox(height: 16),
+
+                    // ── PM INSPECTION CHECKLIST (IF PM SELECTED) ──
+                    // Slots in between Work Order Details and Repairs,
+                    // matching web's insertion point (not one of its 8
+                    // numbered sections either — it's a conditional
+                    // block gated on Work Order Type = Preventive
+                    // Maintenance).
+                    if (_isPm ?? false) ...[
+                      _ModernSectionCard(
+                        icon: Icons.checklist_rounded,
+                        iconColor: const Color(0xFF059669),
+                        title: 'PM Inspection Checklist',
+                        subtitle: 'Complete safety & mechanical check items.',
                         children: [
-                          // ── SECTION 1: WORK ORDER SOURCE ──
-                          _ModernSectionCard(
-                            key: _sectionKeys[0],
-                            sectionNumber: 1,
-                            icon: Icons.directions_bus_rounded,
-                            iconColor: const Color(0xFF2563EB),
-                            title: 'Work Order Source',
-                            subtitle:
-                                'Select a unit to load source events and linked defects.',
-                            trailing: (widget.linkedDefects?.isNotEmpty ?? false)
-                                ? _ViewAuditTrailButton(
-                                    onPressed: () => showAuditTrailDialog(
-                                      context,
-                                      entityType: 'dvir_defect',
-                                      entityId: widget.linkedDefects!.first.defectId,
-                                      subtitle:
-                                          'DVIR Defect ${widget.linkedDefects!.first.defectId}',
-                                    ),
-                                  )
-                                : null,
-                            children: [
-                              _StyledDropdownField<int>(
-                                label: 'Unit Type *',
-                                hint: 'Select Unit Type',
-                                value: _entityTypeId,
-                                enabled: !widget.isEdit &&
-                                    (widget.linkedDefects == null ||
-                                        widget.linkedDefects!.isEmpty),
-                                items: _entityTypes
-                                    .map(
-                                      (t) => DropdownMenuItem(
-                                        value: t.id,
-                                        child: Text(t.name),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) async {
-                                  setState(() {
-                                    _entityTypeId = v;
-                                    _selectedEntityId = null;
-                                  });
-                                  if (v != null) await _loadEntities(v);
-                                },
-                                validator: (v) => v == null ? 'Required' : null,
+                          if (_pmLoading)
+                            const Center(child: CircularProgressIndicator())
+                          else if (_pmCategories.isEmpty)
+                            Text(
+                              'No PM checklist available for this unit type',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            )
+                          else ...[
+                            PmInspectionSection(
+                              categories: _pmCategories,
+                              results: _pmResults,
+                              isTrailer: (_entityTypeId ?? 1) == 2,
+                              onChanged: () => setState(() {}),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Tire & Brake Measurements',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
                               ),
-                              _StyledDropdownField<int>(
-                                label: 'Unit Number *',
-                                hint: 'Select Unit Number',
-                                value: _selectedEntityId,
-                                enabled: !widget.isEdit,
-                                items: _entities
-                                    .map(
-                                      (e) => DropdownMenuItem(
-                                        value: e.id,
-                                        child: Text(e.name),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) {
-                                  setState(() => _selectedEntityId = v);
-                                  if (v != null) _loadEvents();
-                                },
-                                validator: (v) => v == null ? 'Required' : null,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Priority *',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              _PriorityPillSelector(
-                                priority: _priority,
-                                enabled: _entityTypeId != null,
-                                onChanged: (p) => setState(() => _priority = p),
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                'Work Order Type *',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              _WorkOrderTypeSelector(
-                                isPm: _isPm ?? false,
-                                enabled: !widget.isEdit && _entityTypeId != null,
-                                onChanged: (val) {
-                                  setState(() => _isPm = val);
-                                  if ((_isPm ?? false) && _pmCategories.isEmpty) {
-                                    _loadPmChecklist(_entityTypeId ?? 1);
-                                  }
-                                },
-                              ),
-                              if (_selectedEntityId != null) ...[
-                                const SizedBox(height: 14),
-                                _EventsSection(
-                                  loading: _eventsLoading,
-                                  events: _events,
-                                  linkedIds: _linkedEventIds,
-                                  uploads: _eventUploads,
-                                  uploadsLoading: _uploadsLoading,
-                                  onTap: _linkEvent,
-                                  vin: _selectedEntity?.vinNumber,
-                                  unitNumber: _selectedEntity?.name,
-                                ),
-                              ],
-                            ],
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // ── SECTION 2: WORK ORDER DETAILS ──
-                          _ModernSectionCard(
-                            key: _sectionKeys[1],
-                            sectionNumber: 2,
-                            icon: Icons.schedule_rounded,
-                            iconColor: const Color(0xFFD97706),
-                            title: 'Work Order Details',
-                            subtitle:
-                                'Set status, key dates, meter readings and labour cost.',
-                            children: [
-                              _StyledDropdownField<WorkOrderStatus>(
-                                key: ValueKey('status_${_status.code}_$_statusFieldGen'),
-                                label: 'Status *',
-                                value: _status,
-                                items: (widget.isEdit
-                                        ? WorkOrderStatus.values
-                                        : [
-                                            WorkOrderStatus.notStarted,
-                                            WorkOrderStatus.inProgress,
-                                          ])
-                                    .map(
-                                      (s) => DropdownMenuItem(
-                                        value: s,
-                                        child: Text(s.label),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: _onStatusChanged,
-                              ),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: _ModernDateField(
-                                      label: 'Start Date *',
-                                      value: _startDate,
-                                      onTap: () => _pickDate(
-                                        initial: _startDate,
-                                        onPicked: (d) => setState(() => _startDate = d),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: _ModernDateField(
-                                      label: 'Due Date *',
-                                      value: _dueDate,
-                                      onTap: () => _pickDate(
-                                        initial: _dueDate,
-                                        onPicked: (d) => setState(() => _dueDate = d),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (_status == WorkOrderStatus.completed) ...[
-                                _ModernDateField(
-                                  label: 'End Date *',
-                                  value: _endDate,
-                                  enabled: false,
-                                  onTap: () {},
-                                ),
-                              ],
-                              if (_showOdometerFields) ...[
-                                _OdometerField(
-                                  label: 'Start Odometer',
-                                  kmController: _odometerController,
-                                  unit: _odometerUnit,
-                                  onUnitChanged: (u) =>
-                                      setState(() => _odometerUnit = u),
-                                  onKmChanged: () => setState(() {}),
-                                  loading: _fetchingOdometer,
-                                  onFetch: _fetchOdometer,
-                                ),
-                                const SizedBox(height: 8),
-                                _OdometerField(
-                                  label: 'End Odometer',
-                                  kmController: _endOdometerController,
-                                  unit: _odometerUnit,
-                                  onUnitChanged: (u) =>
-                                      setState(() => _odometerUnit = u),
-                                  onKmChanged: () => setState(() {}),
-                                  enabled: _status == WorkOrderStatus.completed,
-                                  disabledHint: 'Available when status is Completed',
-                                  loading: _fetchingEndOdometer,
-                                  onFetch: _fetchEndOdometer,
-                                  errorText: _odometerRangeError,
-                                ),
-                              ],
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _hoursController,
-                                      decoration: InputDecoration(
-                                        labelText: 'Total Labour Hours',
-                                        prefixIcon: Icon(Icons.access_time_rounded,
-                                            size: 18, color: AppColors.textSecondary),
-                                        filled: true,
-                                        fillColor: AppColors.inputFill,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                          borderSide: BorderSide(color: AppColors.border),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                          borderSide: BorderSide(color: AppColors.border),
-                                        ),
-                                      ),
-                                      keyboardType: TextInputType.number,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: TextFormField(
-                                      controller: _totalLabourCostController,
-                                      decoration: InputDecoration(
-                                        labelText: 'Total Labour Cost',
-                                        prefixText: '\$ ',
-                                        prefixIcon: Icon(Icons.attach_money_rounded,
-                                            size: 18, color: AppColors.textSecondary),
-                                        filled: true,
-                                        fillColor: AppColors.inputFill,
-                                        border: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                          borderSide: BorderSide(color: AppColors.border),
-                                        ),
-                                        enabledBorder: OutlineInputBorder(
-                                          borderRadius: BorderRadius.circular(12),
-                                          borderSide: BorderSide(color: AppColors.border),
-                                        ),
-                                      ),
-                                      keyboardType: const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-
-                          if (widget.linkedDefects?.isNotEmpty ?? false) ...[
+                            ),
+                            const SizedBox(height: 8),
+                            TireBrakeGrid(
+                              measurements: _tireMeasurements,
+                              onChanged: () => setState(() {}),
+                            ),
                             const SizedBox(height: 16),
-                            WebInfoBanner(
-                              title: 'Linked to DVIR defect${widget.linkedDefects!.length == 1 ? '' : 's'}',
-                              message: widget.linkedDefects!.length == 1
-                                  ? 'This work order will be linked back to the source defect.'
-                                  : '${widget.linkedDefects!.length} selected defects will each be added as a repair line on this work order.',
+                            Text(
+                              'PM Defects',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            PmDefectsTable(
+                              defects: _defects,
+                              onAdd: () => setState(
+                                () => _defects.add(
+                                  PmDefectModel(rowNo: _defects.length + 1),
+                                ),
+                              ),
+                              onRemove: (i) =>
+                                  setState(() => _defects.removeAt(i)),
+                              onChanged: () => setState(() {}),
                             ),
                           ],
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                    ],
 
-                          const SizedBox(height: 16),
-
-                          // ── PM INSPECTION CHECKLIST (IF PM SELECTED) ──
-                          // Slots in between Work Order Details and Repairs,
-                          // matching web's insertion point (not one of its 8
-                          // numbered sections either — it's a conditional
-                          // block gated on Work Order Type = Preventive
-                          // Maintenance).
-                          if (_isPm ?? false) ...[
-                            _ModernSectionCard(
-                              icon: Icons.checklist_rounded,
-                              iconColor: const Color(0xFF059669),
-                              title: 'PM Inspection Checklist',
-                              subtitle:
-                                  'Complete safety & mechanical check items.',
+                    // ── SECTION 3: REPAIRS ──
+                    _ModernSectionCard(
+                      sectionNumber: 3,
+                      icon: Icons.build_circle_rounded,
+                      iconColor: const Color(0xFF7C3AED),
+                      title: 'Repairs',
+                      trailing: OutlinedButton.icon(
+                        onPressed: _isCompletedRestrictedEdit
+                            ? null
+                            : _addPartLine,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Add Repair'),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                        ),
+                      ),
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'REPAIR LINES',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '${_partLines.length}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        if (_isCompletedRestrictedEdit)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.warning.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppColors.warning.withValues(alpha: 0.4),
+                              ),
+                            ),
+                            child: Row(
                               children: [
-                                if (_pmLoading)
-                                  const Center(child: CircularProgressIndicator())
-                                else if (_pmCategories.isEmpty)
-                                  Text(
-                                    'No PM checklist available for this unit type',
-                                    style: TextStyle(color: AppColors.textSecondary),
-                                  )
-                                else ...[
-                                  PmInspectionSection(
-                                    categories: _pmCategories,
-                                    results: _pmResults,
-                                    isTrailer: (_entityTypeId ?? 1) == 2,
-                                    onChanged: () => setState(() {}),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    'Tire & Brake Measurements',
+                                Icon(
+                                  Icons.info_outline,
+                                  size: 18,
+                                  color: AppColors.warning,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Work order is completed — only hours and repair notes can be edited.',
                                     style: TextStyle(
-                                      fontWeight: FontWeight.w700,
+                                      fontSize: 12,
                                       color: AppColors.textPrimary,
                                     ),
                                   ),
-                                  const SizedBox(height: 8),
-                                  TireBrakeGrid(
-                                    measurements: _tireMeasurements,
-                                    onChanged: () => setState(() {}),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'PM Defects',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textPrimary,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  PmDefectsTable(
-                                    defects: _defects,
-                                    onAdd: () => setState(
-                                      () => _defects.add(
-                                          PmDefectModel(rowNo: _defects.length + 1)),
-                                    ),
-                                    onRemove: (i) =>
-                                        setState(() => _defects.removeAt(i)),
-                                    onChanged: () => setState(() {}),
-                                  ),
-                                ],
+                                ),
                               ],
                             ),
-                            const SizedBox(height: 16),
-                          ],
+                          ),
+                        if (_partLines.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(20),
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: AppColors.inputFill.withValues(alpha: 0.5),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.border,
+                                style: BorderStyle.solid,
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.build_circle_outlined,
+                                  size: 32,
+                                  color: AppColors.textSecondary,
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'No repair lines added yet',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textSecondary,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Tap "+ Add Repair" above to add parts & labor tasks.',
+                                  style: TextStyle(
+                                    color: AppColors.textMuted,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          ..._partLines.asMap().entries.map(
+                            (entry) =>
+                                _buildPartLineCard(entry.key, entry.value),
+                          ),
+                      ],
+                    ),
 
-                          // ── SECTION 3: REPAIRS ──
-                          _ModernSectionCard(
-                            key: _sectionKeys[2],
-                            sectionNumber: 3,
-                            icon: Icons.build_circle_rounded,
-                            iconColor: const Color(0xFF7C3AED),
-                            title: 'Repairs',
-                            trailing: OutlinedButton.icon(
-                              onPressed: _isCompletedRestrictedEdit ? null : _addPartLine,
+                    const SizedBox(height: 16),
+
+                    // ── SECTION 4: INVENTORY PARTS (OPTIONAL) ──
+                    _ModernSectionCard(
+                      sectionNumber: 4,
+                      icon: Icons.inventory_2_rounded,
+                      iconColor: const Color(0xFF0EA5E9),
+                      title: 'Inventory Parts (Optional)',
+                      subtitle:
+                          'Add parts consumed by this work order that aren\'t tied to a specific repair.',
+                      children: [
+                        _buildQuickAddInventoryPartRow(),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _isCompletedRestrictedEdit
+                                  ? null
+                                  : () => _openAddPartSheet(),
                               icon: const Icon(Icons.add, size: 18),
-                              label: const Text('Add Repair'),
+                              label: const Text('Add Part'),
                               style: OutlinedButton.styleFrom(
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 6),
                               ),
                             ),
-                            children: [
-                              Row(
-                                children: [
-                                  Text(
-                                    'REPAIR LINES',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.8,
-                                      color: AppColors.textSecondary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primary.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      '${_partLines.length}',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppColors.primary,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Click the + button to add more parts.',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
-                              const SizedBox(height: 10),
-                              if (_isCompletedRestrictedEdit)
-                                Container(
-                                  margin: const EdgeInsets.only(bottom: 10),
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.warning.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: AppColors.warning.withValues(alpha: 0.4),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.info_outline,
-                                          size: 18, color: AppColors.warning),
-                                      const SizedBox(width: 8),
-                                      Expanded(
-                                        child: Text(
-                                          'Work order is completed — only hours and repair notes can be edited.',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: AppColors.textPrimary,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              if (_partLines.isEmpty)
-                                Container(
-                                  padding: const EdgeInsets.all(20),
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.inputFill.withValues(alpha: 0.5),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: AppColors.border,
-                                      style: BorderStyle.solid,
-                                    ),
-                                  ),
-                                  child: Column(
-                                    children: [
-                                      Icon(Icons.build_circle_outlined,
-                                          size: 32, color: AppColors.textSecondary),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'No repair lines added yet',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          color: AppColors.textSecondary,
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Tap "+ Add Repair" above to add parts & labor tasks.',
-                                        style: TextStyle(
-                                          color: AppColors.textMuted,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )
-                              else
-                                ..._partLines.asMap().entries.map((entry) =>
-                                    _buildPartLineCard(entry.key, entry.value)),
-                            ],
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // ── SECTION 4: INVENTORY PARTS (OPTIONAL) ──
-                          _ModernSectionCard(
-                            sectionNumber: 4,
-                            icon: Icons.inventory_2_rounded,
-                            iconColor: const Color(0xFF0EA5E9),
-                            title: 'Inventory Parts (Optional)',
-                            subtitle:
-                                'Add parts consumed by this work order that aren\'t tied to a specific repair.',
-                            children: [
-                              _buildQuickAddInventoryPartRow(),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  OutlinedButton.icon(
-                                    onPressed: _isCompletedRestrictedEdit
-                                        ? null
-                                        : () => _openAddPartSheet(),
-                                    icon: const Icon(Icons.add, size: 18),
-                                    label: const Text('Add Part'),
-                                    style: OutlinedButton.styleFrom(
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Text(
-                                      'Click the + button to add more parts.',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        color: AppColors.primary,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              if (_inventoryPartRows.isNotEmpty) ...[
-                                const SizedBox(height: 12),
-                                for (var i = 0; i < _inventoryPartRows.length; i++)
-                                  _buildInventoryPartRowCard(i, _inventoryPartRows[i]),
-                              ],
-                            ],
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // ── SECTION 5: NOTES ──
-                          _ModernSectionCard(
-                            key: _sectionKeys[3],
-                            sectionNumber: 5,
-                            icon: Icons.notes_rounded,
-                            iconColor: const Color(0xFF7C3AED),
-                            title: 'Notes',
-                            children: [
-                              VoiceNotesRecorderRow(
-                                fieldName: 'notes',
-                                sessionId: _voiceSessionId,
-                                workOrderId: widget.existing?.id,
-                                onTranscribed: (text) => setState(() {
-                                  final current = _notesController.text.trim();
-                                  _notesController.text =
-                                      current.isEmpty ? text : '$current $text';
-                                }),
-                              ),
-                              TextFormField(
-                                controller: _notesController,
-                                decoration: InputDecoration(
-                                  hintText: 'Enter any additional notes...',
-                                  alignLabelWithHint: true,
-                                  filled: true,
-                                  fillColor: AppColors.inputFill,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                ),
-                                maxLines: 3,
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // ── SECTION 6: ESTIMATED COST ──
-                          _ModernSectionCard(
-                            sectionNumber: 6,
-                            icon: Icons.payments_rounded,
-                            iconColor: const Color(0xFF16A34A),
-                            title: 'Estimated Cost',
-                            children: [
-                              TextFormField(
-                                controller: _costController,
-                                decoration: InputDecoration(
-                                  labelText: 'Estimated Cost *',
-                                  prefixText: '\$ ',
-                                  prefixIcon: Icon(Icons.payments_outlined,
-                                      size: 18, color: AppColors.textSecondary),
-                                  filled: true,
-                                  fillColor: AppColors.inputFill,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                ),
-                                keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
-                                onChanged: (_) {
-                                  if (!_settingCostProgrammatically) {
-                                    _isEstimatedCostManual = true;
-                                  }
-                                },
-                                validator: (v) => v == null || v.trim().isEmpty
-                                    ? 'Required'
-                                    : null,
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // ── SECTION 7: ATTACHMENTS ──
-                          _ModernSectionCard(
-                            key: _sectionKeys[4],
-                            sectionNumber: 7,
-                            icon: Icons.attach_file_rounded,
-                            iconColor: const Color(0xFF2563EB),
-                            title: 'Attachments',
-                            subtitle: 'Upload documents or photos.',
-                            children: [
-                              if (widget.isEdit) ...[
-                                if (widget.existing!.attachments.isEmpty)
-                                  Text(
-                                    'No attachments uploaded yet',
-                                    style: TextStyle(color: AppColors.textSecondary),
-                                  )
-                                else
-                                  for (final a in widget.existing!.attachments)
-                                    Container(
-                                      margin: const EdgeInsets.only(bottom: 6),
-                                      padding: const EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.inputFill,
-                                        borderRadius: BorderRadius.circular(8),
-                                        border: Border.all(color: AppColors.border),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(Icons.insert_drive_file_outlined,
-                                              size: 20,
-                                              color: AppColors.primary),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              a.displayName,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                const SizedBox(height: 10),
-                                OutlinedButton.icon(
-                                  onPressed: _uploadAttachment,
-                                  icon: const Icon(Icons.upload_rounded, size: 18),
-                                  label: const Text('Upload Attachment'),
-                                  style: OutlinedButton.styleFrom(
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                  ),
-                                ),
-                              ] else ...[
-                                WebFileUploadZone(
-                                  fileName: _pendingAttachments.isEmpty
-                                      ? null
-                                      : '${_pendingAttachments.length} file'
-                                          '${_pendingAttachments.length > 1 ? 's' : ''} selected',
-                                  subtitle:
-                                      'Supported formats: Images (JPG, PNG) and PDF',
-                                  onBrowse: _pickPendingAttachments,
-                                  onCamera: _pickPendingAttachmentFromCamera,
-                                  onScan: _scanPendingAttachment,
-                                ),
-                                if (_pendingAttachments.isNotEmpty) ...[
-                                  const SizedBox(height: 10),
-                                  for (var i = 0; i < _pendingAttachments.length; i++)
-                                    Container(
-                                      margin: const EdgeInsets.only(bottom: 6),
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 10, vertical: 8),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.cardElevated,
-                                        borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(color: AppColors.border),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          Icon(
-                                            isPreviewableImagePath(
-                                                    _pendingAttachments[i].path)
-                                                ? Icons.image_outlined
-                                                : Icons.insert_drive_file_outlined,
-                                            size: 18,
-                                            color: isPreviewableImagePath(
-                                                    _pendingAttachments[i].path)
-                                                ? AppColors.primary
-                                                : AppColors.textSecondary,
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: InkWell(
-                                              onTap: isPreviewableImagePath(
-                                                      _pendingAttachments[i].path)
-                                                  ? () => showLocalImagePreview(
-                                                      context,
-                                                      _pendingAttachments[i].path!)
-                                                  : null,
-                                              child: Text(
-                                                _pendingAttachments[i].name,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.w500,
-                                                  color: isPreviewableImagePath(
-                                                          _pendingAttachments[i]
-                                                              .path)
-                                                      ? AppColors.primary
-                                                      : null,
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          IconButton(
-                                            icon: Icon(Icons.close,
-                                                size: 16,
-                                                color: AppColors.textSecondary),
-                                            onPressed: () => setState(
-                                              () => _pendingAttachments.removeAt(i),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                ],
-                              ],
-                            ],
-                          ),
-
-                          // ── SECTION 8: RESOLUTION (COMPLETED WORK ORDERS) ──
-                          // Always shown, matching web's `EnhancedResolutionSection` —
-                          // only the field's enabled state / placeholder toggle on
-                          // status, the section itself never disappears.
-                          const SizedBox(height: 16),
-                          _ModernSectionCard(
-                            sectionNumber: 8,
-                            icon: Icons.task_alt_rounded,
-                            iconColor: const Color(0xFF16A34A),
-                            title: 'Resolution (Completed Work Orders)',
-                            children: [
-                              TextFormField(
-                                controller: _resolutionController,
-                                enabled: _status == WorkOrderStatus.completed,
-                                decoration: InputDecoration(
-                                  labelText: 'Resolution Notes',
-                                  hintText: _status == WorkOrderStatus.completed
-                                      ? 'Enter resolution notes'
-                                      : 'Available when work order is completed',
-                                  alignLabelWithHint: true,
-                                  filled: true,
-                                  fillColor: AppColors.inputFill,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                    borderSide: BorderSide(color: AppColors.border),
-                                  ),
-                                ),
-                                maxLines: 3,
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
+                        ),
+                        if (_inventoryPartRows.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          for (var i = 0; i < _inventoryPartRows.length; i++)
+                            _buildInventoryPartRowCard(
+                              i,
+                              _inventoryPartRows[i],
+                            ),
                         ],
-                      ),
+                      ],
                     ),
-                  ),
-                ],
+
+                    const SizedBox(height: 16),
+
+                    // ── SECTION 5: NOTES ──
+                    _ModernSectionCard(
+                      sectionNumber: 5,
+                      icon: Icons.notes_rounded,
+                      iconColor: const Color(0xFF7C3AED),
+                      title: 'Notes',
+                      children: [
+                        VoiceNotesRecorderRow(
+                          fieldName: 'notes',
+                          sessionId: _voiceSessionId,
+                          workOrderId: widget.existing?.id,
+                          onTranscribed: (text) => setState(() {
+                            final current = _notesController.text.trim();
+                            _notesController.text = current.isEmpty
+                                ? text
+                                : '$current $text';
+                          }),
+                        ),
+                        TextFormField(
+                          controller: _notesController,
+                          decoration: InputDecoration(
+                            hintText: 'Enter any additional notes...',
+                            alignLabelWithHint: true,
+                            filled: true,
+                            fillColor: AppColors.inputFill,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: AppColors.border),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: AppColors.border),
+                            ),
+                          ),
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // ── SECTION 6: ESTIMATED COST ──
+                    _ModernSectionCard(
+                      sectionNumber: 6,
+                      icon: Icons.payments_rounded,
+                      iconColor: const Color(0xFF16A34A),
+                      title: 'Estimated Cost',
+                      children: [
+                        TextFormField(
+                          controller: _costController,
+                          decoration: InputDecoration(
+                            labelText: 'Estimated Cost *',
+                            prefixText: '\$ ',
+                            prefixIcon: Icon(
+                              Icons.payments_outlined,
+                              size: 18,
+                              color: AppColors.textSecondary,
+                            ),
+                            filled: true,
+                            fillColor: AppColors.inputFill,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: AppColors.border),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: AppColors.border),
+                            ),
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          onChanged: (_) {
+                            if (!_settingCostProgrammatically) {
+                              _isEstimatedCostManual = true;
+                            }
+                          },
+                          validator: (v) =>
+                              v == null || v.trim().isEmpty ? 'Required' : null,
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // ── SECTION 7: ATTACHMENTS ──
+                    _ModernSectionCard(
+                      sectionNumber: 7,
+                      icon: Icons.attach_file_rounded,
+                      iconColor: const Color(0xFF2563EB),
+                      title: 'Attachments',
+                      subtitle: 'Upload documents or photos.',
+                      children: [
+                        if (widget.isEdit) ...[
+                          if (widget.existing!.attachments.isEmpty)
+                            Text(
+                              'No attachments uploaded yet',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            )
+                          else
+                            for (final a in widget.existing!.attachments)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: AppColors.inputFill,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: AppColors.border),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.insert_drive_file_outlined,
+                                      size: 20,
+                                      color: AppColors.primary,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        a.displayName,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: _uploadAttachment,
+                            icon: const Icon(Icons.upload_rounded, size: 18),
+                            label: const Text('Upload Attachment'),
+                            style: OutlinedButton.styleFrom(
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                        ] else ...[
+                          WebFileUploadZone(
+                            fileName: _pendingAttachments.isEmpty
+                                ? null
+                                : '${_pendingAttachments.length} file'
+                                      '${_pendingAttachments.length > 1 ? 's' : ''} selected',
+                            subtitle:
+                                'Supported formats: Images (JPG, PNG) and PDF',
+                            onBrowse: _pickPendingAttachments,
+                            onCamera: _pickPendingAttachmentFromCamera,
+                            onScan: _scanPendingAttachment,
+                          ),
+                          if (_pendingAttachments.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            for (var i = 0; i < _pendingAttachments.length; i++)
+                              Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardElevated,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: AppColors.border),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      isPreviewableImagePath(
+                                            _pendingAttachments[i].path,
+                                          )
+                                          ? Icons.image_outlined
+                                          : Icons.insert_drive_file_outlined,
+                                      size: 18,
+                                      color:
+                                          isPreviewableImagePath(
+                                            _pendingAttachments[i].path,
+                                          )
+                                          ? AppColors.primary
+                                          : AppColors.textSecondary,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap:
+                                            isPreviewableImagePath(
+                                              _pendingAttachments[i].path,
+                                            )
+                                            ? () => showLocalImagePreview(
+                                                context,
+                                                _pendingAttachments[i].path!,
+                                              )
+                                            : null,
+                                        child: Text(
+                                          _pendingAttachments[i].name,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                            color:
+                                                isPreviewableImagePath(
+                                                  _pendingAttachments[i].path,
+                                                )
+                                                ? AppColors.primary
+                                                : null,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: Icon(
+                                        Icons.close,
+                                        size: 16,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                      onPressed: () => setState(
+                                        () => _pendingAttachments.removeAt(i),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ],
+                      ],
+                    ),
+
+                    // ── SECTION 8: RESOLUTION (COMPLETED WORK ORDERS) ──
+                    // Always shown, matching web's `EnhancedResolutionSection` —
+                    // only the field's enabled state / placeholder toggle on
+                    // status, the section itself never disappears.
+                    const SizedBox(height: 16),
+                    _ModernSectionCard(
+                      sectionNumber: 8,
+                      icon: Icons.task_alt_rounded,
+                      iconColor: const Color(0xFF16A34A),
+                      title: 'Resolution (Completed Work Orders)',
+                      children: [
+                        TextFormField(
+                          controller: _resolutionController,
+                          enabled: _status == WorkOrderStatus.completed,
+                          decoration: InputDecoration(
+                            labelText: 'Resolution Notes',
+                            hintText: _status == WorkOrderStatus.completed
+                                ? 'Enter resolution notes'
+                                : 'Available when work order is completed',
+                            alignLabelWithHint: true,
+                            filled: true,
+                            fillColor: AppColors.inputFill,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: AppColors.border),
+                            ),
+                          ),
+                          maxLines: 3,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
         bottomNavigationBar: _loadingMeta
             ? null
@@ -2029,9 +2102,7 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                       offset: const Offset(0, -4),
                     ),
                   ],
-                  border: Border(
-                    top: BorderSide(color: AppColors.border),
-                  ),
+                  border: Border(top: BorderSide(color: AppColors.border)),
                 ),
                 child: SafeArea(
                   child: Row(
@@ -2100,11 +2171,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
   }
 
   Widget _buildPartLineCard(int index, _PartLineForm line) {
-    final filteredParts = _parts
-        .where((p) => line.partTypeId == null || p.typeId == line.partTypeId)
-        .toList();
     final restricted = _isCompletedRestrictedEdit;
-    final deferredMissingNotes = line.repairStatus == RepairStatus.deferred &&
+    final deferredMissingNotes =
+        line.repairStatus == RepairStatus.deferred &&
         line.repairNotesController.text.trim().isEmpty;
 
     return Container(
@@ -2132,16 +2201,25 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.2),
+                    ),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.build_outlined, size: 13, color: AppColors.primary),
+                      Icon(
+                        Icons.build_outlined,
+                        size: 13,
+                        color: AppColors.primary,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         'Repair Line #${index + 1}',
@@ -2163,13 +2241,25 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                   onPressed: restricted
                       ? null
                       : () => setState(() {
-                            line.dispose();
-                            _partLines.remove(line);
-                          }),
+                          line.dispose();
+                          _partLines.remove(line);
+                        }),
                 ),
               ],
             ),
             const SizedBox(height: 10),
+            if (!restricted)
+              VoiceNotesRecorderRow(
+                fieldName: 'repair_description_${line.id ?? index}',
+                sessionId: _voiceSessionId,
+                workOrderId: widget.existing?.id,
+                onTranscribed: (text) => setState(() {
+                  final current = line.descriptionController.text.trim();
+                  line.descriptionController.text = current.isEmpty
+                      ? text
+                      : '$current $text';
+                }),
+              ),
             TextFormField(
               controller: line.descriptionController,
               enabled: !restricted,
@@ -2201,18 +2291,22 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                     ),
                     initialValue: line.repairPerformedBy,
                     items: RepairPerformedBy.values
-                        .map((p) => DropdownMenuItem(
-                              value: p,
-                              child: Text(
-                                p.label,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ))
+                        .map(
+                          (p) => DropdownMenuItem(
+                            value: p,
+                            child: Text(
+                              p.label,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
                         .toList(),
                     onChanged: restricted
                         ? null
-                        : (v) => setState(() =>
-                            line.repairPerformedBy = v ?? line.repairPerformedBy),
+                        : (v) => setState(
+                            () => line.repairPerformedBy =
+                                v ?? line.repairPerformedBy,
+                          ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -2230,23 +2324,25 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                     ),
                     initialValue: line.repairStatus,
                     items: RepairStatus.values
-                        .map((s) => DropdownMenuItem(
-                              value: s,
-                              child: Text(
-                                s.label,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ))
+                        .map(
+                          (s) => DropdownMenuItem(
+                            value: s,
+                            child: Text(
+                              s.label,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
                         .toList(),
                     onChanged: restricted
                         ? null
                         : (v) => setState(() {
-                              line.repairStatus = v ?? line.repairStatus;
-                              if (line.repairStatus != RepairStatus.notStarted &&
-                                  _status == WorkOrderStatus.notStarted) {
-                                _status = WorkOrderStatus.inProgress;
-                              }
-                            }),
+                            line.repairStatus = v ?? line.repairStatus;
+                            if (line.repairStatus != RepairStatus.notStarted &&
+                                _status == WorkOrderStatus.notStarted) {
+                              _status = WorkOrderStatus.inProgress;
+                            }
+                          }),
                   ),
                 ),
               ],
@@ -2255,7 +2351,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
             DropdownButtonFormField<int>(
               isExpanded: true,
               decoration: InputDecoration(
-                labelText: line.repairStatus != RepairStatus.deferred &&
+                labelText:
+                    line.repairStatus != RepairStatus.deferred &&
                         line.repairStatus != RepairStatus.notStarted
                     ? 'Assign Technician *'
                     : 'Assign Technician',
@@ -2266,11 +2363,12 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                   borderSide: BorderSide(color: AppColors.border),
                 ),
               ),
-              initialValue: _technicians.any(
-                (t) =>
-                    (t.userId != 0 ? t.userId : t.id) ==
-                    line.assignedTechnicianId,
-              )
+              initialValue:
+                  _technicians.any(
+                    (t) =>
+                        (t.userId != 0 ? t.userId : t.id) ==
+                        line.assignedTechnicianId,
+                  )
                   ? line.assignedTechnicianId
                   : null,
               items: _technicians
@@ -2284,13 +2382,26 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
               onChanged: restricted
                   ? null
                   : (v) => setState(() => line.assignedTechnicianId = v),
-              validator: (v) => v == null &&
+              validator: (v) =>
+                  v == null &&
                       line.repairStatus != RepairStatus.deferred &&
                       line.repairStatus != RepairStatus.notStarted
                   ? 'Required unless repair status is Deferred'
                   : null,
             ),
             const SizedBox(height: 10),
+            if (!restricted)
+              VoiceNotesRecorderRow(
+                fieldName: 'repair_notes_${line.id ?? index}',
+                sessionId: _voiceSessionId,
+                workOrderId: widget.existing?.id,
+                onTranscribed: (text) => setState(() {
+                  final current = line.repairNotesController.text.trim();
+                  line.repairNotesController.text = current.isEmpty
+                      ? text
+                      : '$current $text';
+                }),
+              ),
             TextFormField(
               controller: line.repairNotesController,
               decoration: InputDecoration(
@@ -2298,7 +2409,10 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                 helperText: deferredMissingNotes
                     ? 'Note is required when repair status is Deferred'
                     : null,
-                helperStyle: const TextStyle(color: AppColors.danger, fontSize: 11),
+                helperStyle: const TextStyle(
+                  color: AppColors.danger,
+                  fontSize: 11,
+                ),
                 filled: true,
                 fillColor: AppColors.inputFill,
                 border: OutlineInputBorder(
@@ -2310,46 +2424,14 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 10),
-            WebSearchableDropdownField<PartTypeSummary?>(
-              label: 'Part Category',
-              value: _partTypes
-                  .where((t) => t.id == line.partTypeId)
-                  .firstOrNull,
-              items: [null, ..._partTypes],
-              itemLabel: (t) => t?.name ?? 'Select Category',
-              hint: 'Select Category',
-              onChanged: restricted
-                  ? (_) {}
-                  : (v) => setState(() {
-                        line.partTypeId = v?.id;
-                        line.partId = null;
-                        _recalculateEstimatedCost();
-                      }),
-            ),
-            const SizedBox(height: 8),
-            WebSearchableDropdownField<PartSummary?>(
-              label: 'Inventory Part',
-              value: filteredParts
-                  .where((p) => p.id == line.partId)
-                  .firstOrNull,
-              items: [null, ...filteredParts],
-              itemLabel: (p) =>
-                  p != null ? '${p.code} (In Stock: ${p.quantity ?? 0})' : 'Select Part',
-              hint: 'Select Part',
-              onChanged: restricted
-                  ? (_) {}
-                  : (v) => setState(() {
-                        line.partId = v?.id;
-                        _recalculateEstimatedCost();
-                      }),
-            ),
-            const SizedBox(height: 10),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Expanded(
                   child: TextFormField(
                     controller: line.hoursController,
                     readOnly: line.repairStatus == RepairStatus.inProgress,
+                    enabled: !restricted,
                     decoration: InputDecoration(
                       labelText: 'Hours',
                       helperText: line.repairStatus == RepairStatus.inProgress
@@ -2366,23 +2448,47 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Expanded(
-                  child: TextFormField(
-                    controller: line.quantityController,
-                    enabled: !restricted,
-                    decoration: InputDecoration(
-                      labelText: 'Quantity *',
-                      filled: true,
-                      fillColor: AppColors.inputFill,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(color: AppColors.border),
+                // Web parity for the "External" checkbox next to Hours
+                // (`CreateWorkOrderDrawer.tsx`'s repair row3) — a quick
+                // toggle kept in sync with the "Repaired By" dropdown above,
+                // rather than a separate field of its own.
+                InkWell(
+                  onTap: restricted
+                      ? null
+                      : () => setState(() {
+                          line.repairPerformedBy =
+                              line.repairPerformedBy ==
+                                  RepairPerformedBy.external
+                              ? RepairPerformedBy.internal
+                              : RepairPerformedBy.external;
+                        }),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Checkbox(
+                        value:
+                            line.repairPerformedBy ==
+                            RepairPerformedBy.external,
+                        onChanged: restricted
+                            ? null
+                            : (v) => setState(() {
+                                line.repairPerformedBy = (v ?? false)
+                                    ? RepairPerformedBy.external
+                                    : RepairPerformedBy.internal;
+                              }),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => setState(() {
-                      _recalculateEstimatedCost();
-                    }),
+                      const SizedBox(width: 2),
+                      Text(
+                        'External',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -2434,8 +2540,9 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       setState(() => _quickAddError = 'Please select a Part Type');
       return;
     }
-    final filtered =
-        _parts.where((p) => p.typeId == _quickAddPartTypeId).toList();
+    final filtered = _parts
+        .where((p) => p.typeId == _quickAddPartTypeId)
+        .toList();
     if (filtered.isNotEmpty && _quickAddPartId == null) {
       setState(() => _quickAddError = 'Please select a Part');
       return;
@@ -2445,7 +2552,8 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       setState(() => _quickAddError = 'Quantity must be between 1 and 100');
       return;
     }
-    final isDuplicate = _quickAddPartId != null &&
+    final isDuplicate =
+        _quickAddPartId != null &&
         _inventoryPartRows.any((r) => r.partId == _quickAddPartId);
     if (isDuplicate) {
       setState(() => _quickAddError = 'This item is already added');
@@ -2478,32 +2586,37 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
       children: [
         WebSearchableDropdownField<PartTypeSummary?>(
           label: 'Part Type',
-          value: _partTypes.where((t) => t.id == _quickAddPartTypeId).firstOrNull,
+          value: _partTypes
+              .where((t) => t.id == _quickAddPartTypeId)
+              .firstOrNull,
           items: [null, ..._partTypes],
           itemLabel: (t) => t?.name ?? 'Select',
           hint: 'Select',
           onChanged: restricted
               ? (_) {}
               : (v) => setState(() {
-                    _quickAddPartTypeId = v?.id;
-                    _quickAddPartId = null;
-                    _quickAddError = null;
-                  }),
+                  _quickAddPartTypeId = v?.id;
+                  _quickAddPartId = null;
+                  _quickAddError = null;
+                }),
         ),
         const SizedBox(height: 8),
         WebSearchableDropdownField<PartSummary?>(
           label: 'Part Name',
-          value: filteredParts.where((p) => p.id == _quickAddPartId).firstOrNull,
+          value: filteredParts
+              .where((p) => p.id == _quickAddPartId)
+              .firstOrNull,
           items: [null, ...filteredParts],
-          itemLabel: (p) =>
-              p != null ? '${p.code} (In Stock: ${p.quantity ?? 0})' : 'Select Part',
+          itemLabel: (p) => p != null
+              ? '${p.code} (In Stock: ${p.quantity ?? 0})'
+              : 'Select Part',
           hint: 'Select Part',
           onChanged: restricted
               ? (_) {}
               : (v) => setState(() {
-                    _quickAddPartId = v?.id;
-                    _quickAddError = null;
-                  }),
+                  _quickAddPartId = v?.id;
+                  _quickAddError = null;
+                }),
         ),
         const SizedBox(height: 8),
         Row(
@@ -2643,25 +2756,26 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
             onChanged: restricted
                 ? (_) {}
                 : (v) => setState(() {
-                      row.partTypeId = v?.id;
-                      row.partId = null;
-                      _recalculateEstimatedCost();
-                    }),
+                    row.partTypeId = v?.id;
+                    row.partId = null;
+                    _recalculateEstimatedCost();
+                  }),
           ),
           const SizedBox(height: 8),
           WebSearchableDropdownField<PartSummary?>(
             label: 'Part Name',
             value: filteredParts.where((p) => p.id == row.partId).firstOrNull,
             items: [null, ...filteredParts],
-            itemLabel: (p) =>
-                p != null ? '${p.code} (In Stock: ${p.quantity ?? 0})' : 'Select Part',
+            itemLabel: (p) => p != null
+                ? '${p.code} (In Stock: ${p.quantity ?? 0})'
+                : 'Select Part',
             hint: 'Select Part',
             onChanged: restricted
                 ? (_) {}
                 : (v) => setState(() {
-                      row.partId = v?.id;
-                      _recalculateEstimatedCost();
-                    }),
+                    row.partId = v?.id;
+                    _recalculateEstimatedCost();
+                  }),
           ),
           const SizedBox(height: 8),
           TextFormField(
@@ -2686,69 +2800,6 @@ class _WorkOrderFormScreenState extends State<WorkOrderFormScreen> {
 }
 
 // ── MODERN UI WIDGETS & SECTIONS ──
-
-class _QuickNavChip extends StatelessWidget {
-  const _QuickNavChip({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.primary
-              : AppColors.cardElevated,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
-          ),
-          boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.2),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: isSelected ? Colors.white : AppColors.textSecondary,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? Colors.white : AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 /// Web parity for the "View Audit Trail" pill shown in the Work Order
 /// Source section header when the work order was opened from a DVIR defect
@@ -3002,7 +3053,9 @@ class _ModernDateField extends StatelessWidget {
             style: TextStyle(
               fontSize: 14,
               fontWeight: value != null ? FontWeight.w600 : FontWeight.normal,
-              color: value != null ? AppColors.textPrimary : AppColors.textSecondary,
+              color: value != null
+                  ? AppColors.textPrimary
+                  : AppColors.textSecondary,
             ),
           ),
         ),
@@ -3055,10 +3108,14 @@ class _PriorityPillSelector extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: isSelected ? pillColor : pillColor.withValues(alpha: 0.08),
+                  color: isSelected
+                      ? pillColor
+                      : pillColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: isSelected ? pillColor : pillColor.withValues(alpha: 0.3),
+                    color: isSelected
+                        ? pillColor
+                        : pillColor.withValues(alpha: 0.3),
                     width: isSelected ? 1.5 : 1.0,
                   ),
                   boxShadow: isSelected
@@ -3258,10 +3315,7 @@ class _RepairStatusBadge extends StatelessWidget {
           Container(
             width: 6,
             height: 6,
-            decoration: BoxDecoration(
-              color: dot,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
           ),
           const SizedBox(width: 6),
           Text(
@@ -3352,13 +3406,14 @@ class _EventsSectionState extends State<_EventsSection> {
             unitNumber: widget.unitNumber,
           ),
           const SizedBox(height: 8),
-          for (final e in widget.events) _EventCard(
-            issue: e,
-            linked: widget.linkedIds.contains(e.id),
-            uploads: widget.uploads[e.id] ?? const [],
-            uploadsLoading: widget.uploadsLoading,
-            onTap: () => widget.onTap(e),
-          ),
+          for (final e in widget.events)
+            _EventCard(
+              issue: e,
+              linked: widget.linkedIds.contains(e.id),
+              uploads: widget.uploads[e.id] ?? const [],
+              uploadsLoading: widget.uploadsLoading,
+              onTap: () => widget.onTap(e),
+            ),
         ],
       ],
     );
@@ -3412,10 +3467,8 @@ class _EventCard extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _ImagePreviewSheet(
-        uploads: uploads,
-        loading: uploadsLoading,
-      ),
+      builder: (_) =>
+          _ImagePreviewSheet(uploads: uploads, loading: uploadsLoading),
     );
   }
 
@@ -3474,7 +3527,11 @@ class _EventCard extends StatelessWidget {
                     onPressed: () => _openImagePreview(context),
                   ),
                   if (linked)
-                    Icon(Icons.check_circle, size: 18, color: AppColors.primary),
+                    Icon(
+                      Icons.check_circle,
+                      size: 18,
+                      color: AppColors.primary,
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -3500,14 +3557,20 @@ class _EventCard extends StatelessWidget {
                   'Reference: ${issue.externalReference}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ],
               if ((issue.reportedDate ?? '').isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text(
                   'Reported: ${_formatReportedDate(issue.reportedDate)}',
-                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ],
             ],
@@ -3557,10 +3620,12 @@ class _EventStatusChip extends StatelessWidget {
     if (normalized.contains('progress')) {
       bg = const Color(0xFFDBEAFE);
       fg = const Color(0xFF1D4ED8);
-    } else if (normalized.contains('complete') || normalized.contains('resolved')) {
+    } else if (normalized.contains('complete') ||
+        normalized.contains('resolved')) {
       bg = const Color(0xFFDCFCE7);
       fg = const Color(0xFF15803D);
-    } else if (normalized.contains('not started') || normalized.contains('open')) {
+    } else if (normalized.contains('not started') ||
+        normalized.contains('open')) {
       bg = const Color(0xFFFEF3C7);
       fg = const Color(0xFF92400E);
     } else {
@@ -3569,7 +3634,10 @@ class _EventStatusChip extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Text(
         status,
         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg),
@@ -3603,7 +3671,10 @@ class _EventSeverityChip extends StatelessWidget {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Text(
         severity,
         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: fg),
@@ -3630,8 +3701,9 @@ class _ImagePreviewSheetState extends State<_ImagePreviewSheet> {
     final images = widget.uploads
         .where((u) => u.isImage && (u.signedUrl ?? '').isNotEmpty)
         .toList();
-    final selected =
-        images.isNotEmpty ? images[_selectedIndex.clamp(0, images.length - 1)] : null;
+    final selected = images.isNotEmpty
+        ? images[_selectedIndex.clamp(0, images.length - 1)]
+        : null;
 
     return SafeArea(
       child: Padding(
@@ -3663,26 +3735,29 @@ class _ImagePreviewSheetState extends State<_ImagePreviewSheet> {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppColors.border, style: BorderStyle.solid),
+                border: Border.all(
+                  color: AppColors.border,
+                  style: BorderStyle.solid,
+                ),
               ),
               child: widget.loading
                   ? const CircularProgressIndicator()
                   : selected == null
-                      ? Text(
+                  ? Text(
+                      'No image found',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    )
+                  : ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.network(
+                        selected.signedUrl!,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, _, _) => Text(
                           'No image found',
                           style: TextStyle(color: AppColors.textSecondary),
-                        )
-                      : ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.network(
-                            selected.signedUrl!,
-                            fit: BoxFit.contain,
-                            errorBuilder: (_, _, _) => Text(
-                              'No image found',
-                              style: TextStyle(color: AppColors.textSecondary),
-                            ),
-                          ),
                         ),
+                      ),
+                    ),
             ),
             if (images.length > 1) ...[
               const SizedBox(height: 12),
@@ -3773,8 +3848,10 @@ class _OdometerFieldState extends State<_OdometerField> {
 
   void _syncFromKmController() {
     if (_syncingFromKm) return;
-    final display =
-        kmStringToDisplayValue(widget.kmController.text, widget.unit);
+    final display = kmStringToDisplayValue(
+      widget.kmController.text,
+      widget.unit,
+    );
     if (display != _displayController.text) {
       _displayController.text = display;
     }
@@ -3788,8 +3865,10 @@ class _OdometerFieldState extends State<_OdometerField> {
       widget.kmController.addListener(_syncFromKmController);
     }
     if (oldWidget.unit != widget.unit) {
-      _displayController.text =
-          kmStringToDisplayValue(widget.kmController.text, widget.unit);
+      _displayController.text = kmStringToDisplayValue(
+        widget.kmController.text,
+        widget.unit,
+      );
     }
   }
 
@@ -3820,8 +3899,9 @@ class _OdometerFieldState extends State<_OdometerField> {
                 controller: _displayController,
                 enabled: widget.enabled,
                 onChanged: _handleDisplayChanged,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
                   labelText: widget.label,
                   errorText: widget.errorText,
@@ -3835,7 +3915,11 @@ class _OdometerFieldState extends State<_OdometerField> {
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide(color: AppColors.border),
                   ),
-                  prefixIcon: Icon(Icons.speed_rounded, size: 20, color: AppColors.textSecondary),
+                  prefixIcon: Icon(
+                    Icons.speed_rounded,
+                    size: 20,
+                    color: AppColors.textSecondary,
+                  ),
                   suffixIcon: SizedBox(
                     width: 85,
                     child: DropdownButtonHideUnderline(
@@ -3848,7 +3932,10 @@ class _OdometerFieldState extends State<_OdometerField> {
                                 value: u,
                                 child: Text(
                                   u.label,
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             )
@@ -3870,7 +3957,9 @@ class _OdometerFieldState extends State<_OdometerField> {
                 style: IconButton.styleFrom(
                   backgroundColor: AppColors.primary.withValues(alpha: 0.1),
                   foregroundColor: AppColors.primary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   minimumSize: const Size(48, 48),
                 ),
                 onPressed: widget.enabled && !widget.loading
