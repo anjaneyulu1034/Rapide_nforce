@@ -283,11 +283,6 @@ class _ProfileTabState extends State<_ProfileTab> {
   late final TextEditingController _phone;
   late final TextEditingController _certificateNumber;
   bool _saving = false;
-  int? _signatureUploadId;
-  String? _signatureFileName;
-  String? _signatureLocalPath;
-  bool _signatureUploading = false;
-  bool _signaturePreviewLoading = false;
   int? _certificateUploadId;
   String? _certificateFileName;
   String? _certificateLocalPath;
@@ -303,30 +298,21 @@ class _ProfileTabState extends State<_ProfileTab> {
     _certificateNumber = TextEditingController(
       text: widget.user.certificateNumber ?? '',
     );
-    _signatureUploadId = widget.user.signatureUploadId;
-    if (_signatureUploadId != null) {
-      _loadUploadFileName(_signatureUploadId!, isSignature: true);
-    }
     _certificateUploadId = widget.user.certificateUploadId;
     if (_certificateUploadId != null) {
-      _loadUploadFileName(_certificateUploadId!, isSignature: false);
+      _loadUploadFileName(_certificateUploadId!);
     }
   }
 
   // Only the upload id is persisted server-side, so on load we resolve it to
   // a display file name the same way web's SignatureUpload component does —
   // falling back to a generic label if the lookup fails.
-  Future<void> _loadUploadFileName(int uploadId, {required bool isSignature}) async {
+  Future<void> _loadUploadFileName(int uploadId) async {
     final result = await AuthService.instance.fetchUploadMeta(uploadId);
     if (!mounted) return;
+    if (_certificateUploadId != uploadId) return;
     final name = result.isSuccess ? result.data?.fileName : null;
-    if (isSignature) {
-      if (_signatureUploadId != uploadId) return;
-      setState(() => _signatureFileName = name ?? 'Signature uploaded');
-    } else {
-      if (_certificateUploadId != uploadId) return;
-      setState(() => _certificateFileName = name ?? 'Certificate uploaded');
-    }
+    setState(() => _certificateFileName = name ?? 'Certificate uploaded');
   }
 
   @override
@@ -334,30 +320,6 @@ class _ProfileTabState extends State<_ProfileTab> {
     _phone.dispose();
     _certificateNumber.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickSignature() async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
-    );
-    if (picked == null || picked.files.isEmpty) return;
-    final file = picked.files.first;
-    if (file.path == null) return;
-
-    setState(() => _signatureUploading = true);
-    final result = await AuthService.instance.uploadFile(file.path!, file.name);
-    if (!mounted) return;
-    setState(() => _signatureUploading = false);
-    if (result.isSuccess) {
-      setState(() {
-        _signatureUploadId = result.data;
-        _signatureFileName = file.name;
-        _signatureLocalPath = file.path;
-      });
-    } else {
-      AppToast.showError(result.message ?? 'Upload failed');
-    }
   }
 
   Future<void> _pickCertificate() async {
@@ -383,13 +345,6 @@ class _ProfileTabState extends State<_ProfileTab> {
       AppToast.showError(result.message ?? 'Upload failed');
     }
   }
-
-  Future<void> _previewSignature() => _previewFile(
-    uploadId: _signatureUploadId,
-    localPath: _signatureLocalPath,
-    displayName: _signatureFileName,
-    setLoading: (v) => setState(() => _signaturePreviewLoading = v),
-  );
 
   Future<void> _previewCertificate() => _previewFile(
     uploadId: _certificateUploadId,
@@ -440,11 +395,6 @@ class _ProfileTabState extends State<_ProfileTab> {
       AppToast.showError('Unable to determine user ID');
       return;
     }
-    if (_signatureUploadId == null) {
-      AppToast.showError('Signature is required');
-      return;
-    }
-
     setState(() => _saving = true);
     final parts = widget.user.name.split(' ');
     final payload = <String, dynamic>{
@@ -456,7 +406,6 @@ class _ProfileTabState extends State<_ProfileTab> {
       'first_name': parts.first,
       'last_name': parts.skip(1).join(' '),
       'phone': _phone.text.trim().isEmpty ? null : _phone.text.trim(),
-      'signature_upload_id': _signatureUploadId,
     };
     if (_isLeadTechnician) {
       payload['certificate_number'] =
@@ -624,21 +573,6 @@ class _ProfileTabState extends State<_ProfileTab> {
               controller: _phone,
               hint: 'Enter phone number',
               keyboardType: TextInputType.phone,
-            ),
-            const SizedBox(height: 14),
-            _FieldLabel(label: 'Signature', required: true),
-            const SizedBox(height: 6),
-            _FileField(
-              fileName: _signatureFileName,
-              uploading: _signatureUploading,
-              previewLoading: _signaturePreviewLoading,
-              onPick: _pickSignature,
-              onPreview: _previewSignature,
-              onRemove: () => setState(() {
-                _signatureUploadId = null;
-                _signatureFileName = null;
-                _signatureLocalPath = null;
-              }),
             ),
             if (_isLeadTechnician) ...[
               const SizedBox(height: 14),
@@ -1018,29 +952,19 @@ class _InfoRow extends StatelessWidget {
 // ─── Field label ──────────────────────────────────────────────────────────────
 
 class _FieldLabel extends StatelessWidget {
-  const _FieldLabel({required this.label, this.required = false});
+  const _FieldLabel({required this.label});
 
   final String label;
-  final bool required;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textSecondary,
-          ),
-        ),
-        if (required)
-          const Text(
-            ' *',
-            style: TextStyle(color: AppColors.required, fontSize: 12),
-          ),
-      ],
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: AppColors.textSecondary,
+      ),
     );
   }
 }

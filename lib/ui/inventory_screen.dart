@@ -20,6 +20,83 @@ import 'package:rapide_nforce/ui/widgets/status_badge.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
 import 'package:rapide_nforce/ui/work_orders/work_order_detail_screen.dart';
 
+/// One labeled value in a Parts/Part Types card's info grid — mirrors the
+/// Work Order card's `_GridCell` pattern (icon + small caps label, then the
+/// bold value). Callers skip this entirely when there's nothing to show
+/// rather than rendering a placeholder like "—" — a genuinely missing value
+/// is not information worth a whole grid cell. Shared (top-level, not a
+/// method) since both the Parts and Part Types tabs use it from separate
+/// State classes.
+Widget _partInfoCell({
+  required IconData icon,
+  required String label,
+  required String value,
+  Color? valueColor,
+  bool isLink = false,
+  VoidCallback? onTap,
+  // Set by the caller when this cell is the second (right) slot of a pair —
+  // pins the value to the cell's right edge instead of its left, so the
+  // first field reads flush-left and the second reads flush-right (matching
+  // the card header's Stock/Part-# corners), with whatever's unused in the
+  // middle left as open space rather than looking accidental.
+  bool alignEnd = false,
+}) {
+  final content = Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Row(
+        mainAxisAlignment: alignEnd
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
+        children: [
+          Icon(icon, size: 11, color: AppColors.primary),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 3),
+      Align(
+        alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
+        child: Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.bold,
+            color:
+                valueColor ??
+                (isLink ? AppColors.chromeBlue : AppColors.textPrimary),
+            decoration: isLink ? TextDecoration.underline : null,
+            decorationColor: AppColors.chromeBlue,
+          ),
+        ),
+      ),
+    ],
+  );
+  if (onTap == null) return content;
+  return InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(6),
+    child: content,
+  );
+}
+
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key, this.initialIndex = 0});
 
@@ -32,7 +109,8 @@ class InventoryScreen extends StatefulWidget {
 class InventoryScreenState extends State<InventoryScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final GlobalKey<_PartTypesTabState> _typesKey = GlobalKey<_PartTypesTabState>();
+  final GlobalKey<_PartTypesTabState> _typesKey =
+      GlobalKey<_PartTypesTabState>();
   final GlobalKey<_PartsTabState> _partsKey = GlobalKey<_PartsTabState>();
 
   String? _partsInitialSearch;
@@ -432,350 +510,152 @@ class _PartTypesTabState extends State<_PartTypesTab> {
 
   Widget _partTypeCardBody(PartTypeModel item, String company) {
     final toneColor = StatusBadgeColors.text(stockLevelTone(item.stockLevel));
+    final cellBuilders = <Widget Function({required bool alignEnd})>[
+      ({required alignEnd}) => _partInfoCell(
+        icon: Icons.inventory_2_outlined,
+        label: 'COUNT',
+        value: '${item.count}',
+        isLink: true,
+        onTap: () => widget.onViewParts(item.name, item.id),
+        alignEnd: alignEnd,
+      ),
+      ({required alignEnd}) => _partInfoCell(
+        icon: Icons.monetization_on_outlined,
+        label: 'TOTAL COST',
+        value: '\$${(item.totalCost ?? 0).toStringAsFixed(2)}',
+        alignEnd: alignEnd,
+      ),
+      ({required alignEnd}) => _partInfoCell(
+        icon: Icons.business_outlined,
+        label: 'COMPANY',
+        value: company,
+        alignEnd: alignEnd,
+      ),
+      ({required alignEnd}) => _partInfoCell(
+        icon: Icons.warning_amber_outlined,
+        label: 'LOW STOCK TRIGGER',
+        value: '${item.lowStockTrigger}',
+        alignEnd: alignEnd,
+      ),
+    ];
+
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'PART TYPE # ',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primary,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  item.name,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+              // Left: stock status, with the actual quantity right under it.
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InventoryStockBadge(level: item.stockLevel, compact: true),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Qty: ${item.totalQuantity ?? item.count}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: toneColor,
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
+                ],
+              ),
+              const SizedBox(width: 10),
+              // Right: actions, with the part type name right under them —
+              // pinned to the card's full right edge.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_canUpdate)
+                          IconOnlyButton(
+                            icon: Icons.edit,
+                            color: AppColors.chromeBlue,
+                            onTap: () async {
+                              final ok = await Navigator.of(context).push<bool>(
+                                MaterialPageRoute(
+                                  builder: (_) =>
+                                      PartTypeFormScreen(partType: item),
+                                ),
+                              );
+                              if (ok == true) _load();
+                            },
+                          ),
+                        if (_canDelete)
+                          IconOnlyButton(
+                            icon: Icons.delete_outline,
+                            danger: true,
+                            onTap: () => _delete(item),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    RichText(
+                      textAlign: TextAlign.right,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'PART TYPE # ',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          TextSpan(
+                            text: item.name,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              if (_canUpdate)
-                IconOnlyButton(
-                  icon: Icons.edit,
-                  color: AppColors.chromeBlue,
-                  onTap: () async {
-                    final ok = await Navigator.of(context).push<bool>(
-                      MaterialPageRoute(
-                        builder: (_) => PartTypeFormScreen(partType: item),
-                      ),
-                    );
-                    if (ok == true) _load();
-                  },
-                ),
-              if (_canDelete)
-                IconOnlyButton(
-                  icon: Icons.delete_outline,
-                  danger: true,
-                  onTap: () => _delete(item),
-                ),
-              const SizedBox(width: 4),
-              InventoryStockBadge(level: item.stockLevel, compact: true),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Divider(
             height: 1,
             thickness: 1,
             color: AppColors.textSecondary.withValues(alpha: 0.12),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.inventory_2_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'COUNT',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    InkWell(
-                      onTap: () => widget.onViewParts(item.name, item.id),
-                      child: Text(
-                        '${item.count}',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                          decoration: TextDecoration.underline,
-                          decorationColor: AppColors.primary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
+          const SizedBox(height: 10),
+          for (var i = 0; i < cellBuilders.length; i += 2)
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // First field pins left, second pins right (its value is
+                  // right-aligned via `alignEnd`) — matching the card
+                  // header's Stock/Part-# corners — with whatever's unused
+                  // between them left as open space instead of the second
+                  // field just sitting wherever the halfway mark falls.
+                  Expanded(child: cellBuilders[i](alignEnd: false)),
+                  if (i + 1 < cellBuilders.length) ...[
+                    const SizedBox(width: 12),
+                    Expanded(child: cellBuilders[i + 1](alignEnd: true)),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.layers_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'QUANTITY',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${item.totalQuantity ?? item.count}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: toneColor,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.monetization_on_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'TOTAL COST',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '\$${(item.totalCost ?? 0).toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.business_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'COMPANY',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      company,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.warning_amber_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            'LOW STOCK TRIGGER',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textSecondary,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${item.lowStockTrigger}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'CREATED ON',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      formatInventoryDate(item.createdOn),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.person_outline,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'CREATED BY',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      item.createdByUsername ?? '—',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            ),
         ],
       ),
     );
@@ -1226,444 +1106,233 @@ class _PartsTabState extends State<_PartsTab> {
 
   Widget _partCardBody(PartModel part) {
     final toneColor = StatusBadgeColors.text(stockLevelTone(part.stockLevel));
+    final hasCompany =
+        part.companyDisplay.trim().isNotEmpty &&
+        part.companyDisplay.trim() != '-';
+
+    // Only fields with real data get a grid cell — a part with no cost,
+    // no company, or no invoice on file simply shows fewer cells instead of
+    // a row of "—" placeholders. Each entry is deferred (not a built Widget)
+    // so the render loop below can decide `alignEnd` once it knows whether
+    // a cell landed in the row's first or second slot.
+    final cellBuilders = <Widget Function({required bool alignEnd})>[
+      ({required alignEnd}) => _partInfoCell(
+        icon: Icons.category_outlined,
+        label: 'TYPE',
+        value: part.partTypeName,
+        alignEnd: alignEnd,
+      ),
+      if (part.cost != null)
+        ({required alignEnd}) => _partInfoCell(
+          icon: Icons.monetization_on_outlined,
+          label: 'COST',
+          value: formatInventoryMoney(part.cost),
+          alignEnd: alignEnd,
+        ),
+      if (hasCompany)
+        ({required alignEnd}) => _partInfoCell(
+          icon: Icons.business_outlined,
+          label: 'COMPANY',
+          value: part.companyDisplay,
+          alignEnd: alignEnd,
+        ),
+      if ((part.invoiceNumber ?? '').trim().isNotEmpty)
+        ({required alignEnd}) => _partInfoCell(
+          icon: Icons.receipt_long_outlined,
+          label: 'INVOICE #',
+          value: part.invoiceNumber!.trim(),
+          alignEnd: alignEnd,
+        ),
+      if (part.hasInvoiceFile)
+        ({required alignEnd}) => _partInfoCell(
+          icon: Icons.description_outlined,
+          label: 'INVOICE FILE',
+          value: 'View Invoice',
+          isLink: true,
+          onTap: () => openInventoryInvoiceLink(part.invoiceLink),
+          alignEnd: alignEnd,
+        ),
+      if (part.isUsedInWorkOrder)
+        ({required alignEnd}) =>
+            _usedInWorkOrdersCell(part, alignEnd: alignEnd),
+    ];
+
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'PART # ',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.primary,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  part.code,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+              // Left: stock status, with the actual quantity right under it.
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InventoryStockBadge(level: part.stockLevel, compact: true),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Qty: ${part.quantity ?? 0}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: toneColor,
+                    ),
                   ),
-                  overflow: TextOverflow.ellipsis,
+                ],
+              ),
+              const SizedBox(width: 10),
+              // Right: actions, with the part code right under them — pinned
+              // to the card's full right edge, not just after the left block.
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_canUpdate)
+                          IconOnlyButton(
+                            icon: Icons.edit,
+                            color: AppColors.chromeBlue,
+                            onTap: !part.isProtected
+                                ? () async {
+                                    final ok = await Navigator.of(context)
+                                        .push<bool>(
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                PartFormScreen(part: part),
+                                          ),
+                                        );
+                                    if (ok == true) _load();
+                                  }
+                                : null,
+                          ),
+                        if (_canDelete)
+                          IconOnlyButton(
+                            icon: Icons.delete_outline,
+                            danger: true,
+                            onTap:
+                                (!part.isProtected && !part.isUsedInWorkOrder)
+                                ? () => _delete(part)
+                                : null,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    RichText(
+                      textAlign: TextAlign.right,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'PART # ',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.primary,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                          TextSpan(
+                            text: part.code,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              if (_canUpdate)
-                IconOnlyButton(
-                  icon: Icons.edit,
-                  color: AppColors.chromeBlue,
-                  onTap: !part.isProtected
-                      ? () async {
-                          final ok = await Navigator.of(context).push<bool>(
-                            MaterialPageRoute(
-                              builder: (_) => PartFormScreen(part: part),
-                            ),
-                          );
-                          if (ok == true) _load();
-                        }
-                      : null,
-                ),
-              if (_canDelete)
-                IconOnlyButton(
-                  icon: Icons.delete_outline,
-                  danger: true,
-                  onTap: (!part.isProtected && !part.isUsedInWorkOrder)
-                      ? () => _delete(part)
-                      : null,
-                ),
-              const SizedBox(width: 4),
-              InventoryStockBadge(level: part.stockLevel, compact: true),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Divider(
             height: 1,
             thickness: 1,
             color: AppColors.textSecondary.withValues(alpha: 0.12),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.category_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'TYPE',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      part.partTypeName,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+          const SizedBox(height: 10),
+          for (var i = 0; i < cellBuilders.length; i += 2)
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // First field pins left, second pins right (its value is
+                  // right-aligned via `alignEnd`) — matching the card
+                  // header's Stock/Part-# corners — with whatever's unused
+                  // between them left as open space instead of the second
+                  // field just sitting wherever the halfway mark falls.
+                  Expanded(child: cellBuilders[i](alignEnd: false)),
+                  if (i + 1 < cellBuilders.length) ...[
+                    const SizedBox(width: 12),
+                    Expanded(child: cellBuilders[i + 1](alignEnd: true)),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.layers_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'QUANTITY',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${part.quantity ?? 0}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: toneColor,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.monetization_on_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'COST',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      formatInventoryMoney(part.cost),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.business_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'COMPANY',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      part.companyDisplay,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.receipt_long_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'INVOICE #',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      part.invoiceNumber ?? '—',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.description_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'INVOICE FILE',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    InkWell(
-                      onTap: part.hasInvoiceFile
-                          ? () => openInventoryInvoiceLink(part.invoiceLink)
-                          : null,
-                      child: Text(
-                        part.hasInvoiceFile ? 'View Invoice' : 'No Invoice',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: part.hasInvoiceFile
-                              ? AppColors.primary
-                              : AppColors.textPrimary,
-                          decoration: part.hasInvoiceFile
-                              ? TextDecoration.underline
-                              : null,
-                          decorationColor: AppColors.primary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.calendar_today_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'CREATED ON',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      formatInventoryDate(part.createdOn),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.person_outline,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'CREATED BY',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      part.createdByUsername ?? '—',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textPrimary,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.build_circle_outlined,
-                          size: 12,
-                          color: AppColors.primary,
-                        ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            'USED IN WORK ORDERS',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textSecondary,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    _buildUsedInCell(part),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildUsedInCell(PartModel part) {
+  /// Same icon+label+value shape as [_partInfoCell], but the value is the
+  /// tappable work-order chip(s) rather than plain text — kept as a grid
+  /// cell (not a separate full-width block) so it pairs side by side with
+  /// whatever field precedes it, same as every other field. [alignEnd]
+  /// mirrors [_partInfoCell]'s: true when this cell lands in the row's
+  /// second (right) slot, pinning the chip to the cell's right edge.
+  Widget _usedInWorkOrdersCell(PartModel part, {bool alignEnd = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: alignEnd
+              ? MainAxisAlignment.end
+              : MainAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.build_circle_outlined,
+              size: 11,
+              color: AppColors.primary,
+            ),
+            const SizedBox(width: 3),
+            Flexible(
+              child: Text(
+                'USED IN WORK ORDERS',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        _buildUsedInCell(part, alignEnd: alignEnd),
+      ],
+    );
+  }
+
+  Widget _buildUsedInCell(PartModel part, {bool alignEnd = false}) {
     final list = part.usedInWorkOrders;
-    if (list.isEmpty && (part.usedInWorkOrder == null || part.usedInWorkOrder == 0)) {
+    if (list.isEmpty &&
+        (part.usedInWorkOrder == null || part.usedInWorkOrder == 0)) {
       return Text(
         '—',
         style: TextStyle(
@@ -1679,33 +1348,53 @@ class _PartsTabState extends State<_PartsTab> {
         : 'WO-${part.usedInWorkOrder.toString().padLeft(4, '0')}';
     final extraCount = list.length > 1 ? list.length - 1 : 0;
 
-    return InkWell(
-      onTap: () => _showUsedInWorkOrdersModal(part),
-      borderRadius: BorderRadius.circular(6),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            firstNum,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primary,
-              decoration: TextDecoration.underline,
-            ),
+    // A compact chip pinned to this cell's right edge when it's the row's
+    // second slot — matching every other right-slot field — rather than
+    // stretched full width, so a short chip doesn't drag a big colored
+    // block across empty space that isn't actually part of it.
+    return Align(
+      alignment: alignEnd ? Alignment.centerRight : Alignment.centerLeft,
+      child: InkWell(
+        onTap: () => _showUsedInWorkOrdersModal(part),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.primaryLight.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
           ),
-          if (extraCount > 0) ...[
-            const SizedBox(width: 4),
-            Text(
-              '(+$extraCount more)',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.build_circle_outlined,
+                size: 12,
                 color: AppColors.primary,
               ),
-            ),
-          ],
-        ],
+              const SizedBox(width: 4),
+              Text(
+                firstNum,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+              if (extraCount > 0) ...[
+                const SizedBox(width: 3),
+                Text(
+                  '(+$extraCount more)',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1715,109 +1404,135 @@ class _PartsTabState extends State<_PartsTab> {
     final displayList = list.isNotEmpty
         ? list
         : (part.usedInWorkOrder != null && part.usedInWorkOrder! > 0
-            ? [
-                PartUsedInWorkOrder(
-                  id: part.usedInWorkOrder!,
-                  number: 'WO-${part.usedInWorkOrder!.toString().padLeft(4, '0')}',
-                )
-              ]
-            : <PartUsedInWorkOrder>[]);
+              ? [
+                  PartUsedInWorkOrder(
+                    id: part.usedInWorkOrder!,
+                    number:
+                        'WO-${part.usedInWorkOrder!.toString().padLeft(4, '0')}',
+                  ),
+                ]
+              : <PartUsedInWorkOrder>[]);
 
-    showModalBottomSheet(
+    showDialog<void>(
       context: context,
-      backgroundColor: AppColors.card,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (ctx) {
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        return Dialog(
+          backgroundColor: AppColors.card,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(ctx).size.height * 0.7,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Used in Work Orders',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
                   Text(
-                    'Used in Work Orders',
+                    'Part: ${part.partTypeName.isNotEmpty ? part.partTypeName : part.code}',
                     style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(ctx),
+                  const SizedBox(height: 16),
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: displayList.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: Text('No work orders linked.'),
+                            )
+                          : Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: displayList.map((wo) {
+                                return InkWell(
+                                  onTap: () {
+                                    Navigator.pop(ctx);
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => WorkOrderDetailScreen(
+                                          workOrderId: wo.id,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryLight.withValues(
+                                        alpha: 0.5,
+                                      ),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: AppColors.primary.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          wo.number,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          '#${wo.id}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                    ),
                   ),
                 ],
               ),
-              Text(
-                'Part: ${part.partTypeName.isNotEmpty ? part.partTypeName : part.code}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (displayList.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Text('No work orders linked.'),
-                )
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: displayList.map((wo) {
-                    return InkWell(
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => WorkOrderDetailScreen(workOrderId: wo.id),
-                          ),
-                        );
-                      },
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryLight.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                              color: AppColors.primary.withValues(alpha: 0.2)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              wo.number,
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              '#${wo.id}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textSecondary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-            ],
+            ),
           ),
         );
       },
@@ -1890,8 +1605,12 @@ class _PartsTabState extends State<_PartsTab> {
                     ),
                   ),
                   Chip(
-                    backgroundColor: AppColors.primaryLight.withValues(alpha: 0.5),
-                    side: BorderSide(color: AppColors.primary.withValues(alpha: 0.2)),
+                    backgroundColor: AppColors.primaryLight.withValues(
+                      alpha: 0.5,
+                    ),
+                    side: BorderSide(
+                      color: AppColors.primary.withValues(alpha: 0.2),
+                    ),
                     label: Text(
                       _search.isNotEmpty
                           ? 'Search: $_search'
