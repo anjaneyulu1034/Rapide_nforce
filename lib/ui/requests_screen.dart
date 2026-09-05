@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
+import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/core/utils/role_utils.dart';
 import 'package:rapide_nforce/models/maintenance_request_model.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
@@ -42,25 +43,46 @@ class _RequestsScreenState extends State<RequestsScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool isRefresh = false}) async {
+    // A pull-to-refresh keeps the current list on screen and only shows the
+    // RefreshIndicator's own spinner — blanking the whole screen back to the
+    // full loading state on every refresh is what made this screen feel slow.
+    if (!isRefresh) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     final isLead = isLeadTechnicianRole(AuthService.instance.currentUser?.role);
     final result = isLead
         ? await RequestService.instance.fetchApprovals()
         : await RequestService.instance.fetchRequests();
     if (!mounted) return;
+
+    if (result.isSuccess) {
+      setState(() {
+        _loading = false;
+        _error = null;
+        _items = result.data ?? [];
+      });
+      return;
+    }
+
+    if (isRefresh) {
+      // Keep whatever is already on screen; a full-page error state would
+      // otherwise erase a perfectly good list just because a refresh failed.
+      setState(() => _loading = false);
+      AppToast.showError(result.message ?? 'Failed to refresh requests');
+      return;
+    }
+
     setState(() {
       _loading = false;
-      if (result.isSuccess) {
-        _items = result.data ?? [];
-      } else {
-        _error = result.message ?? 'Failed to load requests';
-      }
+      _error = result.message ?? 'Failed to load requests';
     });
   }
+
+  Future<void> _refresh() => _load(isRefresh: true);
 
   int _countFor(RequestApprovalStatus? status) {
     if (status == null) return _items.length;
@@ -103,10 +125,12 @@ class _RequestsScreenState extends State<RequestsScreen> {
       if (searchLower.isNotEmpty) {
         final matchesTitle = r.title.toLowerCase().contains(searchLower);
         final matchesUnit = r.unitNumber.toLowerCase().contains(searchLower);
-        final matchesIssue =
-            r.issueDescription.toLowerCase().contains(searchLower);
-        final matchesTech =
-            (r.technicianName ?? '').toLowerCase().contains(searchLower);
+        final matchesIssue = r.issueDescription.toLowerCase().contains(
+          searchLower,
+        );
+        final matchesTech = (r.technicianName ?? '').toLowerCase().contains(
+          searchLower,
+        );
         return matchesTitle || matchesUnit || matchesIssue || matchesTech;
       }
       return true;
@@ -116,12 +140,13 @@ class _RequestsScreenState extends State<RequestsScreen> {
       loading: _loading,
       error: _error,
       onRetry: _load,
+      onRefresh: _refresh,
       isEmpty: _items.isEmpty,
       emptyMessage: AppStrings.noData,
       emptyIcon: Icons.handyman_outlined,
       child: WebListPage(
         title: '',
-        onRefresh: _load,
+        onRefresh: _refresh,
         toolbar: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -170,8 +195,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
                       label: 'Approved',
                       count: _countFor(RequestApprovalStatus.approved),
                       color: AppColors.statusCompleted,
-                      selected:
-                          _statusFilter == RequestApprovalStatus.approved,
+                      selected: _statusFilter == RequestApprovalStatus.approved,
                       onTap: () => setState(
                         () => _statusFilter = RequestApprovalStatus.approved,
                       ),
@@ -181,8 +205,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
                       label: 'Rejected',
                       count: _countFor(RequestApprovalStatus.rejected),
                       color: AppColors.danger,
-                      selected:
-                          _statusFilter == RequestApprovalStatus.rejected,
+                      selected: _statusFilter == RequestApprovalStatus.rejected,
                       onTap: () => setState(
                         () => _statusFilter = RequestApprovalStatus.rejected,
                       ),
@@ -231,9 +254,7 @@ class _RequestsScreenState extends State<RequestsScreen> {
                                 icon: Icons.calendar_today_outlined,
                                 label: req.requestedOn,
                               ),
-                              if ((req.technicianName ?? '')
-                                  .trim()
-                                  .isNotEmpty)
+                              if ((req.technicianName ?? '').trim().isNotEmpty)
                                 MetaChip(
                                   icon: Icons.person_outline,
                                   label: req.technicianName!,
@@ -286,9 +307,7 @@ class _RequestFilterChip extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected ? color : AppColors.card,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? color : AppColors.border,
-          ),
+          border: Border.all(color: selected ? color : AppColors.border),
           boxShadow: selected
               ? [
                   BoxShadow(
@@ -334,4 +353,3 @@ class _RequestFilterChip extends StatelessWidget {
     );
   }
 }
-

@@ -4,10 +4,12 @@ class AppStrings {
   static const String appTitle = 'RAPIDE nforce';
   static const String appBrand = 'RAPIDE';
   static const String appBrandSub = 'nforce';
-  // static const String loginTitle = 'Technician Login';
-  static const String employeeId = 'Employee ID';
+  static const String loginTitle = 'Welcome Back';
+  static const String loginSubtitle = 'Sign in to access your';
+  static const String usernameOrEmail = 'Username or Email';
   static const String password = 'Password';
   static const String signIn = 'Sign In';
+  static const String forgotPassword = 'Forgot password?';
   static const String dashboard = 'Dashboard';
   static const String logout = 'Logout';
   static const String technician = 'Technician';
@@ -26,6 +28,6 @@ class AppStrings {
   static const String viewInventory = 'View inventory';
   static const String viewRequests = 'View requests';
   static const String viewHistory = 'View history';
-  static const String version = 'Version 1.0.3';
+  static const String version = 'Version 1.0.9';
   static const String noData = 'Not available';
 }

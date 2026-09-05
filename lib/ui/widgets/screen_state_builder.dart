@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/ui/widgets/api_error_banner.dart';
+import 'package:rapide_nforce/ui/widgets/brand_loading_indicator.dart';
 import 'package:rapide_nforce/ui/widgets/list_empty_state.dart';
 
 class ScreenStateBuilder extends StatefulWidget {
@@ -15,6 +16,7 @@ class ScreenStateBuilder extends StatefulWidget {
     this.emptyMessage = 'No data',
     this.emptyIcon = Icons.inbox_outlined,
     this.toastOnError = false,
+    this.onRefresh,
   });
 
   final bool loading;
@@ -25,6 +27,12 @@ class ScreenStateBuilder extends StatefulWidget {
   final IconData emptyIcon;
   final bool toastOnError;
   final Widget child;
+
+  /// Lets the error/empty states be pulled-to-refresh too — otherwise a
+  /// screen with zero items (or a failed first load) has no scrollable
+  /// content for `RefreshIndicator` to attach to, leaving no way to retry
+  /// short of leaving and re-opening the screen.
+  final Future<void> Function()? onRefresh;
 
   @override
   State<ScreenStateBuilder> createState() => _ScreenStateBuilderState();
@@ -63,12 +71,12 @@ class _ScreenStateBuilderState extends State<ScreenStateBuilder> {
   @override
   Widget build(BuildContext context) {
     if (widget.loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: BrandLoadingIndicator());
     }
 
     if (widget.error != null) {
-      return Center(
-        child: Padding(
+      return _refreshable(
+        Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -90,12 +98,34 @@ class _ScreenStateBuilderState extends State<ScreenStateBuilder> {
     }
 
     if (widget.isEmpty) {
-      return ListEmptyState(
-        message: widget.emptyMessage,
-        icon: widget.emptyIcon,
+      return _refreshable(
+        ListEmptyState(message: widget.emptyMessage, icon: widget.emptyIcon),
       );
     }
 
     return widget.child;
+  }
+
+  Widget _refreshable(Widget content) {
+    if (widget.onRefresh == null) return Center(child: content);
+
+    return RefreshIndicator(
+      color: AppColors.primary,
+      onRefresh: widget.onRefresh!,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight:
+                  MediaQuery.of(context).size.height -
+                  MediaQuery.of(context).padding.top -
+                  MediaQuery.of(context).padding.bottom,
+            ),
+            child: Center(child: content),
+          ),
+        ],
+      ),
+    );
   }
 }

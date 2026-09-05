@@ -14,6 +14,7 @@ class ApiConstants {
   static const String me = '/auth/me';
   static const String logout = '/auth/logout';
   static const String changePassword = '/auth/change-password';
+  static const String forgotPassword = '/auth/forgot-password';
 
   // Users & uploads
   static const String users = '/users';
@@ -109,7 +110,8 @@ class ApiConstants {
   static const String reportsOcrAuditLogs = '/reports/ocr-audit-logs';
   static const String reportsTruckSafety = '/reports/trucks/safety-pdf-table';
   static const String reportsVendors = '/reports/vendors';
-  static const String reportsMaintenanceAnalytics = '/reports/maintenance-analytics';
+  static const String reportsMaintenanceAnalytics =
+      '/reports/maintenance-analytics';
 
   // Parts tax rate catalog (Add Part "Estimated Tax Summary" preview)
   static const String partsTaxRates = '/parts-tax-rates';

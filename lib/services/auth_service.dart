@@ -178,6 +178,31 @@ class AuthService {
     }
   }
 
+  /// Web parity for `authService.forgetPassword` (`ForgetPasswordPage.tsx`)
+  /// — `POST /auth/forgot-password` with `{ email }` (the field accepts a
+  /// username or an email address; the backend resolves either, matching
+  /// how web passes its "Username or Email" input value through unchanged).
+  Future<ApiResult<void>> forgotPassword(String identifier) async {
+    try {
+      final response = await ApiClient.instance.post(
+        ApiConstants.forgotPassword,
+        body: {'email': identifier.trim()},
+      );
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return ApiResult.ok(null);
+      }
+      final body = response.body.isNotEmpty
+          ? jsonDecode(response.body) as Map<String, dynamic>
+          : <String, dynamic>{};
+      return ApiResult.fail(
+        body['message'] as String? ?? 'Failed to send reset link',
+        statusCode: response.statusCode,
+      );
+    } catch (_) {
+      return ApiResult.fail('Network error. Please try again.');
+    }
+  }
+
   Future<ApiResult<void>> updateProfile({
     required int userId,
     required Map<String, dynamic> payload,
@@ -210,8 +235,13 @@ class AuthService {
         ..fields['fileName'] = fileName
         ..fields['fileType'] = mimeType
         ..fields['fileSize'] = (await file.length()).toString()
-        ..files.add(await http.MultipartFile.fromPath('file', filePath,
-            filename: fileName));
+        ..files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            filePath,
+            filename: fileName,
+          ),
+        );
 
       final response = await ApiClient.instance.postMultipart(
         ApiConstants.uploads,
@@ -358,9 +388,14 @@ class AuthService {
       token: fetched.token ?? existing?.token,
       companyId: fetched.companyId ?? existing?.companyId,
       roleId: fetched.roleId ?? existing?.roleId,
-      signatureUploadId: fetched.signatureUploadId ?? existing?.signatureUploadId,
-      certificateNumber: pickOptional(fetched.certificateNumber, existing?.certificateNumber),
-      certificateUploadId: fetched.certificateUploadId ?? existing?.certificateUploadId,
+      signatureUploadId:
+          fetched.signatureUploadId ?? existing?.signatureUploadId,
+      certificateNumber: pickOptional(
+        fetched.certificateNumber,
+        existing?.certificateNumber,
+      ),
+      certificateUploadId:
+          fetched.certificateUploadId ?? existing?.certificateUploadId,
     );
   }
 

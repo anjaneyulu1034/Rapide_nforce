@@ -3,27 +3,9 @@ import 'package:rapide_nforce/core/constants/app_colors.dart';
 import 'package:rapide_nforce/core/constants/app_strings.dart';
 import 'package:rapide_nforce/core/utils/app_toast.dart';
 import 'package:rapide_nforce/services/auth_service.dart';
-import 'package:rapide_nforce/services/theme_service.dart';
+import 'package:rapide_nforce/ui/forgot_password_screen.dart';
 import 'package:rapide_nforce/ui/widgets/brand_logo.dart';
-import 'package:rapide_nforce/core/constants/app_gradients.dart';
 import 'package:rapide_nforce/ui/widgets/web_ui.dart';
-
-/// Login-only background — a soft red-to-charcoal gradient echoing the
-/// brand's red "R" logo, distinct from the flat neutral [AppGradients]
-/// background used on every other screen.
-LinearGradient get _loginBackgroundGradient => ThemeService.instance.isLight
-    ? const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFFFBE4E4), Color(0xFFF3F4F6), Color(0xFFE5E7EB)],
-        stops: [0.0, 0.45, 1.0],
-      )
-    : const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF2A0A0A), Color(0xFF14100F), Color(0xFF0B0A0A)],
-        stops: [0.0, 0.45, 1.0],
-      );
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key, required this.onLoginSuccess});
@@ -85,116 +67,77 @@ class _LoginScreenState extends State<LoginScreen> {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return Scaffold(
-      backgroundColor: AppColors.surface,
+      // Web parity for `.login-page { background: #ffffff; }` — a plain
+      // white page, not this app's usual gradient background.
+      backgroundColor: Colors.white,
       resizeToAvoidBottomInset: true,
-      body: DecoratedBox(
-        decoration: BoxDecoration(gradient: _loginBackgroundGradient),
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              const verticalPadding = 48.0;
-              return SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(20, 24, 20, 24 + bottomInset),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight:
-                        constraints.maxHeight - verticalPadding - bottomInset,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const BrandLogo(height: 104),
-                      const SizedBox(height: 24),
-                      _FeatureRow(),
-                      const SizedBox(height: 28),
-                      _LoginCard(
-                        formKey: _formKey,
-                        employeeIdController: _employeeIdController,
-                        passwordController: _passwordController,
-                        employeeIdFocus: _employeeIdFocus,
-                        passwordFocus: _passwordFocus,
-                        obscurePassword: _obscurePassword,
-                        loading: _loading,
-                        error: _error,
-                        onTogglePassword: () => setState(
-                          () => _obscurePassword = !_obscurePassword,
-                        ),
-                        onLogin: _login,
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        AppStrings.version,
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            const verticalPadding = 48.0;
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, 24, 20, 24 + bottomInset),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight:
+                      constraints.maxHeight - verticalPadding - bottomInset,
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const BrandLogo(height: 88),
+                    const SizedBox(height: 24),
+                    _LoginCard(
+                      formKey: _formKey,
+                      employeeIdController: _employeeIdController,
+                      passwordController: _passwordController,
+                      employeeIdFocus: _employeeIdFocus,
+                      passwordFocus: _passwordFocus,
+                      obscurePassword: _obscurePassword,
+                      loading: _loading,
+                      error: _error,
+                      onTogglePassword: () =>
+                          setState(() => _obscurePassword = !_obscurePassword),
+                      onLogin: _login,
+                    ),
+                    const SizedBox(height: 24),
+                    // Web parity for the login footer (`ForgetPasswordPage`
+                    // shares the same "© {year} Rapidé nforce ..." line) and
+                    // the separate `VersionFooter` pill shown on every page.
+                    RichText(
+                      textAlign: TextAlign.center,
+                      text: TextSpan(
                         style: TextStyle(
                           fontSize: 11,
-                          color: AppColors.textSecondary.withValues(
-                            alpha: 0.8,
-                          ),
+                          color: AppColors.textSecondary.withValues(alpha: 0.8),
                         ),
+                        children: [
+                          TextSpan(text: '© ${DateTime.now().year} '),
+                          const TextSpan(
+                            text: 'Rapidé nforce',
+                            style: TextStyle(
+                              fontStyle: FontStyle.italic,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const TextSpan(text: '. All rights reserved.'),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      AppStrings.version,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary.withValues(alpha: 0.8),
+                      ),
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
-      ),
-    );
-  }
-}
-
-class _FeatureRow extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        _FeatureChip(icon: Icons.build_outlined, label: 'Work Orders'),
-        const SizedBox(width: 8),
-        _FeatureChip(icon: Icons.inventory_2_outlined, label: 'Inventory'),
-        const SizedBox(width: 8),
-        _FeatureChip(icon: Icons.local_shipping_outlined, label: 'Fleet'),
-      ],
-    );
-  }
-}
-
-class _FeatureChip extends StatelessWidget {
-  const _FeatureChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.gold.withValues(alpha: 0.35)),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.gold.withValues(alpha: 0.14),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: AppColors.gold),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-              color: AppColors.gold,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -231,7 +174,7 @@ class _LoginCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(22, 24, 22, 22),
       decoration: BoxDecoration(
-        gradient: AppGradients.card,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.border),
         boxShadow: [
@@ -248,17 +191,42 @@ class _LoginCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              AppStrings.loginTitle,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 6),
+            RichText(
+              text: TextSpan(
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                children: [
+                  TextSpan(text: '${AppStrings.loginSubtitle} '),
+                  const TextSpan(
+                    text: 'RAPIDÉ nforce',
+                    style: TextStyle(
+                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const TextSpan(text: ' dashboard.'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
             _LoginField(
               controller: employeeIdController,
               focusNode: employeeIdFocus,
-              label: AppStrings.employeeId,
-              hint: 'Email or username',
-              icon: Icons.badge_outlined,
+              label: AppStrings.usernameOrEmail,
+              hint: 'e.g. admin or admin@rapidenforce.com',
               textInputAction: TextInputAction.next,
               onFieldSubmitted: (_) => passwordFocus.requestFocus(),
               validator: (v) {
                 if (v == null || v.trim().isEmpty) {
-                  return 'Enter your employee ID';
+                  return 'Enter your username or email';
                 }
                 return null;
               },
@@ -268,8 +236,7 @@ class _LoginCard extends StatelessWidget {
               controller: passwordController,
               focusNode: passwordFocus,
               label: AppStrings.password,
-              hint: '••••••',
-              icon: Icons.lock_outline_rounded,
+              hint: 'Enter your password',
               obscureText: obscurePassword,
               textInputAction: TextInputAction.done,
               onFieldSubmitted: (_) => onLogin(),
@@ -333,6 +300,19 @@ class _LoginCard extends StatelessWidget {
               loading: loading,
               onPressed: onLogin,
             ),
+            const SizedBox(height: 14),
+            Center(
+              child: TextButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ForgotPasswordScreen(),
+                    ),
+                  );
+                },
+                child: Text(AppStrings.forgotPassword),
+              ),
+            ),
           ],
         ),
       ),
@@ -346,7 +326,6 @@ class _LoginField extends StatelessWidget {
     required this.focusNode,
     required this.label,
     required this.hint,
-    required this.icon,
     this.obscureText = false,
     this.textInputAction,
     this.onFieldSubmitted,
@@ -358,7 +337,6 @@ class _LoginField extends StatelessWidget {
   final FocusNode focusNode;
   final String label;
   final String hint;
-  final IconData icon;
   final bool obscureText;
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onFieldSubmitted;
@@ -394,7 +372,6 @@ class _LoginField extends StatelessWidget {
             ),
             filled: true,
             fillColor: AppColors.surface,
-            prefixIcon: Icon(icon, color: AppColors.primary, size: 22),
             suffixIcon: suffix,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,

@@ -49,7 +49,7 @@ import 'package:rapide_nforce/ui/widgets/app_drawer.dart';
 
 import 'package:rapide_nforce/ui/widgets/app_header_actions.dart';
 
-import 'package:rapide_nforce/ui/widgets/brand_logo.dart';
+import 'package:rapide_nforce/ui/widgets/brand_loading_indicator.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -81,14 +81,12 @@ class _AppShellState extends State<AppShell> {
   bool get _isLoggedIn => AuthService.instance.isLoggedIn;
 
   List<AppRoute> get _bottomNavRoutes {
-    final routes = <AppRoute>[
-      AppRoute.dashboard,
-      AppRoute.maintenance,
-    ];
+    final routes = <AppRoute>[AppRoute.dashboard, AppRoute.maintenance];
 
     final role = AuthService.instance.currentUser?.role;
     final canApprove =
-        isAdminRole(role) || (role != null && role.toUpperCase().contains('LEAD'));
+        isAdminRole(role) ||
+        (role != null && role.toUpperCase().contains('LEAD'));
 
     routes.add(canApprove ? AppRoute.approvals : AppRoute.requests);
 
@@ -99,8 +97,8 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    final userCompanyId =
-        AuthService.instance.currentUser?.companyId?.toString();
+    final userCompanyId = AuthService.instance.currentUser?.companyId
+        ?.toString();
     _selectedCompanyId =
         AuthService.instance.selectedCompanyId ?? userCompanyId;
     if (_isLoggedIn) {
@@ -196,8 +194,8 @@ class _AppShellState extends State<AppShell> {
   }
 
   void _onLoginSuccess() {
-    final userCompanyId =
-        AuthService.instance.currentUser?.companyId?.toString();
+    final userCompanyId = AuthService.instance.currentUser?.companyId
+        ?.toString();
     setState(() {
       _selectedCompanyId =
           AuthService.instance.selectedCompanyId ?? userCompanyId;
@@ -266,9 +264,7 @@ class _AppShellState extends State<AppShell> {
         return TrailersScreen(key: ValueKey(_trailersRefreshKey));
 
       case AppRoute.maintenance:
-        return WorkOrdersScreen(
-          key: ValueKey(_workOrderRefreshKey),
-        );
+        return WorkOrdersScreen(key: ValueKey(_workOrderRefreshKey));
 
       case AppRoute.dvir:
         return const DvirScreen();
@@ -318,16 +314,7 @@ class _AppShellState extends State<AppShell> {
     if (_bootstrapping && _selectedCompanyId == null) {
       return Scaffold(
         backgroundColor: AppColors.surface,
-        body: const Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              BrandLogo(height: 88),
-              SizedBox(height: 24),
-              CircularProgressIndicator(),
-            ],
-          ),
-        ),
+        body: const Center(child: BrandLoadingIndicator(size: 132)),
       );
     }
 
@@ -450,9 +437,7 @@ class _AppShellState extends State<AppShell> {
           ? FloatingActionButton(
               onPressed: () async {
                 final changed = await Navigator.of(context).push<bool>(
-                  MaterialPageRoute(
-                    builder: (_) => const TrailerFormScreen(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const TrailerFormScreen()),
                 );
                 if (changed == true) {
                   setState(() {
